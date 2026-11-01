@@ -13,7 +13,8 @@ const mutantSelection = process.argv.includes('--mutant-selection');
 const loadingOnly = process.argv.includes('--loading');
 const mutantLoading = process.argv.includes('--mutant-loading');
 const interattivo = process.argv.includes('--interattivo');
-const dir = interattivo ? 'test-reports/backup-interattivo' : loadingOnly ? `test-reports/backup-loading-2026-10-12${mutantLoading ? '/mutante' : ''}` : `test-reports/${catalogOnly ? 'catalogo-backup' : 'backup-design'}-2026-10-12/${mutantSelection ? 'mutante-selezione' : mutantHistory ? 'mutante-storico' : mutant ? 'mutante' : process.argv.includes('--confirm') ? 'conferma' : 'dopo'}`;
+const mutantSchemaNote = process.argv.includes('--mutant-schema-note');
+const dir = interattivo ? 'test-reports/backup-interattivo' : loadingOnly ? `test-reports/backup-loading-2026-10-12${mutantLoading ? '/mutante' : ''}` : `test-reports/${catalogOnly ? 'catalogo-backup' : 'backup-design'}-2026-10-12/${mutantSchemaNote ? 'mutante-nota-schema' : mutantSelection ? 'mutante-selezione' : mutantHistory ? 'mutante-storico' : mutant ? 'mutante' : process.argv.includes('--confirm') ? 'conferma' : 'dopo'}`;
 
 (async () => {
   const server = await startTestServer({ port: 3210 });
@@ -29,6 +30,13 @@ const dir = interattivo ? 'test-reports/backup-interattivo' : loadingOnly ? `tes
       localStorage.setItem('codedb:tema', 'dark');
       localStorage.setItem('codedb:onboarding', JSON.stringify({ visto: true, versioneVista: version, checklistChiusa: true }));
     }, require('../package.json').version);
+    if (mutantSchemaNote) await page.route('**/js/backupmanager.js', async route => {
+      const response = await route.fetch();
+      const original = await response.text();
+      const body = original.replace('res.summary.equivalenza?.completa === false', 'false');
+      assert.notEqual(body, original, 'Il mutante deve modificare la nota finale del ripristino');
+      await route.fulfill({ response, body });
+    });
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('html[data-arc-ready="true"]');
     const open = async () => {
@@ -63,7 +71,9 @@ const dir = interattivo ? 'test-reports/backup-interattivo' : loadingOnly ? `tes
         if (['backup:run', 'backup:restore'].includes(name)) { f.pending[name] = cb; return; }
         if (name === 'backup:cancel') { cb({ ok: true, cancelled: true }); f.pending['backup:run']({ ok: true, cancelled: true }); return; }
         if (f.fail === name) return cb?.({ ok: false, error: 'Permessi insufficienti per questa operazione.' });
-        const response = { ok: true, databases: [{ name: 'contabilita' }], collections: payload.db === 'analisi' ? [{ name: 'statistiche' }] : f.collections.map(name => ({ name })),
+        // Dopo il restore la sidebar rilegge i database: il trasporto deve
+        // descrivere gli stessi due database presenti nello stato iniziale.
+        const response = { ok: true, databases: [{ name: 'contabilita' }, { name: 'analisi' }], collections: payload.db === 'analisi' ? [{ name: 'statistiche' }] : f.collections.map(name => ({ name })),
           ...(name === 'backup:list' ? { groups: f.groups } : {}),
           ...(name === 'backup:verify' ? { valid: false, failedCount: 1, details: [{ file: 'ordini.ndjson.gz', status: 'checksum diverso' }] } : {}) };
         if (name === 'backup:list' && f.holdList) { const saved = structuredClone(response); f.lists.push(() => cb(saved)); return; }
@@ -315,6 +325,21 @@ const dir = interattivo ? 'test-reports/backup-interattivo' : loadingOnly ? `tes
     await page.waitForFunction(() => !document.getElementById('restore-overlay').dataset.arcDialog);
     assert.equal(await page.evaluate(() => window.backupFixture.sent.filter(r => r.name === 'backup:restore').length), 0);
     ok('Verifica, storico e conferma del ripristino: destinazione esplicita, annullamento senza scritture');
+    // La riuscita del caricamento non prova ciò che un archivio storico non
+    // aveva registrato: il limite deve restare visibile anche dopo i progressi.
+    await card.locator('.btn-restore-backup').first().click();
+    await page.waitForSelector('#restore-overlay[data-arc-dialog="open"]');
+    await page.locator('#restore-ok').click();
+    await page.waitForFunction(() => typeof window.backupFixture.pending['backup:restore'] === 'function');
+    await page.evaluate(() => window.backupFixture.pending['backup:restore']({ ok: true, summary: {
+      status: 'completato', totalDocs: 5, layers: 2,
+      equivalenza: { completa: false, motivo: 'La fotografia storica non registra le rimozioni degli oggetti.' },
+    } }));
+    await page.locator('#restore-progress .esito-ok').first().waitFor();
+    assert.match(await page.locator('#restore-progress .restore-progress-head').first().textContent(),
+      /Verifica incompleta: La fotografia storica non registra le rimozioni degli oggetti\./,
+      '[BACKUP-NOTA-SCHEMA] il limite della verifica deve restare nel riepilogo');
+    ok('Ripristino storico: il riepilogo distingue caricamento completato e verifica incompleta');
     ok('Storico animato e interrompibile, focus e nodi stabili, esiti conservati, date sconosciute e catene incomplete esplicite');
     await page.locator('#backup-catalog-filter').fill('inesistente');
     await page.getByText('Nessuna copia corrispondente', { exact: true }).waitFor();

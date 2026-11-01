@@ -196,15 +196,19 @@ prova('Catena: uno storico o un cambio di colonne/identita richiedono un nuovo f
     });
     const manifest = JSON.parse(fs.readFileSync(path.join(summary.backupDir, 'manifest.json'), 'utf8'));
     const data = manifest.files.find((f) => f.kind === 'data');
-    assert.strictEqual(manifest.version, 4);
+    assert.strictEqual(manifest.version, 5);
+    assert.deepStrictEqual(manifest.files.find(file => file.kind === 'data').content,
+      { version: 1, mode: 'snapshot', complete: true });
+    assert.strictEqual(manifest.files.find(file => file.kind === 'data').replayCardinality,
+      manifest.files.find(file => file.kind === 'data').sourceCardinality);
     assert.deepStrictEqual(manifest.deletions, {
       version: 1, representation: 'identity-tombstones', order: 'delete-before-upsert',
     });
     assert.deepStrictEqual(data.identity, { kind: 'mongodb-id', columns: ['_id'] });
     assert.deepStrictEqual(new Set(data.columns), new Set(['_id', 'nome', 'email']));
-    console.log('  OK   Il dump MongoDB scrive manifest v4, semantica cancellazioni e identita _id');
+    console.log('  OK   Il dump MongoDB scrive manifest v5, contenuto completo, cardinalità e identita _id');
   } catch (err) {
-    console.error('  FAIL Manifest v2 prodotto dal motore:', err);
+    console.error('  FAIL Manifest prodotto dal motore:', err);
     process.exitCode = 1;
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

@@ -20,7 +20,9 @@ const report = { inizio: new Date().toISOString(), node: process.version, filtro
 const salva = () => fs.writeFileSync(path.join(dir, 'esecuzione.json'), JSON.stringify(report, null, 2));
 async function prova(file) {
   const log = path.join(dir, file + '.log');
-  const result = await require('./runner.cjs').runSuite({ file: path.join(root, 'test', file), log, cwd: root, timeoutMs: Number(process.env.LAB_SUITE_TIMEOUT_MS || timeout[file] || 180000) });
+  const display = ['e2e-chiusura-query.js', 'e2e-scorciatoie.js', 'e2e-zoom.js'].includes(file);
+  const result = await require('./runner.cjs').runSuite({ file: path.join(root, 'test', file), log, cwd: root, display,
+    timeoutMs: Number(process.env.LAB_SUITE_TIMEOUT_MS || timeout[file] || 180000) });
   result.file = file;
   report.suites.push(result); salva();
   console.log(result.esito.toUpperCase() + ' ' + file + ' (' + result.ms + ' ms)');

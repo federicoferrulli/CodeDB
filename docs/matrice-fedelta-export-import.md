@@ -8,7 +8,7 @@ Verifica del 12 ottobre 2026 su MongoDB **8.0.29**, MySQL **8.4.11**, PostgreSQL
 |---|---|
 | **Esporta database → CodeDB**, oppure **Esporta CodeDB · tipi completi…** su una tabella | Struttura, metadati e dati. MongoDB usa BSON grezzo in base64, SQL rappresentazioni native esatte e marcatori tipizzati. Import con anteprima, staging, verifica e recupero. |
 | **Script SQL** CodeDB | MySQL e PostgreSQL: letterali binari/numerici/testuali e cast espliciti. Importabile da CodeDB e dai client del motore. MongoDB non ha un equivalente SQL completo. |
-| **Backup** | Manifest v4, dati a blocchi, SHA-256; BSON grezzo, valori SQL esatti e file binari separati per i Large Object. Full, incrementale, differenziale e cancellazioni. |
+| **Backup** | Manifest v5, dati a blocchi, SHA-256; BSON grezzo, valori SQL esatti e file binari separati per i Large Object. Full, incrementale, differenziale e cancellazioni. Il formato v5 distingue confronto del contenuto e filtro temporale esplicito (aggiornamento del 24 ottobre 2026). |
 | JSON/EJSON o CSV della griglia | Interscambio dei dati. CSV non descrive tipi o vincoli. EJSON è interoperabile ma non rappresenta tutte le particolarità del BSON grezzo. Per il trasferimento completo usare CodeDB. |
 | Dump esterni | Dump **testuali** dello stesso motore: mysqldump, INSERT multipli nello stile phpMyAdmin, pg_dump plain con INSERT/COPY. Nessuna conversione automatica fra DBMS. |
 
@@ -40,7 +40,7 @@ MySQL/InnoDB e PostgreSQL leggono in una snapshot `repeatable-read`. MongoDB usa
 
 MongoDB standalone e tabelle MySQL non transazionali richiedono di sospendere le scritture per una copia coerente. Un conteggio uguale non prova l'assenza di modifiche ai valori. Il manifest dichiara la consistenza disponibile.
 
-Le identità degli incrementali sono rilevate nella stessa snapshot dei dati. MongoDB, senza un campo affidabile di modifica, rilegge tutti i documenti: il timestamp di `_id` non rileva aggiornamenti. Un campo `updatedAt`/`sinceField` deve essere aggiornato da **ogni** modifica applicativa; un filtro temporale non può rilevare modifiche che non aggiornano quel campo.
+Le identità degli incrementali sono rilevate nella stessa snapshot dei dati. Dal formato v5, senza un filtro esplicito tutti e tre i motori rileggono i dati e confrontano il contenuto con la base: vengono scritte solo le righe cambiate, mentre le cancellazioni sono registrate separatamente. Il confronto mantiene identità e hash della base in memoria; non è una lettura del log delle modifiche del DBMS. Senza identità stabile si salva una snapshot completa, preservando i duplicati. Il filtro `updatedAt`/`sinceField` resta disponibile su richiesta: il campo deve essere aggiornato da **ogni** modifica applicativa e il ripristino dichiara il limite di equivalenza. Cambiare colonne o identità fra layer richiede un nuovo full; una catena incompatibile viene rifiutata prima della pubblicazione nel catalogo.
 
 ## Prerequisiti e limiti
 

@@ -51,7 +51,7 @@ module.exports = (async () => {
 
   const pgQueries = [];
   const pgStrategy = {
-    async listDatabases() { return [{ name: 'destinazione' }]; },
+    async listDatabases() { return []; },
     pool: {
       async connect() {
         return {
@@ -71,12 +71,16 @@ module.exports = (async () => {
   const recovery = { verified: true };
   let commitError;
   try {
-    await pgAdapter.promote({ targetDb: 'destinazione' }, { db: 'staging' }, recovery);
+    const staging = { db: 'staging' };
+    await pgAdapter.promote({ targetDb: 'destinazione' }, staging, recovery);
+    assert(!pgQueries.includes('COMMIT'), 'la promozione attende la verifica finale');
+    await pgAdapter.finalize({ targetDb: 'destinazione' }, staging, recovery);
   } catch (err) { commitError = err; }
   assert(commitError, 'un COMMIT incerto deve essere propagato');
   assert.strictEqual(commitError.targetUnchanged, undefined, 'un COMMIT incerto non promette che il bersaglio sia intatto');
   assert.strictEqual(recovery.physicalDb, undefined, 'lo schema fisico di recupero si pubblica soltanto dopo COMMIT riuscito');
-  assert(pgQueries.includes('ROLLBACK'));
+  await assert.rejects(pgAdapter.restore({ targetDb: 'destinazione' }, recovery), /incerto/);
+  assert(!pgQueries.includes('ROLLBACK'), 'un COMMIT incerto non consente di dichiarare riuscito un rollback');
 
   console.log('  OK   Adapter import valida identita e righe prima delle mutazioni passed');
 })().catch((err) => {

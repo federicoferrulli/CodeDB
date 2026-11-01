@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
 const mutant = process.argv.includes('--mutant');
 const checksOnly = process.argv.includes('--checks-only');
-const dir = `test-reports/temi-2026-10-12/${mutant ? 'mutante' : 'dopo'}`;
+const dir = process.env.TEMI_REPORT_DIR || `test-reports/temi-2026-10-12/${mutant ? 'mutante' : 'dopo'}`;
 
 (async () => {
   const server = await startTestServer({ port: 3209 });
@@ -166,7 +166,7 @@ const dir = `test-reports/temi-2026-10-12/${mutant ? 'mutante' : 'dopo'}`;
     await page.locator('#conn-settings-btn').click();
     await page.getByRole('menuitem', { name: /^Tema/ }).click();
     await page.waitForSelector('#modal-theme[data-arc-dialog="open"]');
-    assert.equal(await page.locator('.arc-navigation-sheet').count(), 0);
+    assert.equal(await page.locator('.arc-navigation-sheet').count(), 1, 'Tema conserva il navigatore aperto, come richiesto da UX001');
     await choose('personale');
     await page.locator('[data-azione="modifica"][data-id="personale"]').click();
     await page.locator('[data-editor="annulla"]').click();
@@ -182,6 +182,8 @@ const dir = `test-reports/temi-2026-10-12/${mutant ? 'mutante' : 'dopo'}`;
     await choose('dark');
     assert.equal(await page.locator('#theme-list').evaluate(el => el.getAnimations({ subtree: true }).length), 0);
     await close();
+    await page.locator('.arc-navigation-sheet').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('.arc-navigation-sheet #conn-sidebar').count(), 1, 'Chiudere Tema restituisce il pannello Connessioni');
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('html[data-arc-ready="true"]');
     assert.equal(await current(), 'dark');

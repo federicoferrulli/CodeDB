@@ -114,7 +114,13 @@ function createModule({ query, lock, identita, operazioni, audit }) {
 
     // --- Gestione collection/tabelle, colonne e indici ---------------------------
 
-    lifecycle.delegate('collection:create', async (strategy, p) => { await strategy.createCollection(p.db, p.name, p); return {}; });
+    lifecycle.delegate('collection:create', async (strategy, p) => {
+      // Il bersaglio e il contesto di esecuzione appartengono al protocollo;
+      // le altre opzioni restano integre, incluse colonne SQL e validator BSON.
+      const { db, name, tabId, runId, opHandle, run, sessions, ...options } = p;
+      await strategy.createCollection(db, name, options);
+      return {};
+    });
 
     lifecycle.delegate('collection:rename', async (strategy, p) => { await strategy.renameCollection(p.db, p.coll, p.newName); return {}; });
 

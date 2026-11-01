@@ -9,6 +9,7 @@ type Result = string | { testo: string; spunta: boolean } | null;
 type Request = {
   titolo?: string; sottotitolo?: string; etichetta?: string; valore?: unknown;
   password?: boolean; ok?: string; spunta?: { etichetta: string; valore?: boolean };
+  valida?: (value: string) => string | null;
   resolve: (result: Result) => void;
 };
 
@@ -16,6 +17,7 @@ function Prompt({ overlay }: { overlay: HTMLElement }) {
   const [request, setRequest] = useState<Request | null>(null);
   const [value, setValue] = useState('');
   const [checked, setChecked] = useState(false);
+  const [error, setError] = useState('');
   const pending = useRef<Request | null>(null);
   const input = useRef<HTMLInputElement>(null);
   function finish(result: Result) {
@@ -30,7 +32,7 @@ function Prompt({ overlay }: { overlay: HTMLElement }) {
       // Una seconda richiesta annulla esplicitamente la prima, senza Promise sospese.
       pending.current?.resolve(null);
       pending.current = next;
-      flushSync(() => { setRequest(next); setValue(String(next.valore ?? '')); setChecked(!!next.spunta?.valore); });
+      flushSync(() => { setRequest(next); setError(''); setValue(String(next.valore ?? '')); setChecked(!!next.spunta?.valore); });
       overlay.classList.remove('hidden');
       input.current?.focus(); input.current?.select();
     };
@@ -38,11 +40,16 @@ function Prompt({ overlay }: { overlay: HTMLElement }) {
     return () => document.removeEventListener('codedb:ask-input', receive);
   }, [overlay]);
   if (!request) return null;
-  return <form data-arc-owned="prompt" onSubmit={event => { event.preventDefault(); finish(request.spunta ? { testo: value, spunta: checked } : value); }}>
+  return <form data-arc-owned="prompt" onSubmit={event => {
+    event.preventDefault();
+    const problem = request.valida?.(value);
+    if (problem) { setError(problem); input.current?.focus(); return; }
+    finish(request.spunta ? { testo: value, spunta: checked } : value);
+  }}>
     <h2 id="askinput-title">{request.titolo || 'Inserisci un valore'}</h2>
     <p id="askinput-subtitle" className={`subtitle${request.sottotitolo ? '' : ' hidden'}`}>{request.sottotitolo}</p>
     <div className="arc-prompt-field"><Input ref={input} id="askinput-value" label={request.etichetta || 'Valore'}
-      type={request.password ? 'password' : 'text'} value={value} onChange={e => setValue(e.target.value)} autoComplete="off" spellCheck={false} /></div>
+      type={request.password ? 'password' : 'text'} error={error} value={value} onChange={e => { setError(''); setValue(e.target.value); }} autoComplete="off" spellCheck={false} /></div>
     <div id="askinput-check-row" className={request.spunta ? '' : 'hidden'}>
       <Checkbox id="askinput-check" label={request.spunta?.etichetta || 'Conserva originale'} checked={checked} onCheckedChange={value => setChecked(value === true)} />
     </div>

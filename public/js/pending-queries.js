@@ -1,6 +1,6 @@
 import { chiediConferma } from './conferma.js';
 import { mountArcControls, renderDataEmpty } from '../arc/ui.js';
-import { $, esc, toast, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
+import { $, esc, toast, lucideIconHtml as ICO, refreshLucideIcons, notifica } from './utils.js';
 import { socket } from './socket.js';
 import { tabs, switchTab, activeTab, allaChiusura } from './tabs.js';
 import { switchCollTab, openCollTab, openDbTab } from './colltabs.js';
@@ -662,7 +662,7 @@ function attachPendingVScroll() {
           navigator.clipboard.writeText(item.code).then(() => {
             toast('Codice query copiato negli appunti');
           }).catch(() => {
-            toast('Impossibile copiare negli appunti', true);
+            notifica('Impossibile copiare negli appunti', { tipo: 'errore', titolo: "Registro query" });
           });
         }
       }
@@ -704,13 +704,13 @@ export async function resumePendingQuery(id) {
   const item = pendingQueries.find((x) => x.id === id);
   if (!item) return;
   if (item.paneId) {
-    import('./splitview.js').then(m => m.riprendiQueryPane(item)).catch(err => toast(err.message, true));
+    import('./splitview.js').then(m => m.riprendiQueryPane(item)).catch(err => notifica(err.message, { tipo: 'errore', titolo: "Registro query" }));
     $('#modal-pending')?.classList.add('hidden');
     return;
   }
   const origine = tabs.list.find(t => t.id === item.tabId);
   if (!origine) {
-    toast(`La sessione ${item.connName || 'di origine'} è stata chiusa. Riconnettila e copia il testo dal registro nel suo editor.`, true);
+    notifica(`La sessione ${item.connName || 'di origine'} è stata chiusa. Riconnettila e copia il testo dal registro nel suo editor.`, { tipo: 'avviso', titolo: "Registro query" });
     return;
   }
 

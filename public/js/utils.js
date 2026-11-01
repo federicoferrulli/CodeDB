@@ -6,7 +6,7 @@ import { isGeometry, geometryLabel } from './geojson.js';
 import { isPlainObject, ejsonKind, fmtBytes, safeUUID, jsonBreve, tronca } from './valori.js';
 // L'avviso passeggero vive in un modulo foglia: il trasporto ne ha bisogno e
 // non puo' importare questo file (vedi la nota sul trasporto piu' sotto).
-import { toast } from './avvisi.js';
+import { toast, notifica, chiudiNotifica } from './avvisi.js';
 import { limitiViewport } from './viewport.js';
 
 export const $ = (sel) => document.querySelector(sel);
@@ -16,7 +16,7 @@ export const $ = (sel) => document.querySelector(sel);
 // questi non è costretto a caricare l'intera applicazione (vedi la nota in
 // testa a valori.js).
 export { isPlainObject, ejsonKind, fmtBytes, safeUUID };
-export { toast };
+export { toast, notifica, chiudiNotifica };
 
 // Sul browser conferma l'avvio; su Android attende anche la scrittura del file.
 export async function scaricaFile(contenuto, nome) {
@@ -35,7 +35,7 @@ export async function scaricaFile(contenuto, nome) {
     link.click();
     return true;
   } catch (error) {
-    toast(`Download non riuscito: ${error.message}`, true);
+    notifica(`Download non riuscito: ${error.message}`, { tipo: 'errore', titolo: "Operazione non riuscita" });
     return false;
   } finally {
     link?.remove();
@@ -420,7 +420,10 @@ export function showContextMenu(x, y, items) {
         ico.setAttribute('aria-hidden', 'true');
         li.appendChild(ico);
       }
-      li.appendChild(document.createTextNode(item.label));
+      const label = document.createElement('span');
+      label.className = 'menu-label';
+      label.textContent = item.label;
+      li.appendChild(label);
       if (item.disabled) li.setAttribute('aria-disabled', 'true');
       if (item.danger) li.classList.add('danger');
       li.addEventListener('click', () => {
@@ -431,9 +434,9 @@ export function showContextMenu(x, y, items) {
         // si è manifestato `prompt()` mancante in Electron). Ora si vede.
         try {
           const r = item.action();
-          if (r && typeof r.catch === 'function') r.catch((err) => toast(err.message || String(err), true));
+          if (r && typeof r.catch === 'function') r.catch((err) => notifica(err.message || String(err), { tipo: 'errore', titolo: "Operazione non riuscita" }));
         } catch (err) {
-          toast(err.message || String(err), true);
+          notifica(err.message || String(err), { tipo: 'errore', titolo: "Operazione non riuscita" });
         }
       });
     }
@@ -866,6 +869,7 @@ export async function closeModal(elOrId, { saved = false } = {}) {
 
 /* ---------- Gestione Notifiche Toast ---------- */
 export function showToast(message, type = 'info', duration = 3500) {
+  if (type === 'error' || type === 'warning') return notifica(message, { tipo: type === 'warning' ? 'avviso' : 'errore' });
   if (!document.getElementById('toast-container')) return;
   document.dispatchEvent(new CustomEvent('codedb:toast', {
     detail: { message: String(message), type, duration },
@@ -873,7 +877,7 @@ export function showToast(message, type = 'info', duration = 3500) {
 }
 
 /* ---------- Rendering Skeleton Pending States ---------- */
-export function showSkeletonGrid(targetEl, rows = 6, cols = 5) {
+export function showSkeletonGrid(targetEl, rows = 8, cols = 5) {
   const el = typeof targetEl === 'string' ? document.querySelector(targetEl) : targetEl;
   if (!el) return;
 
@@ -882,71 +886,36 @@ export function showSkeletonGrid(targetEl, rows = 6, cols = 5) {
 
   const targetTable = el.tagName === 'TABLE' ? el : el.querySelector('table');
 
-  if (targetTable) {
-    let thead = targetTable.querySelector('thead');
-    let tbody = targetTable.querySelector('tbody');
-    if (!thead) {
-      thead = document.createElement('thead');
-      targetTable.appendChild(thead);
-    }
-    if (!tbody) {
-      tbody = document.createElement('tbody');
-      targetTable.appendChild(tbody);
-    }
-    thead.innerHTML = '';
-    tbody.innerHTML = '';
-
-    const trH = document.createElement('tr');
-    for (let c = 0; c < cols; c++) {
-      const th = document.createElement('th');
-      th.style.padding = '8px 12px';
-      th.innerHTML = `<div class="skeleton skeleton-text" style="width: ${50 + ((c + 1) * 17) % 40}%;"></div>`;
-      trH.appendChild(th);
-    }
-    thead.appendChild(trH);
-
-    for (let r = 0; r < rows; r++) {
-      const tr = document.createElement('tr');
-      for (let c = 0; c < cols; c++) {
-        const td = document.createElement('td');
-        td.style.padding = '8px 12px';
-        td.innerHTML = `<div class="skeleton skeleton-text" style="width: ${35 + ((r + c) * 19) % 55}%;"></div>`;
-        tr.appendChild(td);
-      }
-      tbody.appendChild(tr);
-    }
-  } else {
-    const table = document.createElement('table');
+  const table = targetTable || document.createElement('table');
+  if (!targetTable) {
     table.className = 'data-table skeleton-grid-table';
-    table.style.width = '100%';
-    table.style.borderCollapse = 'collapse';
-
-    const thead = document.createElement('thead');
-    const trH = document.createElement('tr');
-    for (let c = 0; c < cols; c++) {
-      const th = document.createElement('th');
-      th.style.padding = '8px 12px';
-      th.innerHTML = `<div class="skeleton skeleton-text" style="width: ${50 + ((c + 1) * 17) % 40}%;"></div>`;
-      trH.appendChild(th);
-    }
-    thead.appendChild(trH);
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    for (let r = 0; r < rows; r++) {
-      const tr = document.createElement('tr');
-      for (let c = 0; c < cols; c++) {
-        const td = document.createElement('td');
-        td.style.padding = '8px 12px';
-        td.innerHTML = `<div class="skeleton skeleton-text" style="width: ${35 + ((r + c) * 19) % 55}%;"></div>`;
-        tr.appendChild(td);
-      }
-      tbody.appendChild(tr);
-    }
-    table.appendChild(tbody);
-
     el.appendChild(table);
   }
+  const thead = table.tHead || table.createTHead();
+  const tbody = table.tBodies[0] || table.createTBody();
+  thead.innerHTML = `<tr>${Array.from({ length: cols }, (_, c) =>
+    `<th><div class="skeleton skeleton-text" style="width:${50 + ((c + 1) * 17) % 40}%"></div></th>`).join('')}</tr>`;
+  const intestazione = thead.firstChild;
+  const pannello = table.parentElement;
+  let ultimeRighe = 0;
+  const adatta = () => {
+    if (!intestazione.isConnected) { resize.disconnect(); fine.disconnect(); return; }
+    const altezza = pannello.clientHeight - thead.getBoundingClientRect().height;
+    const numero = altezza > 0 ? Math.max(1, Math.floor(altezza / 32)) : rows;
+    if (numero === ultimeRighe) return;
+    ultimeRighe = numero;
+    tbody.innerHTML = Array.from({ length: numero }, (_, r) =>
+      `<tr>${Array.from({ length: cols }, (_, c) =>
+        `<td><div class="skeleton skeleton-text" style="width:${35 + ((r + c) * 19) % 55}%"></div></td>`).join('')}</tr>`).join('');
+  };
+  // Il numero di righe segue il pannello; al ritorno dei dati termina l'osservazione.
+  const resize = new ResizeObserver(adatta);
+  const fine = new MutationObserver(() => {
+    if (thead.firstChild !== intestazione) { resize.disconnect(); fine.disconnect(); }
+  });
+  fine.observe(thead, { childList: true });
+  resize.observe(pannello);
+  adatta();
 }
 
 export function refreshLucideIcons(targetElement = null) {

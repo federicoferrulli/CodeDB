@@ -1,0 +1,11 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { descriviEsitoParziale: describe } = require('../mcp/esitoScrittura');
+assert.match(describe({ insertedCount: 2 }), /2 documenti/);
+assert.doesNotMatch(describe({ insertedCount: 2 }), /Nessuna mutazione/);
+assert.match(describe({ completed: 0, failedOperationResult: { insertedCount: 2 } }), /2 documenti/);
+assert.match(describe({ completed: 1, operationCount: 3, failedIndex: 1, transactional: false, failedOperationResult: { insertedCount: 2 } }), /1 operazioni su 3[\s\S]*2 documenti/);
+assert.doesNotMatch(describe({ rolledBack: true, insertedCount: 2 }), /2 documenti/);
+assert.match(describe({ insertedCount: 0 }), /Nessuna mutazione/);
+assert.match(describe({}), /non confermato/);
+console.log('OK esiti MCP: documenti parziali, batch, rollback e risultato sconosciuto');

@@ -58,6 +58,7 @@ function tokenize(src) {
   const isIdentPart = (c) => /[A-Za-z0-9_$]/.test(c);
 
   while (i < n) {
+    const start = i;
     const c = s[i];
 
     if (/\s/.test(c)) { i++; continue; }
@@ -81,8 +82,8 @@ function tokenize(src) {
       // il frammento veniva accettato come stringa valida, quindi
       // `find({nome: "mario)` diventava una find con un filtro inventato invece
       // di un errore di sintassi.
-      if (!chiusa) throw new Error(`Stringa non terminata: manca la ${q === '`' ? 'virgoletta' : 'virgoletta di chiusura'} ${q}`);
-      tokens.push({ type: 'str', value: val });
+      if (!chiusa) throw Object.assign(new Error(`Stringa non terminata: manca la ${q === '`' ? 'virgoletta' : 'virgoletta di chiusura'} ${q}`), { queryError: { start, end: i } });
+      tokens.push({ type: 'str', value: val, start, end: i });
       continue;
     }
 
@@ -100,10 +101,10 @@ function tokenize(src) {
         else if (ch === '/' && !inClass) { i++; chiusaRx = true; break; }
         pattern += ch; i++;
       }
-      if (!chiusaRx) throw new Error('Espressione regolare non terminata: manca la / di chiusura');
+      if (!chiusaRx) throw Object.assign(new Error('Espressione regolare non terminata: manca la / di chiusura'), { queryError: { start, end: i } });
       let flags = '';
       while (i < n && /[a-z]/i.test(s[i])) { flags += s[i]; i++; }
-      tokens.push({ type: 'regex', value: { pattern, flags } });
+      tokens.push({ type: 'regex', value: { pattern, flags }, start, end: i });
       continue;
     }
 
@@ -112,27 +113,27 @@ function tokenize(src) {
       let val = c; i++;
       while (i < n && /[0-9.eE]/.test(s[i])) { val += s[i]; i++; }
       if ((s[i] === '+' || s[i] === '-') && /[eE]/.test(s[i - 1])) { val += s[i]; i++; while (i < n && /[0-9]/.test(s[i])) { val += s[i]; i++; } }
-      if (!Number.isFinite(Number(val))) throw new Error(`Numero non valido: "${val}".`);
-      tokens.push({ type: 'num', value: Number(val), raw: val });
+      if (!Number.isFinite(Number(val))) throw Object.assign(new Error(`Numero non valido: "${val}".`), { queryError: { start, end: i } });
+      tokens.push({ type: 'num', value: Number(val), raw: val, start, end: i });
       continue;
     }
 
     // Punteggiatura
     if ('{}[]():,.'.includes(c)) {
-      tokens.push({ type: 'punct', value: c });
+      tokens.push({ type: 'punct', value: c, start, end: i + 1 });
       i++; continue;
     }
 
     // Identificatori / parole chiave
     if (isIdentStart(c)) {
       let val = ''; while (i < n && isIdentPart(s[i])) { val += s[i]; i++; }
-      tokens.push({ type: 'ident', value: val });
+      tokens.push({ type: 'ident', value: val, start, end: i });
       continue;
     }
 
     if (c === ';') { i++; continue; } // separatore/terminatore ignorato
 
-    throw new Error(`Carattere non riconosciuto: "${c}"`);
+    throw Object.assign(new Error(`Carattere non riconosciuto: "${c}"`), { queryError: { start, end: i + 1 } });
   }
 
   return tokens;
@@ -158,13 +159,17 @@ class Parser {
   eof() { return this.pos >= this.toks.length; }
   isPunct(ch) { const t = this.peek(); return t && t.type === 'punct' && t.value === ch; }
   eatPunct(ch) { if (this.isPunct(ch)) { this.pos++; return true; } return false; }
+  errore(message, token = this.peek()) {
+    const start = token?.start ?? this.toks.at(-1)?.end ?? 0;
+    return Object.assign(new Error(message), { queryError: { start, end: token?.end ?? start } });
+  }
   expectPunct(ch) {
-    if (!this.eatPunct(ch)) { const t = this.peek(); throw new Error(`Atteso "${ch}"${t ? `, trovato "${fmt(t)}"` : ' a fine query'}.`); }
+    if (!this.eatPunct(ch)) { const t = this.peek(); throw this.errore(`Atteso "${ch}"${t ? `, trovato "${fmt(t)}"` : ' a fine query'}.`); }
   }
   isIdent() { const t = this.peek(); return t && t.type === 'ident'; }
   expectIdent() {
     const t = this.peek();
-    if (!t || t.type !== 'ident') throw new Error(`Atteso un nome${t ? `, trovato "${fmt(t)}"` : ' a fine query'}.`);
+    if (!t || t.type !== 'ident') throw this.errore(`Atteso un nome${t ? `, trovato "${fmt(t)}"` : ' a fine query'}.`);
     this.pos++; return t.value;
   }
 }
@@ -174,7 +179,7 @@ function fmt(t) { return t && t.value != null ? String(typeof t.value === 'objec
 // Valore JS → forma EJSON-canonica (oggetti/array plain, tipi BSON come $oid...)
 function parseValue(p) {
   const t = p.peek();
-  if (!t) throw new Error('Valore atteso, trovato fine query.');
+  if (!t) throw p.errore('Valore atteso, trovato fine query.');
 
   if (t.type === 'num') {
     p.next();
@@ -203,10 +208,10 @@ function parseValue(p) {
       p.next();
       return parseConstructor(p, word);
     }
-    throw new Error(`Valore non valido: "${word}". Le stringhe vanno tra apici.`);
+    throw p.errore(`Valore non valido: "${word}". Le stringhe vanno tra apici.`);
   }
 
-  throw new Error(`Valore non valido: "${fmt(t)}".`);
+  throw p.errore(`Valore non valido: "${fmt(t)}".`);
 }
 
 // Chiavi che non definiscono un campo ma toccherebbero il prototipo
@@ -228,7 +233,7 @@ function parseObject(p) {
     if (kt && (kt.type === 'ident')) { p.next(); key = kt.value; }
     else if (kt && kt.type === 'str') { p.next(); key = kt.value; }
     else if (kt && kt.type === 'num') { p.next(); key = String(kt.value); }
-    else throw new Error(`Chiave di oggetto non valida${kt ? `: "${fmt(kt)}"` : ''}.`);
+    else throw p.errore(`Chiave di oggetto non valida${kt ? `: "${fmt(kt)}"` : ''}.`);
     if (CHIAVI_VIETATE.has(key)) throw new Error(`Chiave "${key}" non consentita in un filtro.`);
     p.expectPunct(':');
     obj[key] = parseValue(p);
@@ -341,7 +346,7 @@ function translate(code) {
     const cargs = parseCallArgs(p);
     applyChain(op, m, cargs);
   }
-  if (!p.eof()) { const t = p.peek(); throw new Error(`Token inatteso a fine comando: "${fmt(t)}".`); }
+  if (!p.eof()) { const t = p.peek(); throw p.errore(`Token inatteso a fine comando: "${fmt(t)}".`); }
 
   return finalizeOp(op);
 }
@@ -457,7 +462,7 @@ function parseDocument(code) {
   const p = new Parser(tokenize(String(code).trim().replace(/;\s*$/, '')));
   p.conservaInteri = true;
   const valore = parseValue(p);
-  if (!p.eof()) throw new Error('Testo inatteso dopo il documento MongoDB.');
+  if (!p.eof()) throw p.errore('Testo inatteso dopo il documento MongoDB.');
   if (!valore || typeof valore !== 'object') throw new Error('Inserisci un documento o un array di stadi MongoDB.');
   return valore;
 }

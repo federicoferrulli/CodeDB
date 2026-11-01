@@ -6,8 +6,7 @@ import { configuraColonne } from './table-resize.js';
 import { activeTab } from './tabs.js';
 import {
   $, emit, esc, showToast, showContextMenu, refreshLucideIcons, displayValueBreve,
-  initToolbarDropdown, buildJsonNode, scaricaFile,
-} from './utils.js';
+  initToolbarDropdown, buildJsonNode, scaricaFile, notifica } from './utils.js';
 import { congelaContesto, contestoCorrente } from './coerenza-richieste.js';
 import {
   chiaveOggetto, leggiChiave, unisciSchema, collegamenti, disposizione, documentoVuoto,
@@ -203,7 +202,7 @@ async function leggiSchema(congelato, force) {
 async function ripristinaDiagramma(congelato) {
   let salvati = [];
   try { salvati = await archivio.elenca(V.ambito); }
-  catch (err) { if (ancoraQui(congelato)) showToast(err.message, 'warning'); }
+  catch (err) { if (ancoraQui(congelato)) notifica(err.message, { tipo: 'errore', titolo: "Diagramma UML" }); }
   if (!ancoraQui(congelato)) return;
   const id = diagrammiDatabase.get(V.ambito);
   const record = id ? await archivio.leggi(V.ambito, id).catch(() => null) : null;
@@ -212,7 +211,7 @@ async function ripristinaDiagramma(congelato) {
     const { doc, avvisi } = validaDocumento(record.doc);
     V.doc = doc;
     V.idDiagramma = record.id;
-    if (avvisi.length) showToast(avvisi[0], 'warning');
+    if (avvisi.length) notifica(avvisi[0], { tipo: 'avviso', titolo: "Diagramma UML" });
   } else {
     V.doc = documentoVuoto(`Schema ${congelato.db}`);
     V.idDiagramma = null;
@@ -621,7 +620,7 @@ async function completaSchema({ maxGiri = 40, ridisegno = true } = {}) {
     }
   } catch (err) {
     if (!ancoraQui(congelato)) return;
-    showToast(err.message, 'error');
+    notifica(err.message, { tipo: 'errore', titolo: "Diagramma UML" });
     disegnaPiedeCatalogo();
   }
 }
@@ -954,7 +953,7 @@ function apriCollegati(idLink) {
     .filter((p) => p.colonna)
     .map((p) => ({ campo: p.colonna, operatore: 'uguale', valore: riga[p.campo] }));
   if (condizioni.length !== link.coppie.length) {
-    showToast('Questa relazione non dichiara la colonna di destinazione: le righe collegate non sono risolvibili.', 'warning');
+    notifica('Questa relazione non dichiara la colonna di destinazione: le righe collegate non sono risolvibili.', { tipo: 'avviso', titolo: "Diagramma UML" });
     return;
   }
   apriDati(link.a, {
@@ -994,7 +993,7 @@ async function esporta(formato, soloSelezione = false) {
     if (!png) throw new Error('Il PNG non è stato prodotto.');
     scarica(nomeFile('png'), png, 'image/png');
   } catch (err) {
-    showToast(err.message, 'error');
+    notifica(err.message, { tipo: 'errore', titolo: "Diagramma UML" });
   }
 }
 

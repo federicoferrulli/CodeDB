@@ -1719,7 +1719,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   box-shadow: 0 0 0 2px var(--info-line);
 }
 
-.toolbar button {
+.toolbar button:not(.dropdown-item, [data-arc-component="checkbox"]) {
   height: 34px;
   padding: 0 14px;
   border-radius: 6px;
@@ -1736,7 +1736,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   white-space: nowrap;
 }
 
-.toolbar button:hover {
+.toolbar button:not(.dropdown-item, [data-arc-component="checkbox"]):hover {
   background: var(--ov-80);
   color: var(--accent-fg);
   border-color: var(--border-2);
@@ -2334,10 +2334,10 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .context-menu li:hover > .menu-icona { color: var(--fg); }
 .context-menu li.danger > .menu-icona { color: var(--danger); }
 /* La voce senza icona resta allineata a quelle che ce l'hanno. */
-.context-menu li:not(.separator):not(:has(> .menu-icona))::before {
+.context-menu:has(.menu-icona) li:not(.separator):not(:has(> .menu-icona))::before {
   content: '';
   flex: 0 0 auto;
-  width: 15px;
+  width: 16px;
 }
 
 .context-menu li:hover { background: var(--sel); }
@@ -3056,7 +3056,6 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 /* --- Telefoni stretti --------------------------------------------------- */
 @media (max-width: 600px) {
   .brand { display: none; }
-  #polling-toggle { font-size: 0.8em; }
 
   /* `.view-tabs` non ha piu' `margin-left: auto` da annullare: le tab della
      vista stanno in fondo alla riga dei coll-tab, e su schermo stretto la riga
@@ -3265,10 +3264,6 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   color: var(--fg-dim);
 }
 .import-failed { color: var(--danger); }
-.dbimport-report { border-left: 3px solid var(--border); padding-left: 10px; }
-.dbimport-report.esito-completato { border-left-color: var(--status-ok); }
-.dbimport-report.esito-ripristinato_dopo_errore { border-left-color: var(--status-warn); }
-.dbimport-report.esito-intervento_richiesto { border-left-color: var(--status-err); }
 /* ===================== Piano di esecuzione (EXPLAIN) ===================== */
 .explain-body {
   max-height: 60vh;
@@ -3304,6 +3299,8 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   flex-direction: column;
   height: 100%;
   position: relative;
+  /* Toolbar e strumenti si sovrappongono nel grafo, senza scavalcare drawer e modali. */
+  isolation: isolate;
   overflow: hidden;
 }
 /* La barra del grafo teneva NOVE comandi allo stesso peso visivo, tutti
@@ -4531,6 +4528,42 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   line-height: inherit;
   white-space: inherit;
   word-break: inherit;
+}
+
+.query-editor-highlight .query-error-mark {
+  text-decoration: underline wavy var(--danger);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  background: var(--danger-bg);
+}
+
+.query-editor-highlight .query-error-caret { position: relative; }
+.query-editor-highlight .query-error-caret::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: .6ch;
+  border-bottom: 2px solid var(--danger);
+}
+
+.query-error-tooltip {
+  position: fixed;
+  z-index: var(--z-dropdown);
+  width: max-content;
+  max-width: min(320px, calc(100vw - 24px));
+  max-height: min(180px, calc(100dvh - 24px));
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--fg);
+  font: 400 var(--text-xs)/1.45 var(--font-sans);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
 }
 
 #query-editor-input {
@@ -8312,6 +8345,11 @@ td.editing.fk-cella :is(input, [data-arc-component="select"]) { flex: 1 1 auto; 
 .script-result-tab .tab-righe {
   font-variant-numeric: tabular-nums;
   opacity: 0.75;
+}
+
+.script-result-tab.errore .tab-righe {
+  color: var(--danger);
+  opacity: 1;
 }
 
 /* Quante schede NON sono state conservate: si dice, non si tace. */

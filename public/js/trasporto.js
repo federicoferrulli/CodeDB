@@ -29,7 +29,7 @@
 import { socket } from './socket.js';
 import { state } from './state.js';
 import { tabs, activeTab } from './tabs.js';
-import { toast } from './avvisi.js';
+import { toast, notifica, chiudiNotifica } from './avvisi.js';
 import { preparaRighe } from './righe.js';
 
 // Richiesta con acknowledgment: inietta il tabId del tab attivo, catturato al
@@ -46,7 +46,10 @@ import { preparaRighe } from './righe.js';
 // scritture sul documento sbagliato). Ogni callback che modifica lo stato deve
 // quindi usare `res._state`, mai il Proxy; e deve ridipingere solo se il proprio
 // tab è ancora quello attivo (`res._tab === activeTab()`).
-export function emit(event, payload, { timeoutMs = 0 } = {}) {
+// Le operazioni registrate sul server possono sopravvivere al tab: il loro
+// stato non dipende dal workspace. Le opzioni sono esplicite; le richieste
+// ordinarie conservano annullamento sul tab e riconnessione automatica.
+export function emit(event, payload, { timeoutMs = 0, bindTab = true, reconnect = true, rejectOnDisconnect = false } = {}) {
   // Il tabId del payload, quando c'è, ha la precedenza (split view, modali con
   // contesto esplicito): `_tab`/`_state` devono descrivere il tab REALMENTE
   // interrogato, altrimenti il callback scriverebbe nello stato di un altro.
@@ -56,11 +59,11 @@ export function emit(event, payload, { timeoutMs = 0 } = {}) {
   // con `insertContext = null`): con lo spread per ultimo quell'`undefined`
   // cancellava il tabId iniettato, il server ripiegava sulla sessione "default"
   // e rispondeva "Nessuna connessione attiva al database.".
-  const tab = pinned ? (tabs.list.find((t) => t.id === pinned) || null) : activeTab();
-  const pinnedMancante = !!pinned && !tab;
+  const tab = bindTab ? (pinned ? (tabs.list.find((t) => t.id === pinned) || null) : activeTab()) : null;
+  const pinnedMancante = bindTab && !!pinned && !tab;
   const withTab = (extra) => {
     const out = { ...(payload || {}), ...(extra || {}) };
-    out.tabId = tab ? tab.id : pinned;
+    if (bindTab) out.tabId = tab ? tab.id : pinned;
     return out;
   };
   // Se il chiamante porta il tabId di un tab già chiuso, un piccolo sentinella
@@ -69,17 +72,19 @@ export function emit(event, payload, { timeoutMs = 0 } = {}) {
   const tabStamp = tab || (pinnedMancante ? { id: pinned, orphan: true } : null);
   const stamp = (res) => Object.assign(preparaRighe(res), {
     _tab: tabStamp,
-    _state: tab ? tab.state : (pinnedMancante ? null : state),
+    _state: tab ? tab.state : (pinnedMancante || !bindTab ? null : state),
   });
   return new Promise((resolve, reject) => {
     const scrittura = !!tab && /^doc:(insert|update|replace|delete)$/.test(event);
     if (scrittura) tab.state.writesInFlight = (tab.state.writesInFlight || 0) + 1;
     let settled = false;
     let onTabClosed = null;
+    let onDisconnect = null;
     let timeout = null;
     const cleanup = () => {
       if (scrittura) tab.state.writesInFlight--;
       if (timeout !== null) clearTimeout(timeout);
+      if (onDisconnect) socket.off('disconnect', onDisconnect);
       if (onTabClosed && typeof window !== 'undefined') {
         window.removeEventListener('codedb:tab-closed', onTabClosed);
       }
@@ -104,6 +109,7 @@ export function emit(event, payload, { timeoutMs = 0 } = {}) {
     // decidere allo stesso modo se lo stato da toccare è ancora il proprio.
     const fail = (msg, res) => {
       const error = new Error(msg);
+      if (res?.queryError) error.queryError = res.queryError;
       if (res?.code === 'SSH_HOST_KEY_UNKNOWN') {
         error.code = res.code;
         error.sshHostKey = res.sshHostKey;
@@ -112,6 +118,16 @@ export function emit(event, payload, { timeoutMs = 0 } = {}) {
     };
     if (timeoutMs > 0) {
       timeout = setTimeout(() => fail('Risposta non ricevuta entro il tempo previsto: esito da verificare.'), timeoutMs);
+    }
+    if (rejectOnDisconnect) {
+      onDisconnect = () => {
+        const error = new Error('Connessione al server persa: esito da verificare alla riconnessione.');
+        error.code = 'SOCKET_DISCONNECTED';
+        rejectOnce(stamp(error));
+      };
+      socket.on('disconnect', onDisconnect);
+      // Non accodare una mutazione da inviare dopo la riconnessione.
+      if (socket.connected === false) { onDisconnect(); return; }
     }
     const send = (name, data, ack) => {
       if (settled) return;
@@ -154,13 +170,14 @@ export function emit(event, payload, { timeoutMs = 0 } = {}) {
         // connessione estemporanea non c'è nulla con cui riaprirla — e provarci
         // produrrebbe un errore di autenticazione al posto di quello vero.
         const riconnettibile = !!(tab && (tab.connName || (tab.connCfg && tab.connCfg.saved)));
-        if (isNoSession && riconnettibile && (!payload || !payload._reconnected)) {
+        if (reconnect && isNoSession && riconnettibile && (!payload || !payload._reconnected)) {
           const cfg = { saved: tab.connName || tab.connCfg.saved };
           send('mongo:connect', { ...cfg, tabId: tab.id }, (connRes) => {
             if (settled) return;
             if (tabChiuso()) { failTabChiuso(); return; }
             if (connRes && connRes.ok) {
               tab.state.connected = true;
+              chiudiNotifica(`database-${tab.id}`);
               toast(`Riconnessione al database riuscita per "${tab.label || 'Tab'}"`);
               send(event, withTab({ _reconnected: true }), (retryRes) => {
                 if (tabChiuso()) { failTabChiuso(); return; }
@@ -171,7 +188,9 @@ export function emit(event, payload, { timeoutMs = 0 } = {}) {
                 }
               });
             } else {
-              toast(`Impossibile riconnettersi al database: ${connRes ? connRes.error : 'Errore sconosciuto'}`, true);
+              notifica(`Impossibile riconnettersi al database: ${connRes ? connRes.error : 'Errore sconosciuto'}`, {
+                tipo: 'errore', id: `database-${tab.id}`, titolo: `Connessione a “${tab.label || 'database'}” interrotta`,
+                hint: 'Riapri la connessione dall’elenco Connessioni. Verifica l’esito dell’operazione prima di ripeterla.' });
               fail(res ? res.error : 'Connessione assente');
             }
           });

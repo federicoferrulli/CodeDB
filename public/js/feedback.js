@@ -38,7 +38,7 @@ function anima(elemento, fotogrammi) {
 // Chiamato soltanto dal percorso di esecuzione, mai dal ripristino di una scheda.
 export function feedbackQuery(stato) {
   const badge = document.getElementById('query-status-badge');
-  if (!badge?.getClientRects().length) return;
+  if (!badge || document.hidden || !document.getElementById('view-query')?.getClientRects().length) return;
   anima(badge, [{ transform: 'translateY(2px)' }, { transform: 'translateY(0)' }]);
   feedbackAptico(stato === 'success' ? 'conferma' : stato === 'error' ? 'errore' : 'pressione');
 }

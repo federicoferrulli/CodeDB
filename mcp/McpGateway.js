@@ -1235,12 +1235,14 @@ function buildMcpServer(session, deps) {
           try {
             results.push(await operations[index].exec());
           } catch (err) {
+            const failedOperationResult = err.auditResult;
             err.auditResult = {
               transactional: false,
               operationCount: operations.length,
               completed: results.length,
               failedIndex: index,
               results,
+              ...(failedOperationResult ? { failedOperationResult } : {}),
             };
             throw err;
           }
@@ -1260,27 +1262,14 @@ function buildMcpServer(session, deps) {
   // risaliva il solo messaggio del driver, quindi chi aveva confermato cinque
   // insert e ne vedeva fallire il terzo non sapeva che due erano gia' scritte
   // — e ripetere il batch le duplicava.
-  const descriviEsitoParziale = (esito) => {
-    if (!esito || typeof esito !== 'object') return null;
-    const totale = esito.operationCount;
-    if (esito.rolledBack) {
-      return `Nessuna mutazione e' rimasta applicata: la transazione e' stata annullata per intero (${esito.rolledBackBy === 'disconnessione' ? 'la connessione e stata chiusa e il server ha annullato la transazione' : 'rollback'}).`;
-    }
-    const applicate = esito.completed;
-    if (!Number.isFinite(applicate) || applicate <= 0) {
-      return 'Nessuna mutazione risulta applicata.';
-    }
-    return `ATTENZIONE: ${applicate} operazioni su ${totale} sono gia' state applicate e NON sono state annullate`
-      + (esito.transactional === false ? ' (su MongoDB questo blocco non e transazionale)' : '')
-      + `. Non ripetere il batch intero: riprendilo dall'operazione in posizione ${(esito.failedIndex ?? applicate) + 1}.`;
-  };
+  const { descriviEsitoParziale } = require('./esitoScrittura');
 
   const writeDescriptorSchema = z.union([
     z.object({ sql: z.string() }).strict(),
     z.object({
       collection: z.string().optional(),
       operation: z.enum(['insert', 'update', 'delete', 'drop_collection', 'drop_database']),
-      doc: z.union([z.string(), z.array(z.record(z.unknown())).min(1)]).optional(),
+      doc: z.union([z.string(), z.array(z.record(z.string(), z.unknown())).min(1)]).optional(),
       filter: z.string().optional(),
       set: z.string().optional(),
       upsert: z.boolean().optional(),
@@ -1310,7 +1299,7 @@ function buildMcpServer(session, deps) {
       operation: z.enum(['insert', 'update', 'delete', 'drop_collection', 'drop_database']).optional().describe('Tipo di scrittura: insert/update/delete solo MongoDB; drop_collection e drop_database per tutti i dbType'),
       doc: z.union([
         z.string(),
-        z.array(z.record(z.unknown())).min(1),
+        z.array(z.record(z.string(), z.unknown())).min(1),
       ]).optional().describe('Solo MongoDB insert: documento EJSON serializzato oppure array non vuoto di documenti Extended JSON'),
       filter: z.string().optional().describe('Solo MongoDB update/delete: filtro esplicito in Extended JSON (mai vuoto)'),
       set: z.string().optional().describe('Solo MongoDB update: campi da aggiornare ($set) in Extended JSON'),
@@ -1572,16 +1561,17 @@ function buildMcpServer(session, deps) {
       'Esegue il backup di un database della connessione aperta (MongoDB o MySQL) nella cartella backups/ del server, ' +
       'con lo stesso motore della CLI (npm run backup): file NDJSON Extended JSON compressi gzip, checksum SHA-256, ' +
       'manifest e catalogo. "type": full (tutto), incremental (modifiche dall\'ultimo backup), differential ' +
-      '(modifiche dall\'ultimo full); incremental/differential richiedono un backup full precedente e individuano le ' +
-      'modifiche col campo data "since_field" (senza: MongoDB usa il timestamp degli ObjectId — solo nuovi inserimenti; ' +
-      'MySQL cerca colonne come updated_at, altrimenti includono la tabella per intero). I manifest v3 registrano le cancellazioni come tombstone di identità. ' +
+      '(modifiche dall\'ultimo full); incremental/differential richiedono un backup full precedente. ' +
+      'Senza "since_field" confrontano il contenuto completo e salvano solo le righe cambiate; senza identità stabile salvano una snapshot completa. ' +
+      '"since_field" applica invece un filtro temporale esplicito: le modifiche che non aggiornano il campo restano escluse. ' +
+      'I manifest v5 dichiarano questa distinzione e registrano le cancellazioni come tombstone di identità. ' +
       'L\'operazione legge soltanto dal database; l\'attività è registrata in backups/backup.log.',
     inputSchema: {
       connection_id: z.string(),
       db: z.string().describe('Database da salvare'),
       type: z.enum(['full', 'incremental', 'differential']).optional().describe('Tipo di backup (default: full)'),
       collections: z.string().optional().describe('Elenco separato da virgole per limitare il backup ad alcune collection/tabelle'),
-      since_field: z.string().optional().describe('Campo data che individua le modifiche per incremental/differential (es. updatedAt)'),
+      since_field: z.string().optional().describe('Filtro temporale esplicito (es. updatedAt); omettere per confrontare il contenuto indipendentemente dalle date'),
       storage: z.string().optional().describe('Alias di una destinazione cloud pre-approvata dal server (CODEDB_BACKUP_STORAGE). Non è un URI: gli URI arbitrari non sono accettati.'),
       no_compress: z.boolean().optional().describe('Disabilita la compressione gzip dei file dati'),
       compress_level: z.number().int().min(1).max(9).optional().describe('Livello di compressione gzip (1-9, default: 1 per velocità massima)'),

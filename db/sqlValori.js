@@ -20,7 +20,37 @@
  * formato nativo che su MySQL non esiste.
  * ------------------------------------------------------------------------- */
 
-const { EJSON } = require('bson');
+const { EJSON, Binary } = require('bson');
+
+// EJSON non riconosce i Buffer dei driver SQL: senza questo confine enumera
+// ogni byte come proprietà JSON. Copiamo soltanto i contenitori modificati;
+// le viste binarie mantengono offset e lunghezza, senza copiare i byte.
+function preparaBinariEjson(value, visti) {
+  if (value instanceof Uint8Array) return new Binary(value);
+  if (!value || typeof value !== 'object') return value;
+  if (value._bsontype === 'Binary') {
+    return value.position === value.buffer.byteLength ? value : new Binary(value.value(), value.sub_type);
+  }
+  if (value._bsontype || value instanceof Date || value instanceof RegExp) return value;
+  visti ||= new WeakMap();
+  if (visti.has(value)) return visti.get(value);
+  let out = value;
+  visti.set(value, out);
+  for (const key of Object.keys(value)) {
+    const next = preparaBinariEjson(value[key], visti);
+    if (next === value[key]) continue;
+    if (out === value) {
+      out = Array.isArray(value) ? value.slice() : { ...value };
+      visti.set(value, out);
+    }
+    Object.defineProperty(out, key, { value: next, enumerable: true, writable: true, configurable: true });
+  }
+  return out;
+}
+
+function bufferSql(bytes) {
+  return Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+}
 
 // Converte un valore proveniente dal client (già "deserializzato" da EJSON) in
 // un parametro SQL sicuro: i tipi primitivi, Date e Buffer passano invariati,
@@ -29,9 +59,10 @@ const { EJSON } = require('bson');
 function toSqlValue(v) {
   if (v === null || v === undefined) return null;
   if (v instanceof Date || Buffer.isBuffer(v)) return v;
+  if (v instanceof Uint8Array) return bufferSql(v);
   if (typeof v === 'object') {
     if (Object.keys(v).length === 1 && typeof v.$numberDecimal === 'string') return v.$numberDecimal;
-    if (v._bsontype === 'Binary') return v.buffer;
+    if (v._bsontype === 'Binary') return bufferSql(v.value());
     if (v._bsontype === 'Long' || v._bsontype === 'Decimal128') return v.toString();
     if (v._bsontype === 'Int32' || v._bsontype === 'Double') return v.value;
     // Nei documenti JSON un Long annidato deve conservare il wrapper EJSON:
@@ -95,12 +126,16 @@ function documentoScrivibile(doc, columns) {
 // Le righe viaggiano verso il client come Extended JSON relaxed, come per
 // MongoDB: le Date diventano { $date: ... } e il frontend le riconosce.
 function serializeRow(row, columns = []) {
+  row = preparaBinariEjson(row);
   const cols = Array.isArray(columns) ? columns : [];
   const exact = new Map(cols.map((c) => [c && c.name, String((c && (c.declaredType || c.type || c.columnType || c.dataType)) || '').toLowerCase()]));
+  const arrayColumns = new Set(cols.filter(c => c?.pgType?.kind === 'array').map(c => c.name));
   if (!exact.size) return EJSON.serialize(row, { relaxed: true });
   const out = { ...row };
   for (const [name, type] of exact) {
     if (!name) continue;
+    // Il testo nativo di un array NUMERIC/BIGINT non è un numero scalare.
+    if (/\[\]$/.test(type) || arrayColumns.has(name)) continue;
     const value = out[name];
     if (value === null || value === undefined) continue;
     if (typeof value === 'object' && !value._bsontype) continue;
@@ -120,6 +155,7 @@ function serializeRow(row, columns = []) {
 }
 
 module.exports = {
+  preparaBinariEjson,
   toSqlValue,
   parseClientValue,
   deserializeClientObject,

@@ -16,7 +16,7 @@ import { feedbackQuery } from './feedback.js';
  * eseguite lo decide il server, che è l'unico a dividere il testo per davvero.
  */
 
-import { $, esc, toast, emit, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
+import { $, esc, toast, emit, lucideIconHtml as ICO, refreshLucideIcons, notifica } from './utils.js';
 import { socket } from './socket.js';
 import { activeTab } from './tabs.js';
 import { state } from './state.js';
@@ -25,11 +25,11 @@ import { countStatements } from './sql-split.js';
 import {
   trackPending, updateScriptProgress, removePending,
 } from './pending-queries.js';
-import { renderResults, updateQueryMetrics } from './query-tab.js';
+import { renderResults, updateQueryMetrics, contestoErroreQuery, registraErroreQuery, applicaErroreQuery, mostraRisultatiQueryRiuscita } from './query-tab.js';
 import { refreshDbTree } from './dbtree.js';
-import { segnalaRigaErrore } from './query-editor.js';
+import { segnalaErroreQuery } from './query-editor.js';
 import {
-  unisciLog, righeDaMostrare, haRisultato,
+  unisciLog,
   etichettaScheda, schedaAttiva, notaScartate,
 } from './script-esito.js';
 
@@ -51,13 +51,17 @@ function nuovoRunId() {
  * Avvia uno script. Ritorna una promise che si risolve all'AVVIO (non alla
  * fine): la fine arriva con gli eventi di progresso.
  */
-export function runScript({ code, engine, db, coll, stopOnError = false, previousRunId, keepSqlSession = false, tab = activeTab(), collTabId = tab?.state.activeCollId } = {}) {
+export function runScript({ code, engine, db, coll, stopOnError = false, previousRunId, keepSqlSession = false, tab = activeTab(), collTabId = tab?.state.activeCollId, sorgenteErrore } = {}) {
   const testo = String(code || '').trim();
   if (!testo) return Promise.resolve(null);
 
   const tabId = tab ? tab.id : undefined;
   const runId = nuovoRunId();
   const documento = queryDocument(tab, collTabId);
+  sorgenteErrore ||= documentoVisibile(tab, collTabId) ? contestoErroreQuery(testo)
+    : { code: documento.code, offset: documento.code?.trim() === testo ? documento.code.length - documento.code.trimStart().length : null,
+      executedCode: testo, dbms: engine && engine !== 'auto' ? engine : tab?.dbType };
+  documento.errorMark = null;
   if (documento.runId) socket.emit('query:cancel', { tabId, runId: documento.runId });
   documento.runId = null;
   if (isScriptActive(documento.scriptRunId)) abortScript(documento.scriptRunId);
@@ -89,9 +93,10 @@ export function runScript({ code, engine, db, coll, stopOnError = false, previou
   runs.set(runId, {
     runId, tabId, tab, collTabId, documento, total: totalePrevisto, handle, log: [], stato: { status: 'running' }, attesa,
     // Elenco delle schede di risultato (arriva a fine script) e quale è aperta.
-    risultati: null, schedaAperta: null,
+    risultati: null, schedaAperta: null, sorgenteErrore, primoErrore: null, erroreMostrato: false,
   });
   if (documentoVisibile(tab, collTabId)) {
+    segnalaErroreQuery(null);
     runVisibile = runId;
     mostraPannello();
     aggiornaPannello({ status: 'running', cursor: 0, total: totalePrevisto, eseguiti: 0, falliti: 0 });
@@ -126,9 +131,11 @@ export function runScript({ code, engine, db, coll, stopOnError = false, previou
       if (runVisibile === runId) nascondiPannello();
       if (documento.scriptRunId === runId) {
         documento.metrics = ['error', null, 0, err.message || 'Avvio dello script non riuscito'];
+        registraErroreQuery(documento, err, sorgenteErrore);
         if (documentoVisibile(tab, collTabId)) {
           updateQueryMetrics(...documento.metrics);
           feedbackQuery('error');
+          mostraErroreQuery(documento.errorMark);
         }
       }
       throw err;
@@ -164,7 +171,7 @@ export function pauseScript(runId = runVisibile, force = false) {
       return res;
     })
     .catch((err) => {
-      toast(`Impossibile mettere in pausa: ${err.message}`, true);
+      notifica(`Impossibile mettere in pausa: ${err.message}`, { tipo: 'errore', titolo: "Esecuzione script" });
     });
 }
 
@@ -192,7 +199,7 @@ export function resumeScript(runId = runVisibile) {
       return res;
     })
     .catch((err) => {
-      toast(`Ripresa non riuscita: ${err.message}`, true);
+      notifica(`Ripresa non riuscita: ${err.message}`, { tipo: 'errore', titolo: "Esecuzione script" });
       throw err;
     });
 }
@@ -227,7 +234,7 @@ function onProgress(ev) {
   if (!ev || !ev.runId) return;
   const r = runs.get(ev.runId);
   if (!r) return; // run di un'altra scheda del browser o già dimenticato
-  if (ev.avviso) { toast(ev.avviso, true); return; }
+  if (ev.avviso) { notifica(ev.avviso, { tipo: 'avviso', titolo: "Esecuzione script" }); return; }
 
   const stato = ev.stato || {};
   const statoPrecedente = r.stato?.status;
@@ -242,15 +249,26 @@ function onProgress(ev) {
   // per strada, che il diradamento degli eventi lascia incompleto (vedi
   // script-esito.js).
   r.log = unisciLog(r.log, stato, MAX_LOG);
+  // Gli eventi intermedi sono diradati: il riepilogo finale può contenere
+  // il primo errore che questo browser riceve.
+  const errore = ev.result && !ev.result.ok && !ev.result.interrupted ? ev.result
+    : r.log.find(result => !result.ok && !result.interrupted);
+  if (errore && !r.primoErrore && r.documento.scriptRunId === ev.runId) {
+    r.primoErrore = errore;
+    registraErroreQuery(r.documento, { message: errore.error, queryError: errore.queryError, line: errore.line }, r.sorgenteErrore);
+  }
   if ((ev.tipo === 'done' || ev.tipo === 'paused' || stato.status === 'aborted') && r.attesa) r.attesa.resolve(stato);
   if (stato.status === 'aborted' && r.documento.scriptRunId === ev.runId) r.documento.metrics = ['cancelled'];
   if ((ev.tipo === 'done' || ev.tipo === 'paused') && r.documento.scriptRunId === ev.runId) {
-    const risultato = haRisultato(ev.ultimoRisultato) ? ev.ultimoRisultato : { docs: [], columns: [] };
-    r.documento.results = risultato.docs;
-    r.documento.columns = risultato.columns;
-    r.documento.metrics = [ev.tipo === 'paused' ? 'paused' : stato.falliti ? 'error' : 'success',
+    const risultato = ev.ultimoRisultato || (stato.falliti ? r.primoErrore : null) || {};
+    const docs = risultato.docs || [];
+    if (risultato.error) registraErroreQuery(r.documento,
+      { message: risultato.error, queryError: risultato.queryError, line: risultato.line }, r.sorgenteErrore);
+    r.documento.results = docs;
+    r.documento.columns = risultato.columns || [];
+    r.documento.metrics = [risultato.error ? 'error' : ev.tipo === 'paused' ? 'paused' : 'success',
       stato.endedAt && stato.startedAt ? stato.endedAt - stato.startedAt : null,
-      risultato.docs.length, stato.falliti ? `Script terminato con ${stato.falliti} istruzioni fallite.` : null];
+      docs.length, risultato.error || null];
     if (ev.risultati) {
       r.risultati = ev.risultati;
       r.schedaAperta = schedaAttiva(ev.risultati.schede, ev.ultimoRisultato);
@@ -261,17 +279,15 @@ function onProgress(ev) {
   if (ev.tipo === 'statement' && ev.result) {
     r.log.push(ev.result);
     if (r.log.length > MAX_LOG) r.log.splice(0, r.log.length - MAX_LOG);
-    // Prima istruzione fallita: si evidenzia la riga nel sorgente. È il punto
-    // in cui l'utente deve guardare, e con uno script lungo trovarlo a mano
-    // è il lavoro più noioso.
-    if (!ev.result.ok && !ev.result.interrupted && runVisibile === ev.runId && documentoVisibile(r.tab, r.collTabId)) {
-      segnalaRigaErrore(ev.result.line);
-    }
   }
 
   // Solo il run mostrato tocca il pannello: gli altri aggiornano comunque il
   // registro (badge e modale delle query in sospeso).
   if (runVisibile !== ev.runId || r.documento.scriptRunId !== ev.runId || !documentoVisibile(r.tab, r.collTabId)) return;
+  if (r.primoErrore && !r.erroreMostrato) {
+    r.erroreMostrato = true;
+    applicaErroreQuery(r.documento.errorMark);
+  }
 
   aggiornaPannello(stato);
   if (stato.status === 'running' && statoPrecedente === 'paused') {
@@ -282,26 +298,17 @@ function onProgress(ev) {
   if (stato.status !== statoPrecedente && (ev.tipo === 'done' || ev.tipo === 'paused' || stato.status === 'aborted')) {
     feedbackQuery(stato.status === 'aborted' ? 'cancelled' : ev.tipo === 'paused' ? 'paused' : stato.falliti ? 'error' : 'success');
   }
-  if (ev.tipo === 'paused') updateQueryMetrics(...r.documento.metrics);
+  if (ev.tipo === 'paused' || ev.tipo === 'done') updateQueryMetrics(...r.documento.metrics);
+  if (ev.tipo === 'paused' || ev.tipo === 'done') applicaErroreQuery(r.documento.errorMark);
   if (stato.status === 'aborted') {
     renderResults(r.documento.results || [], r.documento.columns || []);
     updateQueryMetrics('cancelled');
   }
 
   // Righe MOSTRATE nella griglia: sono quelle che il contatore deve dire.
-  let righeMostrate = null;
   if (ev.tipo === 'done' || ev.tipo === 'paused') {
-    // L'ultimo result set prodotto è ciò che l'utente si aspetta di vedere.
-    // Un result set VUOTO si disegna (tabella vuota); "niente da disegnare"
-    // svuota la griglia invece di lasciarci il risultato dell'esecuzione
-    // precedente, che sembrerebbe la risposta a questo script.
-    // Le colonne viaggiano accanto alle righe: un result set vuoto le ha
-    // comunque, ed e' l'unica cosa che lo distingue da «nessuna query».
-    renderResults(
-      haRisultato(ev.ultimoRisultato) ? ev.ultimoRisultato.docs : [],
-      haRisultato(ev.ultimoRisultato) ? ev.ultimoRisultato.columns : [],
-    );
-    righeMostrate = righeDaMostrare(ev.ultimoRisultato);
+    // L’ultima query mostra il proprio esito: righe (anche zero) oppure errore.
+    renderResults(r.documento.results, r.documento.columns);
 
     // Risultati per istruzione: arriva l'ELENCO, non le righe. Le righe di una
     // scheda si chiedono quando l'utente la apre (vedi apriScheda).
@@ -322,20 +329,9 @@ function onProgress(ev) {
     // una struttura che non esiste più.
     refreshDbTree();
     const falliti = stato.falliti || 0;
-    // Il contatore è etichettato «record»: passargli le ISTRUZIONI eseguite
-    // faceva leggere «2 record» sopra una griglia che ne mostrava una — e il
-    // numero di istruzioni è già scritto due righe sotto, nel pannello. Qui va
-    // ciò che la griglia contiene davvero; se nessuna istruzione ha prodotto un
-    // result set la griglia è vuota, e il contatore dice zero.
-    updateQueryMetrics(
-      falliti ? 'error' : 'success',
-      stato.endedAt && stato.startedAt ? stato.endedAt - stato.startedAt : null,
-      righeMostrate != null ? righeMostrate : 0,
-      falliti ? `Script terminato con ${falliti} istruzioni fallite su ${stato.eseguiti}.` : null
-    );
-    toast(falliti
-      ? `Script terminato: ${falliti} istruzioni fallite su ${stato.eseguiti}`
-      : `Script completato: ${stato.eseguiti} istruzioni`);
+    // Il riepilogo conta tutti gli errori; la griglia mostra solo la scheda selezionata.
+    if (!falliti) toast(`Script completato: ${stato.eseguiti} istruzioni`);
+    if (!falliti && stato.status === 'done') mostraRisultatiQueryRiuscita();
   }
 }
 
@@ -495,8 +491,9 @@ function disegnaSchede() {
   barra.innerHTML = schede.map((sc) => {
     const et = etichettaScheda(sc);
     const attiva = r.schedaAperta === sc.pos ? ' attiva' : '';
+    const errore = sc.error ? ' errore' : '';
     return `
-      <button type="button" role="tab" class="script-result-tab${attiva}" data-pos="${sc.pos}"
+      <button type="button" role="tab" class="script-result-tab${attiva}${errore}" data-pos="${sc.pos}"
               aria-selected="${r.schedaAperta === sc.pos ? 'true' : 'false'}"
               title="${esc(sc.sql || '')}">
         <span class="tab-riga">${esc(et.riga)}</span>
@@ -519,19 +516,27 @@ function apriScheda(pos) {
   const runId = runVisibile;
   const r = runs.get(runId);
   if (!r) return;
+  const richiesta = r.richiestaScheda = (r.richiestaScheda || 0) + 1;
+  const corrente = () => runVisibile === runId && r.richiestaScheda === richiesta
+    && r.documento.scriptRunId === runId && documentoVisibile(r.tab, r.collTabId);
   emit('script:result', { runId, pos, tabId: r.tabId })
     .then((res) => {
       // Nel frattempo l'utente può aver cambiato run o scheda: la risposta di
       // una richiesta sorpassata non deve sovrascrivere ciò che sta guardando.
-      if (runVisibile !== runId || !documentoVisibile(r.tab, r.collTabId)) return;
+      if (!corrente()) return;
       r.schedaAperta = pos;
-      Object.assign(r.documento, { results: res.docs || [], columns: res.columns || [], metrics: ['success', null, (res.docs || []).length] });
+      if (res.error) registraErroreQuery(r.documento,
+        { message: res.error, queryError: res.queryError, line: res.line }, r.sorgenteErrore);
+      Object.assign(r.documento, { results: res.docs || [], columns: res.columns || [],
+        metrics: [res.error ? 'error' : 'success', null, (res.docs || []).length, res.error || null] });
       disegnaSchede();
+      applicaErroreQuery(r.documento.errorMark);
+      updateQueryMetrics(...r.documento.metrics);
       renderResults(res.docs || [], res.columns || []);
-      updateQueryMetrics('success', null, (res.docs || []).length);
     })
     .catch((err) => {
-      toast(`Impossibile aprire il risultato: ${err.message}`, true);
+      if (!corrente()) return;
+      notifica(`Impossibile aprire il risultato: ${err.message}`, { tipo: 'errore', titolo: "Esecuzione script" });
     });
 }
 

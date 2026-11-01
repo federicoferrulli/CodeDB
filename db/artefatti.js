@@ -114,12 +114,12 @@ function tokenizza(sql) {
 }
 
 function keyword(token, value) {
-  return token && token.type === 'identifier' && token.value.toUpperCase() === value;
+  return token && token.type === 'identifier' && !token.quoted && token.value.toUpperCase() === value;
 }
 
 function salta(tokens, index, parole) {
   let i = index;
-  while (i < tokens.length && parole.has(tokens[i].value.toUpperCase())) i++;
+  while (i < tokens.length && !tokens[i].quoted && parole.has(tokens[i].value.toUpperCase())) i++;
   return i;
 }
 
@@ -179,7 +179,7 @@ function estraiBersaglio(sql) {
   const tipi = new Set(['TABLE', 'INDEX', 'VIEW', 'PROCEDURE', 'FUNCTION', 'TRIGGER', 'EVENT', 'SEQUENCE', 'TYPE', 'DOMAIN', 'COLLATION']);
   let typeIndex = -1;
   for (let k = 1; k < tokens.length; k++) {
-    if (tokens[k].type === 'identifier' && tipi.has(tokens[k].value.toUpperCase())) { typeIndex = k; break; }
+    if (tokens[k].type === 'identifier' && !tokens[k].quoted && tipi.has(tokens[k].value.toUpperCase())) { typeIndex = k; break; }
   }
   if (typeIndex < 0) errore('Forma CREATE non ammessa', sql);
   const type = tokens[typeIndex].value.toUpperCase();
@@ -315,7 +315,9 @@ function normalizzaExportDatabase(input, { expectedDbType = null, owned = false 
     return input;
   }
   let parsed;
-  try { parsed = typeof input === 'string' ? JSON.parse(input) : owned ? input : copiaJson(input, 'L\'export'); }
+  try { parsed = typeof input === 'string' ? JSON.parse(input) : owned ? input : copiaJson(
+    input && tipoDb(input.dbType) === 'mongodb' && input.objects
+      ? { ...input, objects: require('./codecFedele').serializeConservativo(input.objects) } : input, 'L\'export'); }
   catch (err) { throw new Error(`JSON non valido: ${err.message}`); }
   if (!parsed || parsed.formato !== FORMATO_EXPORT || !Array.isArray(parsed.collections)) {
     throw new Error(`Il file non e' un export di database di CodeDB (atteso "formato": "${FORMATO_EXPORT}").`);
@@ -383,6 +385,14 @@ function normalizzaExportDatabase(input, { expectedDbType = null, owned = false 
       if (collection.indexes != null && !Array.isArray(collection.indexes)) {
         throw new Error(`File malformato: "indexes" di "${collection.name}" deve essere un elenco.`);
       }
+      if (collection.indexes) collection.indexes = collection.indexes.map(index => {
+        const normalized = require('./mongoSchemaBson').normalizzaMetadati(index);
+        const actual = require('./mongoSchemaBson').decodificaMetadati(normalized);
+        if (typeof actual.name !== 'string' || !actual.name || !actual.key || typeof actual.key !== 'object' || Array.isArray(actual.key)) {
+          throw new Error(`Indice MongoDB di "${collection.name}" non valido.`);
+        }
+        return normalized;
+      });
     }
   }
   parsed.dbType = motore;
@@ -404,15 +414,82 @@ function elencoOggetti(objects, field) {
   return value;
 }
 
+// Gli archivi PostgreSQL precedenti salvavano gli indici nel campo delle FK.
+// Si corregge la classificazione in memoria, sottoponendo entrambi i formati
+// allo stesso controllo: una sola DDL, sullo schema e sulla tabella dichiarati.
+function normalizzaAusiliari(out, { dbType, database, collections, allowUnsafeSchema }) {
+  const motore = tipoDb(dbType);
+  const indexes = [...elencoOggetti(out, 'indexes')];
+  const foreignKeys = [];
+  for (const ddl of elencoOggetti(out, 'foreignKeys')) {
+    let target;
+    try { target = estraiBersaglio(ddl); }
+    catch (err) { if (!allowUnsafeSchema) throw err; }
+    if (motore === 'postgresql' && target?.kind === 'create-index') indexes.push(ddl);
+    else foreignKeys.push(ddl);
+  }
+  for (const [kind, entries] of [['create-index', indexes], ['alter-table', foreignKeys]]) {
+    for (const ddl of entries) {
+      if (typeof ddl !== 'string' || !ddl.trim()) errore('DDL di indice/vincolo mancante', ddl);
+      if (allowUnsafeSchema) continue;
+      if (kind === 'create-index' && motore !== 'postgresql') errore('Gli indici separati sono riservati a PostgreSQL', ddl);
+      const statements = splitStatementsDetailed(ddl, { dbms: motore, backslashEscape: motore === 'mysql' });
+      if (statements.length !== 1) errore('La definizione di indice/vincolo deve contenere una sola istruzione', ddl);
+      const target = estraiBersaglio(statements[0].sql);
+      if (target.kind !== kind) errore(`Forma ${target.kind} non ammessa per indice/vincolo`, ddl);
+      if (kind === 'create-index') {
+        const tokens = target.tokens;
+        const indexPos = keyword(tokens[1], 'UNIQUE') ? 2 : 1;
+        if (!keyword(tokens[0], 'CREATE') || !keyword(tokens[indexPos], 'INDEX')) {
+          errore('Un indice deve essere CREATE INDEX o CREATE UNIQUE INDEX', ddl);
+        }
+      }
+      validaQualificatore(target.object, database, motore, ddl);
+      validaQualificatore(target.table, database, motore, ddl);
+      if (collections?.size && ![...collections].some(name => stessoNome(target.table.parts.at(-1), name, motore))) {
+        errore(`L'indice/vincolo modifica la tabella non dichiarata "${target.table.name}"`, ddl);
+      }
+      if (kind === 'alter-table') {
+        const tokens = target.tokens;
+        let i = target.table.next;
+        if (!keyword(tokens[i++], 'ADD')) errore('Una chiave esterna deve essere ALTER TABLE ADD FOREIGN KEY', ddl);
+        if (keyword(tokens[i], 'CONSTRAINT')) {
+          i++;
+          if (!tokens[i] || tokens[i].type !== 'identifier') errore('Nome del vincolo mancante', ddl);
+          i++;
+        }
+        if (!keyword(tokens[i++], 'FOREIGN') || !keyword(tokens[i++], 'KEY')) errore('Sono ammessi soltanto vincoli FOREIGN KEY', ddl);
+        let depth = 0;
+        for (; i < tokens.length; i++) {
+          const token = tokens[i];
+          if (token.type !== 'symbol') continue;
+          if (token.value === '(') depth++;
+          if (token.value === ')') depth--;
+          if (token.value === ',' && depth === 0) errore('La chiave esterna contiene altre azioni ALTER TABLE', ddl);
+        }
+      }
+      validaRiferimentiCrossDatabase(target, database, motore, ddl);
+    }
+  }
+  if (motore === 'postgresql' || out.indexes != null) out.indexes = indexes;
+  if (out.foreignKeys != null) out.foreignKeys = foreignKeys;
+}
+
 function normalizzaOggetti(objects, { dbType, database, collections, allowUnsafeSchema }) {
   if (objects == null) return null;
-  const out = copiaJson(objects, 'Gli oggetti di schema');
+  // Gli oggetti MongoDB possono arrivare dal catalogo come valori BSON:
+  // JSON.stringify da solo ne perde il tipo prima della materializzazione.
+  const out = copiaJson(tipoDb(dbType) === 'mongodb'
+    ? require('./codecFedele').serializeConservativo(objects) : objects, 'Gli oggetti di schema');
   if (!out || typeof out !== 'object' || Array.isArray(out)) throw new Error('File degli oggetti di schema malformato.');
   if (tipoDb(dbType) === 'mongodb') {
     for (const field of ['views', 'collectionOptions']) {
-      for (const item of elencoOggetti(out, field)) {
-        if (!item || typeof item.name !== 'string' || !item.name) throw new Error(`${field}: nome oggetto mancante.`);
-      }
+      if (out[field] != null) out[field] = elencoOggetti(out, field).map(item => {
+        const normalized = require('./mongoSchemaBson').normalizzaMetadati(item);
+        const actual = require('./mongoSchemaBson').decodificaMetadati(normalized);
+        if (typeof actual.name !== 'string' || !actual.name) throw new Error(`${field}: nome oggetto mancante.`);
+        return normalized;
+      });
     }
     return out;
   }
@@ -444,17 +521,7 @@ function normalizzaOggetti(objects, { dbType, database, collections, allowUnsafe
       });
     }
   }
-  for (const ddl of elencoOggetti(out, 'foreignKeys')) {
-    if (allowUnsafeSchema) continue;
-    const target = estraiBersaglio(ddl);
-    if (target.kind !== 'alter-table') errore('Una chiave esterna deve essere ALTER TABLE', ddl);
-    validaQualificatore(target.table, database, tipoDb(dbType), ddl);
-    if (collections && collections.size
-        && ![...collections].some((name) => stessoNome(target.table.parts[target.table.parts.length - 1], name, tipoDb(dbType)))) {
-      errore(`Il vincolo modifica la tabella non dichiarata "${target.table.name}"`, ddl);
-    }
-    validaRiferimentiCrossDatabase(target, database, tipoDb(dbType), ddl);
-  }
+  normalizzaAusiliari(out, { dbType, database, collections, allowUnsafeSchema });
   for (const item of elencoOggetti(out, 'sequenceValues')) {
     if (allowUnsafeSchema) continue;
     const match = /^\s*SELECT\s+(?:pg_catalog\.)?setval\s*\(\s*'((?:[^']|'')+)'\s*,\s*-?\d+\s*(?:,\s*(?:true|false)\s*)?\)\s*;?\s*$/i.exec(String(item.sql || ''));

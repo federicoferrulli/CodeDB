@@ -897,6 +897,7 @@ class MySqlStrategy extends DbStrategy {
           [result, fields] = await query(richiesta, payload.params);
           eseguita = true;
         } catch (err) {
+          require('./queryError').annotaErroreQuery(err, sql, 'mysql');
           if (!MySqlStrategy.isDriverTimeout(err)) throw err;
           avvelenata = true;
           await this.uccidiSulServer(conn.threadId);
@@ -1410,6 +1411,15 @@ class MySqlStrategy extends DbStrategy {
   async tableDdl(db, coll) {
     const pool = this.requirePool();
     return require('./mysql-ddl').mysqlTableDdl(pool, db, coll, this.metadataPool || pool);
+  }
+
+  async tableAuxDdl(db, coll) {
+    const pool = this.requirePool();
+    const ddl = await require('./mysql-ddl').mysqlTableDdl(pool, db, coll, this.metadataPool || pool);
+    const [[count]] = await pool.query(`SELECT COUNT(*) AS n FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_TYPE = 'FOREIGN KEY'`, [db, coll]);
+    if (!Number.isSafeInteger(Number(count?.n)) || Number(count.n) < 0) throw new Error('Conteggio delle chiavi esterne MySQL non valido.');
+    return { indexes: [], foreignKeys: require('../backup/lib/engine').splitMySqlForeignKeys(ddl, coll, Number(count.n)).foreignKeys };
   }
 
   async dbSchema(db) {

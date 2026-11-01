@@ -1,0 +1,103 @@
+{
+  "environment": "Chromium, metadati e scritture simulati",
+  "checks": [
+    "Statistiche, schema, indici protetti e animazione reale senza effetti residui",
+    "Creazione, modifica, eliminazione e annullamento: campo e indice mantengono bersaglio e controlli",
+    "MySQL/PostgreSQL: tipi, NULL, modifica e AUTO_INCREMENT preservati",
+    "Caricamento, errore/riprova, risposta superata, vuoto e dati sconosciuti",
+    "Desktop/mobile, chiaro/scuro, landscape, nomi lunghi, escaping, drawer Arc e movimento ridotto"
+  ],
+  "layouts": [
+    {
+      "width": 1440,
+      "height": 1000,
+      "theme": "dark",
+      "client": 1192,
+      "scroll": 1192,
+      "root": 1440
+    },
+    {
+      "width": 1440,
+      "height": 1000,
+      "theme": "light",
+      "client": 1192,
+      "scroll": 1192,
+      "root": 1440
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "theme": "dark",
+      "client": 796,
+      "scroll": 796,
+      "root": 1024
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "client": 390,
+      "scroll": 390,
+      "root": 390
+    },
+    {
+      "width": 320,
+      "height": 740,
+      "theme": "light",
+      "client": 320,
+      "scroll": 320,
+      "root": 320
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "theme": "dark",
+      "client": 844,
+      "scroll": 844,
+      "root": 844
+    }
+  ],
+  "errors": [],
+  "motion": [
+    "matrix(0, 0, 0, 1, 0, 0)",
+    "matrix(0, 0, 0, 1, 0, 0)",
+    "matrix(0, 0, 0, 1, 0, 0)",
+    "matrix(0.21918, 0, 0, 1, 0, 0)",
+    "matrix(0.399814, 0, 0, 1, 0, 0)",
+    "matrix(0.541201, 0, 0, 1, 0, 0)",
+    "matrix(0.65029, 0, 0, 1, 0, 0)",
+    "matrix(0.732585, 0, 0, 1, 0, 0)",
+    "matrix(0.795724, 0, 0, 1, 0, 0)",
+    "matrix(0.843222, 0, 0, 1, 0, 0)",
+    "matrix(0.879849, 0, 0, 1, 0, 0)",
+    "matrix(0.907912, 0, 0, 1, 0, 0)",
+    "matrix(0.929653, 0, 0, 1, 0, 0)",
+    "matrix(0.946633, 0, 0, 1, 0, 0)",
+    "matrix(0.959816, 0, 0, 1, 0, 0)",
+    "matrix(0.970041, 0, 0, 1, 0, 0)",
+    "matrix(0.977903, 0, 0, 1, 0, 0)",
+    "matrix(0.983987, 0, 0, 1, 0, 0)",
+    "matrix(0.988625, 0, 0, 1, 0, 0)",
+    "matrix(0.9921, 0, 0, 1, 0, 0)",
+    "matrix(0.994695, 0, 0, 1, 0, 0)",
+    "matrix(0.996579, 0, 0, 1, 0, 0)",
+    "matrix(0.997908, 0, 0, 1, 0, 0)",
+    "matrix(0.99881, 0, 0, 1, 0, 0)",
+    "matrix(0.999387, 0, 0, 1, 0, 0)",
+    "matrix(0.99973, 0, 0, 1, 0, 0)",
+    "matrix(0.999909, 0, 0, 1, 0, 0)",
+    "matrix(0.999983, 0, 0, 1, 0, 0)",
+    "matrix(1, 0, 0, 1, 0, 0)",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none"
+  ],
+  "reducedMotion": {
+    "reduced": true,
+    "animations": []
+  }
+}

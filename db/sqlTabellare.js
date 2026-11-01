@@ -27,7 +27,7 @@ const { normalizzaFiltro, rendiSql } = require('./filtro');
 // I valori del filtro arrivano in EJSON come tutto il resto del protocollo: qui
 // tornano tipi nativi, altrimenti una data verrebbe confrontata come l'oggetto
 // `{ $date: … }` e non troverebbe mai nulla (vedi db/sqlValori.js).
-const { parseClientValue, deserializeClientObject } = require('./sqlValori');
+const { parseClientValue, deserializeClientObject, toSqlValue } = require('./sqlValori');
 
 // _id virtuale per il client: la chiave primaria come oggetto
 // { colonna: valore }. Senza chiave primaria si usa l'intera riga come
@@ -41,13 +41,13 @@ function componiIdRiga(row, pkCols, allCols) {
 
 // Risale dalla chiave inviata dal client (JSON.stringify di _id) e la
 // trasforma in clausola WHERE. `whereFromId` è la parte di dialetto.
-function leggiIdRiga(rawId, whereFromId) {
+function leggiIdRiga(rawId, whereFromId, opzioni) {
   const id = parseClientValue(rawId);
   const proto = id && typeof id === 'object' ? Object.getPrototypeOf(id) : null;
   if (!id || typeof id !== 'object' || Array.isArray(id) || (proto !== Object.prototype && proto !== null)) {
     throw new Error('Identificatore di riga non valido.');
   }
-  return whereFromId(id);
+  return whereFromId(id, opzioni);
 }
 
 /* ---------------------------------------------------------------------------
@@ -135,13 +135,14 @@ function componiOrdinamento(text, qid, opzioni = {}) {
  */
 function valoreNativo(v) {
   if (v === null || typeof v !== 'object') return v;
-  return deserializeClientObject({ v }).v;
+  const value = deserializeClientObject({ v }).v;
+  return value?._bsontype === 'Binary' ? toSqlValue(value) : value;
 }
 
 // Pezzi comuni di una SELECT su filter/sort/limit/skip liberi (usati sia
 // dalla query dati vera e propria sia dal suo EXPLAIN).
 function componiSelezione(db, coll, payload, {
-  qid, qtable, ordinamento, segnaposto, testoDi, ricercaGlobale,
+  qid, qtable, ordinamento, segnaposto, testoDi, ricercaGlobale, valore,
 }) {
   // DUE filtri, per ora conviventi.
   //
@@ -169,10 +170,12 @@ function componiSelezione(db, coll, payload, {
     // chiamante a saperlo: su PostgreSQL il numero del segnaposto è la
     // posizione reale, e sbagliarla farebbe leggere il limite al posto del
     // filtro.
-    const reso = rendiSql(strutturato, { qid, segnaposto, testoDi }, 1);
+    const reso = rendiSql(strutturato, { qid, segnaposto, testoDi,
+      valore: (campo, v, operatore) => valore ? valore(campo, valoreNativo(v), operatore) : valoreNativo(v),
+    }, 1);
     if (reso.sql) {
       pezziWhere.push(reso.sql);
-      whereParams.push(...reso.params.map(valoreNativo));
+      whereParams.push(...reso.params);
     }
   }
 
@@ -222,7 +225,7 @@ function tabellare(dialetto) {
   }
   return {
     makeId: (row, pkCols, allCols) => componiIdRiga(row, pkCols, allCols),
-    parseRowId: (rawId) => leggiIdRiga(rawId, whereFromId),
+    parseRowId: (rawId, opzioni) => leggiIdRiga(rawId, whereFromId, opzioni),
     buildOrderBy: (text, opzioni) => componiOrdinamento(text, qid, { ...opzioni, nulliPrima }),
     /**
      * `ordinamento` e' il modo in cui il chiamante impone CHI compone l'ORDER
@@ -237,6 +240,7 @@ function tabellare(dialetto) {
       segnaposto,
       testoDi,
       ricercaGlobale: opzioni.ricercaGlobale,
+      valore: opzioni.valore,
       ordinamento: opzioni.ordinamento
         || ((t) => componiOrdinamento(t, qid, { ...opzioni, nulliPrima })),
     }),

@@ -13,7 +13,7 @@ import { mountArcControls } from '../arc/ui.js';
  * Con RBAC spento il pulsante non compare (nessun utente da gestire).
  * ------------------------------------------------------------------------- */
 
-import { $, emit, esc, showToast, chiediTesto, conCaricamento, refreshLucideIcons } from './utils.js';
+import { $, emit, esc, showToast, chiediTesto, conCaricamento, refreshLucideIcons, notifica } from './utils.js';
 import { socket } from './socket.js';
 
 // Cache locale dei dati caricati all'apertura della modale.
@@ -85,7 +85,7 @@ async function reload() {
     data.grants = grants.grants || [];
     data.keys = keys.keys || [];
   } catch (err) {
-    showToast(`Impossibile caricare i dati RBAC: ${err.message}`, 'error');
+    notifica(`Impossibile caricare i dati RBAC: ${err.message}`, { tipo: 'vista', target: '#subuser-list', titolo: 'Utenti e permessi', onAction: reload });
     return;
   }
   populateSelects();
@@ -332,7 +332,7 @@ function wireForms() {
       showToast('Sottoutente creato.', 'success');
       await reload();
     } catch (err) {
-      showToast(err.message, 'error');
+      notifica(err.message, { tipo: 'inline', titolo: "Utenti e permessi", target: "#subuser-form" });
     }
   });
 
@@ -343,7 +343,7 @@ function wireForms() {
     const connName = $('#grant-conn').value;
     const role = $('#grant-role').value;
     if (!subjectId || !connName || !role) {
-      showToast('Seleziona sottoutente, connessione e ruolo.', 'error');
+      notifica('Seleziona sottoutente, connessione e ruolo.', { tipo: 'inline', titolo: "Utenti e permessi", target: "#grant-form" });
       return;
     }
     const databases = splitGlobs($('#grant-dbs').value);
@@ -357,7 +357,7 @@ function wireForms() {
       showToast('Permesso assegnato.', 'success');
       await reload();
     } catch (err) {
-      showToast(err.message, 'error');
+      notifica(err.message, { tipo: 'inline', titolo: "Utenti e permessi", target: "#grant-form" });
     }
   });
 
@@ -374,7 +374,7 @@ function wireForms() {
       showNewKey(res.key);
       await reload();
     } catch (err) {
-      showToast(err.message, 'error');
+      notifica(err.message, { tipo: 'inline', titolo: "Utenti e permessi", target: "#apikey-form" });
     }
   });
 }
@@ -425,7 +425,7 @@ function showNewKey(key) {
       await navigator.clipboard.writeText(key);
       showToast('API key copiata negli appunti.', 'success');
     } catch {
-      showToast('Copia non riuscita: selezionala e copiala a mano.', 'error');
+      notifica('Copia non riuscita: selezionala e copiala a mano.', { tipo: 'errore', titolo: "Utenti e permessi" });
     }
   });
 
@@ -434,7 +434,7 @@ function showNewKey(key) {
       await navigator.clipboard.writeText(mcpConfigJson);
       showToast('Configurazione JSON MCP copiata negli appunti!', 'success');
     } catch {
-      showToast('Copia non riuscita: selezionala e copiala a mano.', 'error');
+      notifica('Copia non riuscita: selezionala e copiala a mano.', { tipo: 'errore', titolo: "Utenti e permessi" });
     }
   });
 
@@ -482,7 +482,7 @@ function wireListActions() {
         await reload();
       }
     } catch (err) {
-      showToast(err.message, 'error');
+      notifica(err.message, { tipo: 'errore', titolo: "Utenti e permessi" });
     }
   });
 }

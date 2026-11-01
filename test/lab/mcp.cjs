@@ -333,6 +333,19 @@ async function run() {
     assert.match(response.text, /2/);
     assert.match(response.text, /parzial|inserit|applicat/i);
     assert.equal((await write(owner, { confirm_token: token })).ok, false);
+    const batch = must(await write(owner, { collection: undefined, operations: [
+      { collection: 'orders_write', operation: 'insert', doc: [{ _id: 'batch-partial-first', marker: 'batch-partial' }] },
+      { collection: 'orders_write', operation: 'insert', doc: [
+        { _id: 'batch-partial-a', marker: 'batch-partial' }, { _id: 'batch-partial-b', marker: 'batch-partial' },
+        { _id: 'batch-partial-b', marker: 'batch-partial' }, { _id: 'batch-partial-c', marker: 'batch-partial' },
+      ] },
+    ] }), 'anteprima bulk nel batch');
+    const partialBatch = await write(owner, { confirm_token: batch.confirm_token });
+    assert.equal(partialBatch.ok, false);
+    assert.equal(await mongo.db(DATA_DB).collection('orders_write').countDocuments({ marker: 'batch-partial' }), 3);
+    assert.match(partialBatch.text, /1 operazioni su 2/);
+    assert.match(partialBatch.text, /2 documenti/);
+    assert.equal((await write(owner, { confirm_token: batch.confirm_token })).ok, false);
   });
   await check('MCP-019', 'Revoca capability tra anteprima e conferma impedisce la scrittura reale', async () => {
     const token = await preview(editor, { marker: 'revoked-grant' });

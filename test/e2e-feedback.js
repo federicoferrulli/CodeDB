@@ -154,6 +154,7 @@ const dir = 'test-reports/feedback';
     await page.evaluate(() => prova.queue.shift()({ ok: false, error: 'Errore di prova' }));
     await page.waitForFunction(() => document.querySelector('#view-query').dataset.queryState === 'error');
     assert.deepEqual(await impulsi(), ['errore']);
+    assert.equal(await badge.isVisible(), false, 'Il riepilogo nei risultati sostituisce il badge Errore senza perdere il feedback aptico');
     assert.match(await page.locator('#query-error-box').textContent(), /Errore di prova/);
 
     await editor.fill('SELECT 1');

@@ -84,7 +84,9 @@ export function closeDrawers({ restoreFocus = false, immediate = false } = {}) {
   $('#query-toggle-schema-btn')?.setAttribute('aria-expanded', String(!mq.matches && !$('#query-schema-sidebar')?.classList.contains('collapsed')));
   $('#drawer-backdrop')?.classList.add('hidden');
   syncDrawers();
-  if (restoreFocus && drawerOpener?.isConnected) (mq.matches ? drawerOpener : $('#menu-conns-btn')).focus({ preventScroll: true });
+  // La chiusura animata può terminare dopo l’apertura di un altro dialog: non sottrargli il focus.
+  const dialogAttivo = document.activeElement?.closest('[role="dialog"], [role="alertdialog"]');
+  if (restoreFocus && !dialogAttivo && drawerOpener?.isConnected) (mq.matches ? drawerOpener : $('#menu-conns-btn')).focus({ preventScroll: true });
 }
 
 export function toggleDrawer(sel) {

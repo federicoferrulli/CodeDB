@@ -18,7 +18,7 @@ function mappedFs(base) {
     return (...args) => { args[0] = translate(args[0]); if (name === 'copyFileSync') args[1] = translate(args[1]); return target[name](...args); };
   } });
 }
-function load(source, { base, virtualDir, append = '', proc = process, mutantPaths = false } = {}) {
+function load(source, { base, virtualDir, append = '', proc = process, mutantPaths = false, mutantCore = false } = {}) {
   const mod = { exports: {} };
   const req = name => {
     if (name === 'node:fs' || name === 'fs') return base ? mappedFs(base) : fs;
@@ -29,7 +29,13 @@ function load(source, { base, virtualDir, append = '', proc = process, mutantPat
     }
     return require(name);
   };
-  vm.runInNewContext(fs.readFileSync(source, 'utf8') + append, {
+  let code = fs.readFileSync(source, 'utf8');
+  if (mutantCore && path.basename(source) === 'laboratorio.cjs') {
+    const point = 'for (const relative of [...files].sort()) {';
+    assert.equal(code.split(point).length - 1, 1, 'Il mutante core deve intercettare la selezione prima della copia');
+    code = code.replace(point, "for (const file of ['db/nuovo.js', 'ui/nuovo.tsx', 'nuovo.cjs']) files.delete(file);\n  " + point);
+  }
+  vm.runInNewContext(code + append, {
     require: req, module: mod, exports: mod.exports, __dirname: virtualDir || path.dirname(source),
     __filename: source, process: proc, console: quiet, Buffer, setTimeout, clearTimeout, setInterval, clearInterval,
   }, { filename: source });
@@ -57,19 +63,41 @@ async function main() {
     try { await fn(); results.push({ name, ok: true }); console.log('PASS ' + name); }
     catch (err) { results.push({ name, ok: false, error: err.message }); console.log('FAIL ' + name + ': ' + err.message); }
   };
-  function fixture(name, mutantPaths = false) {
+  const nuoviCore = { 'db/nuovo.js': 'module.exports = { prova: 17 };',
+    'ui/nuovo.tsx': 'export const Nuovo = () => <span>Prova</span>;',
+    'nuovo.cjs': 'module.exports = "entrypoint non tracciato";' };
+  const localiEsclusi = ['db/segreto.txt', 'ignorato.cjs', 'config-locale-42.json', 'stato-personale.json'];
+  function fixture(name, mutantPaths = false, mutantCore = process.argv.includes('--mutant-core')) {
     const dir = path.join(temp, name);
     write(path.join(dir, 'server.js'), 'module.exports = 42;');
     write(path.join(dir, 'test/lab/nuovo.cjs'), '// prova non ancora tracciata');
     write(path.join(dir, 'tools/laboratorio.cjs'), '// fixture');
     write(path.join(dir, '.github/workflows/laboratorio.yml'), 'name: fixture');
+    write(path.join(dir, '.gitignore'), '/db/segreto.txt\n/ignorato.cjs\n');
+    for (const [file, content] of Object.entries(nuoviCore)) write(path.join(dir, file), content);
+    // Nomi JSON arbitrari: aggiungere tutti gli untracked non deve esportare
+    // configurazioni locali solo perché il loro nome non contiene "vault".
+    for (const file of localiEsclusi) write(path.join(dir, file), JSON.stringify({ token: 'segreto-solo-fixture' }));
     for (const file of ['.env', 'vault.json', 'connections.ini', 'conns/local.json', 'test-reports/local.json', 'privata.key']) write(path.join(dir, file), 'segreto-fixture');
-    for (const args of [['init', '-q'], ['add', 'server.js', '.env', 'vault.json', 'connections.ini', 'conns/local.json', 'test-reports/local.json', 'privata.key']]) {
+    for (const args of [['init', '-q'], ['add', 'server.js', '.gitignore', '.env', 'vault.json', 'connections.ini', 'conns/local.json', 'test-reports/local.json', 'privata.key']]) {
       const child = spawnSync('git', args, { cwd: dir, encoding: 'utf8' }); assert.equal(child.status, 0, child.stderr);
     }
     const proc = Object.create(process); proc.argv = [process.execPath, 'fixture', 'help'];
-    const stage = load(path.join(root, 'tools/laboratorio.cjs'), { virtualDir: path.join(dir, 'tools'), proc, mutantPaths, append: '\nmodule.exports = { stage };' }).stage;
+    const stage = load(path.join(root, 'tools/laboratorio.cjs'), { virtualDir: path.join(dir, 'tools'), proc, mutantPaths, mutantCore, append: '\nmodule.exports = { stage };' }).stage;
     return { dir, stage };
+  }
+  function verificaCore({ dir, stage }) {
+    const indexed = spawnSync('git', ['ls-files', '-z'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(indexed.status, 0, indexed.stderr);
+    for (const file of Object.keys(nuoviCore)) assert.equal(indexed.stdout.split('\0').includes(file), false, '[INF-FIXTURE] il nuovo sorgente non è tracciato');
+    stage();
+    const target = path.join(dir, '.scratch/lab-source');
+    const manifest = JSON.parse(fs.readFileSync(path.join(target, '.lab-files.json'), 'utf8'));
+    assert.deepEqual(Object.keys(nuoviCore).filter(file => !manifest.files.includes(file)), [], '[INF-CORE] i nuovi sorgenti applicativi devono entrare nella copia');
+    for (const [file, content] of Object.entries(nuoviCore)) {
+      assert.equal(fs.readFileSync(path.join(target, file), 'utf8'), content, '[INF-CORE] contenuto attuale del checkout');
+      assert.equal(manifest.hashes[file], require('node:crypto').createHash('sha256').update(content).digest('hex'), '[INF-CORE] hash del nuovo sorgente');
+    }
   }
   function prepareFixture(name) {
     const dir = path.join(temp, name);
@@ -83,12 +111,36 @@ async function main() {
     return { dir, run: () => load(path.join(root, 'test/lab/prepara.cjs'), { base: dir, proc }) };
   }
   try {
+    const bootstrap = () => {
+      const source = fs.readFileSync(path.join(root, 'tools/laboratorio.cjs'), 'utf8');
+      const match = /'mongosh', '--quiet', '--eval', ('(?:\\.|[^'\\])*')/.exec(source);
+      assert(match, 'Bootstrap MongoDB presente nel comando reale');
+      return vm.runInNewContext(match[1]);
+    };
+    await test('bootstrap MongoDB compila con attese asincrone nel ciclo', () => {
+      assert.match(bootstrap(), /await sleep\(500\)/);
+      new vm.Script(bootstrap());
+    });
     await test('staging esclude segreti e include nuovi test con hash', () => {
       const { dir, stage } = fixture('stage-normale'); stage();
       const manifest = JSON.parse(fs.readFileSync(path.join(dir, '.scratch/lab-source/.lab-files.json'), 'utf8'));
       assert.ok(manifest.files.includes('server.js')); assert.ok(manifest.files.includes('test/lab/nuovo.cjs'));
       assert.equal(manifest.files.filter(f => /(?:vault|connections|\.env|conns\/|test-reports|\.key$)/.test(f)).length, 0);
       assert.equal(manifest.hashes['server.js'], require('node:crypto').createHash('sha256').update('module.exports = 42;').digest('hex'));
+    });
+    await test('staging include sorgenti core non tracciati con contenuto e hash', () => verificaCore(fixture('stage-core-untracked')));
+    await test('staging esclude ignorati e JSON locali non tracciati', () => {
+      const { dir, stage } = fixture('stage-locali');
+      const ignored = spawnSync('git', ['check-ignore', 'db/segreto.txt', 'ignorato.cjs'], { cwd: dir, encoding: 'utf8' });
+      assert.equal(ignored.status, 0, ignored.stderr);
+      assert.deepEqual(ignored.stdout.trim().split(/\r?\n/).sort(), ['db/segreto.txt', 'ignorato.cjs']);
+      stage(); const target = path.join(dir, '.scratch/lab-source');
+      const manifest = JSON.parse(fs.readFileSync(path.join(target, '.lab-files.json'), 'utf8'));
+      for (const file of localiEsclusi) {
+        assert.equal(manifest.files.includes(file), false, `[INF-FILTRO] ${file} non deve essere nel manifest`);
+        assert.equal(fs.existsSync(path.join(target, file)), false, `[INF-FILTRO] ${file} non deve essere copiato`);
+      }
+      assert.ok(manifest.files.includes('.gitignore'), '[INF-FILTRO] le regole del repository sono sorgenti condivisibili');
     });
     await test('staging rifiuta cartella priva del proprio marcatore', () => {
       const { dir, stage } = fixture('stage-marcatore'); const sentinel = path.join(dir, '.scratch/lab-source/preservato'); write(sentinel, 'intatto');
@@ -138,6 +190,16 @@ async function main() {
     }
     await test('lock impedisce riuso dopo interruzione con discendente vivo', () => interruzione('lock'));
     if (process.argv.includes('--sensitivity')) {
+      await test('sensibilità: await fuori dalla funzione MongoDB viene rilevato', () => {
+        const original = bootstrap(), mutated = original.replace('(async()=>{', '').replace(/\}\)\(\);$/, '');
+        assert.notEqual(mutated, original);
+        assert.throws(() => new vm.Script(mutated), SyntaxError);
+      });
+      if (results.find(result => result.name === 'staging include sorgenti core non tracciati con contenuto e hash')?.ok) {
+        await test('sensibilità: omettere i nuovi sorgenti core viene rilevato', () => {
+          assert.throws(() => verificaCore(fixture('stage-core-mutante', false, true)), /\[INF-CORE\]/);
+        });
+      }
       await test('sensibilità: registra rimosso ammette riuso erroneo', async () => {
         await assert.rejects(() => interruzione('lock-mutante', true), /lock rimosso e nuova campagna ammessa/);
       });

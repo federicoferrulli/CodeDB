@@ -44,9 +44,12 @@ function exportBase(dbType, collection) {
 
   const mongo = exportBase('mongodb', 'ordini');
   mongo.collections[0].indexes = [{ name: 'cliente_1', key: { cliente: 1 }, unique: false }];
+  // La normalizzazione usa EJSON canonico anche per le direzioni numeriche:
+  // confrontiamo il valore BSON, non la forma JSON precedente al trasporto.
   assert.deepStrictEqual(
-    normalizzaExportDatabase(mongo, { expectedDbType: 'mongodb' }).collections[0].indexes[0].key,
-    { cliente: 1 },
+    require('bson').serialize(require('bson').EJSON.deserialize(
+      normalizzaExportDatabase(mongo, { expectedDbType: 'mongodb' }).collections[0].indexes[0].key, { relaxed: false })),
+    require('bson').serialize({ cliente: 1 }),
   );
 
   const duplicateMongo = exportBase('mongodb', 'clienti');

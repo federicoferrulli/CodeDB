@@ -5,6 +5,7 @@ const path = require('path');
 const net = require('net');
 const { creaGestoreAggiornamenti } = require('./electron-aggiornamenti');
 const { nuovoSegretoIstanza, probeServer } = require('./electron-server-auth');
+const { proteggiChiusura } = require('./electron-chiusura');
 
 const APP_NAME = 'CodeDB';
 const HOST = '127.0.0.1';
@@ -278,6 +279,7 @@ function createWindow() {
   });
 
   const contents = mainWindow.webContents;
+  const chiusura = proteggiChiusura(mainWindow, dialog, app);
   // Electron rispetta il veto beforeunload, ma non mostra la conferma del browser.
   contents.on('will-prevent-unload', event => {
     const scelta = dialog.showMessageBoxSync(mainWindow, {
@@ -287,6 +289,7 @@ function createWindow() {
       buttons: ['Resta', 'Lascia la pagina'], defaultId: 0, cancelId: 0, noLink: true,
     });
     if (scelta === 1) event.preventDefault();
+    else chiusura.annullaChiusura();
   });
   // Stesso passo dei comandi nativi del menu, anche con tastiere italiane e tastierino.
   contents.on('before-input-event', (event, input) => {

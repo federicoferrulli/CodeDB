@@ -2,7 +2,7 @@
 
 const { EJSON } = require('bson');
 
-const MANIFEST_VERSION = 4;
+const MANIFEST_VERSION = 5;
 const IDENTITY_VERSION = 2;
 const SQL_IDENTITY_KINDS = new Set(['primary-key', 'unique']);
 const IDENTITY_KINDS = new Set(['mongodb-id', ...SQL_IDENTITY_KINDS]);
@@ -176,7 +176,23 @@ function validaManifestIdentita(manifest) {
     } else if (file.sourceDistinctIdentities != null) {
       throw new Error(`Identita distinte dichiarate senza identita stabile per "${file.collection || '?'}".`);
     }
-    if (type !== 'full' && !file.identity) {
+    if (version >= 5 || file.content != null || file.replayCardinality != null) {
+      const content = file.content;
+      if (!content || content.version !== 1
+          || !Number.isSafeInteger(file.count) || file.count < 0
+          || (type === 'full' && (file.mode !== 'full' || content.mode !== 'snapshot'))
+          || !['snapshot', 'content-delta', 'explicit-filter'].includes(content.mode)
+          || content.complete !== (content.mode !== 'explicit-filter')
+          || !Number.isSafeInteger(file.replayCardinality) || file.replayCardinality < 0
+          || file.replayCardinality > file.sourceCardinality
+          || (content.complete && file.replayCardinality !== file.sourceCardinality)
+          || (content.mode === 'snapshot') !== (file.mode === 'full')
+          || (content.mode === 'explicit-filter' && !file.sinceColumn)
+          || (content.mode === 'content-delta' && (!file.identity || file.sinceColumn))) {
+        throw new Error(`Semantica del contenuto o cardinalità di ripristino non valida per "${file.collection || '?'}".`);
+      }
+    }
+    if (type !== 'full' && !file.identity && !(file.mode === 'full' && file.content?.mode === 'snapshot' && file.content.complete === true)) {
       throw new Error(`La tabella/collection "${file.collection || '?'}" non ha un'identita stabile: backup ${type} rifiutato.`);
     }
   }

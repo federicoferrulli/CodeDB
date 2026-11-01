@@ -2,7 +2,7 @@ import { chiediConferma } from './conferma.js';
 import { state } from './state.js';
 import { safeUUID } from './valori.js';
 import { campoScrivibile, identitaRiga } from './righe.js';
-import { $, emit, displayValue, displayValueBreve, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, marcaDatiSporchi, emitFireAndForget, eseguiAOndate, initToolbarDropdown, conCaricamento, refreshLucideIcons } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, marcaDatiSporchi, emitFireAndForget, eseguiAOndate, initToolbarDropdown, conCaricamento, refreshLucideIcons, notifica, chiudiNotifica } from './utils.js';
 import { openCollTab, pinActiveCollTab, currentCollTab } from './colltabs.js';
 import { configuraColonne } from './table-resize.js';
 import { startEdit, segnalaBozza } from './inlineEdit.js';
@@ -244,8 +244,10 @@ export function runQuery(opts = {}) {
     st.limit = res.limit;
     // Il server ha interrotto la lettura per non esaurire la memoria (poche
     // righe molto grandi): dirlo, invece di far credere che siano tutte.
+    if (isForActiveTab(res)) chiudiNotifica('risultati-troncati');
     if (res.truncated && isForActiveTab(res)) {
-      toast(`Risultati troncati: la pagina supera il limite di memoria del server. Usa una proiezione o riduci la dimensione pagina.`, true);
+      notifica('Risultati troncati: la pagina supera il limite di memoria del server. Usa una proiezione o riduci la dimensione pagina.',
+        { tipo: 'vista', tono: 'avviso', target: '#view-data', id: 'risultati-troncati', titolo: 'Risultati incompleti' });
     }
 
     // Riuso del conteggio in paginazione: cambiare pagina non cambia il totale
@@ -1242,14 +1244,14 @@ export async function deleteDoc(doc) {
     // riletti al ritorno.
     if (origin.isStillActive()) runQuery({ auto: true }); // refresh post-scrittura: non è una lettura utente
     else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Operazione sui dati", hint: "Verifica i dati rimasti prima di ripetere l’operazione." }));
 }
 
 // Elimina i documenti passati (righe della selezione celle, non i checkbox):
 // una sola conferma per tutti, poi le stesse ondate di `deleteSelectedDocs`.
 export async function deleteDocs(docs) {
   const ids = docs.filter((d) => d && '_id' in d).map(idOf);
-  if (ids.length === 0) { toast('Nessuna riga da eliminare', true); return; }
+  if (ids.length === 0) { notifica('Nessuna riga da eliminare', { tipo: 'avviso', titolo: "Operazione sui dati" }); return; }
   if (ids.length === 1) { deleteDoc(docs.find((d) => d && '_id' in d)); return; }
   const isSql = isSqlType(state.dbType);
   const cosa = isSql ? 'righe' : 'documenti';
@@ -1262,7 +1264,7 @@ export async function deleteDocs(docs) {
     .then((results) => {
       const failed = results.filter((r) => r.status === 'rejected');
       const ok = results.length - failed.length;
-      if (failed.length) toast(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, true);
+      if (failed.length) notifica(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, { tipo: 'errore', titolo: "Operazione sui dati", hint: "Verifica i dati rimasti prima di ripetere l’operazione." });
       else toast(`${ok} ${cosa} eliminati`);
       if (origin.isStillActive()) runQuery({ auto: true }); // refresh post-scrittura
       else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
@@ -1275,7 +1277,7 @@ export async function deleteSelectedDocs() {
   const visible = new Set(state.docs.filter((d) => '_id' in d).map(idOf));
   const ids = [...state.selectedDocs].filter((id) => visible.has(id));
   if (ids.length === 0) {
-    toast('Nessun documento selezionato', true);
+    notifica('Nessun documento selezionato', { tipo: 'avviso', titolo: "Operazione sui dati" });
     return;
   }
   const origin = captureContext();
@@ -1304,7 +1306,7 @@ export async function deleteSelectedDocs() {
     const failed = results.filter((r) => r.status === 'rejected');
     const ok = results.length - failed.length;
     origin.st.selectedDocs.clear();
-    if (failed.length) toast(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, true);
+    if (failed.length) notifica(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, { tipo: 'errore', titolo: "Operazione sui dati", hint: "Verifica i dati rimasti prima di ripetere l’operazione." });
     else toast(`${ok} documenti eliminati`);
     if (origin.isStillActive()) runQuery({ auto: true }); // refresh post-scrittura
     else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
@@ -1323,7 +1325,7 @@ export async function deleteAllWithFilter() {
   const total = state.total;
   const isSql = isSqlType(state.dbType);
   if (total === 0) {
-    toast(isSql ? 'Nessuna riga da eliminare' : 'Nessun documento da eliminare', true);
+    notifica(isSql ? 'Nessuna riga da eliminare' : 'Nessun documento da eliminare', { tipo: 'avviso', titolo: "Operazione sui dati" });
     return;
   }
   // Il totale può essere sconosciuto (conteggio disaccoppiato ancora in corso o
@@ -1347,7 +1349,7 @@ export async function deleteAllWithFilter() {
     toast(isSql ? `${res.deleted} righe eliminate` : `${res.deleted} documenti eliminati`);
     if (origin.isStillActive()) runQuery({ auto: true }); // refresh post-scrittura
     else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Operazione sui dati", hint: "Verifica i dati rimasti prima di ripetere l’operazione." }));
 }
 
 // Azzera la selezione multipla e ridisegna le caselle di spunta della pagina

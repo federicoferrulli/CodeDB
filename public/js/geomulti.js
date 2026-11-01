@@ -18,7 +18,7 @@
  * un'altra provenienza dei dati.
  * ------------------------------------------------------------------------- */
 
-import { $, toast, openModal, closeModal } from './utils.js';
+import { $, toast, openModal, closeModal, notifica } from './utils.js';
 import { tileAttive, impostaTile } from './geo-leaflet.js';
 import { creaVistaGeo, copia, scaricaGeoJson } from './geo-vista.js';
 import { creaIspettoreGeo } from './geo-inspector.js';
@@ -57,7 +57,7 @@ export async function apriMappaSelezione({ voci, titolo = '' }) {
   try {
     st = await v.mostra(voci, { isCurrent: () => token === apertura });
   } catch (err) {
-    if (token === apertura) toast(err.message, true);
+    if (token === apertura) notifica(err.message, { tipo: 'errore', titolo: "Mappa della selezione" });
     return;
   }
   if (token !== apertura) return;
@@ -65,7 +65,7 @@ export async function apriMappaSelezione({ voci, titolo = '' }) {
   // chiudere per scoprire che non c'era nulla è peggio di un avviso. `mostra`
   // torna null proprio per questo, così le geometrie si contano una volta sola.
   if (!st) {
-    toast('Nella selezione non ci sono geometrie da mostrare sulla mappa', true);
+    notifica('Nella selezione non ci sono geometrie da mostrare sulla mappa', { tipo: 'avviso', titolo: "Mappa della selezione" });
     return;
   }
 

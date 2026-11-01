@@ -6,12 +6,13 @@ import { activeTab } from './tabs.js';
 import { initNativeTargets, renderNativeTargets } from './query-native.js';
 import { initMongosh, renderMongosh, risultatoMongosh } from './query-mongosh.js';
 import { queryDocument, documentoVisibile } from './query-document.js';
-import { $, emit, displayValue, displayValueBreve, ejsonKind, initToolbarDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab, isSqlType, lucideIconHtml as ICO, refreshLucideIcons, scaricaFile } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, ejsonKind, initToolbarDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab, isSqlType, lucideIconHtml as ICO, refreshLucideIcons, scaricaFile, notifica } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 import { serializzaJsonStandard } from './export-json.js';
 import { trackPending, markPaused } from './pending-queries.js';
 import { SqlChunker, formatBytes } from './sql-chunker.js';
 import { highlightQueryCode } from './query-highlighter.js';
+import { intervalloErroreQuery } from './query-error.js';
 import { isScript, countStatements } from './sql-split.js';
 import { runScript, runScriptAndWait, abortScript, isScriptActive, nascondiPannelloScript } from './script-run.js';
 import { initQeHistory, registraEsecuzione, aggiornaEsecuzione, connCorrente } from './qe-history.js';
@@ -30,6 +31,7 @@ import { toggleDrawer, closeDrawers } from './responsive.js';
 import { aggiornaLint, agganciaLint } from './json-lint.js';
 import {
   initQueryEditor, aggiornaNumeriRiga, segnalaRigaErrore, rigaDaMessaggio, selezioneEditor,
+  segnalaErroreQuery, aggiornaSegnalazioneErrore,
 } from './query-editor.js';
 import { initCharts, renderChart, resizeChart, clearChart } from './charts.js';
 import {
@@ -50,10 +52,53 @@ let currentResults = [];
 // zero.
 let currentColumns = [];
 let currentMetrics = ['idle'];
+let currentErrorMark = null;
 const movimentoRidotto = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+/** Associa la risposta al testo eseguito, compresi trim e selezione nell'editor. */
+export function contestoErroreQuery(code, soloSelezione = false) {
+  const editor = $('#query-editor-input');
+  const testo = editor?.value || '';
+  const selezione = testo.slice(editor?.selectionStart || 0, editor?.selectionEnd || 0);
+  let offset = null;
+  if (soloSelezione && selezione.trim() === code) offset = editor.selectionStart + selezione.length - selezione.trimStart().length;
+  else if (testo.trim() === code) offset = testo.length - testo.trimStart().length;
+  return { code: testo, offset, executedCode: code, dbms: dbmsCorrente($('#query-target-engine')?.value || 'auto') };
+}
+
+export function registraErroreQuery(documento, errore, sorgente) {
+  const posizione = errore.queryError || intervalloErroreQuery(errore, sorgente?.executedCode, sorgente?.dbms);
+  const offset = sorgente?.offset;
+  const range = offset != null && Number.isInteger(posizione?.start) && Number.isInteger(posizione?.end)
+    && posizione.start >= 0 && posizione.end >= posizione.start
+    ? { start: offset + posizione.start, end: offset + posizione.end } : null;
+  const riga = errore.line || rigaDaMessaggio(errore.message);
+  documento.errorMark = { range, message: errore.message, code: sorgente?.code,
+    line: offset != null && riga ? sorgente.code.slice(0, offset).split('\n').length - 1 + riga : 0 };
+  return documento.errorMark;
+}
+
+export function applicaErroreQuery(mark) {
+  currentErrorMark = mark?.code === $('#query-editor-input')?.value ? mark : null;
+  segnalaErroreQuery(currentErrorMark?.range, currentErrorMark?.message, currentErrorMark?.code);
+  if (currentErrorMark && !currentErrorMark.range) segnalaRigaErrore(currentErrorMark.line);
+}
+
+export function mostraErroreQuery(mark) {
+  applicaErroreQuery(mark);
+  if (!currentErrorMark) return false;
+  renderQueryError(mark.message);
+  return true;
+}
+
+function vaiAllEditorQuery() {
+  if ($('.query-main-panel')?.dataset.surface === 'results') setQuerySurface('editor');
+  $('#query-editor-input')?.focus();
+}
 
 export function snapshotQueryView() {
   const editor = $('#query-editor-input');
+  const errore = currentErrorMark || queryDocument()?.errorMark;
   return {
     results: currentResults, columns: currentColumns, metrics: currentMetrics,
     mode: activeViewMode, order: queryOrdine, widths: queryLarghezze,
@@ -65,11 +110,14 @@ export function snapshotQueryView() {
     schemaSearch: $('#query-schema-search')?.value || '',
     file: activeSqlFile,
     surface: $('.query-main-panel')?.dataset.surface || 'both',
+    errorMark: errore?.code === editor?.value ? errore : null,
   };
 }
 
 export function restoreQueryView(q) {
   if (!q) return;
+  renderQueryError(null);
+  applicaErroreQuery(q.errorMark);
   setQuerySurface(q.surface || 'both', false);
   activeSqlFile = q.file || null;
   renderSqlFile();
@@ -127,6 +175,11 @@ export function updateEditorHighlight() {
   // una query in sospeso, caricamento di un chunk): la numerazione deve
   // seguirlo comunque, non solo sull'evento `input`.
   aggiornaNumeriRiga();
+  if (currentErrorMark && currentErrorMark.code !== code) {
+    currentErrorMark = null;
+    renderQueryError(null);
+  }
+  aggiornaSegnalazioneErrore();
 }
 
 /**
@@ -329,7 +382,7 @@ export function initQueryTab() {
     editorInput.addEventListener('input', updateEditorHighlight);
     editorInput.addEventListener('input', () => {
       const q = queryDocument();
-      if (q) { q.code = editorInput.value; q.dirty = q.code !== (q.savedCode || ''); }
+      if (q) { q.code = editorInput.value; q.dirty = q.code !== (q.savedCode || ''); q.errorMark = null; }
       import('./colltabs.js').then(m => m.pinActiveCollTab());
     });
     editorInput.addEventListener('scroll', () => {
@@ -381,9 +434,9 @@ export function initQueryTab() {
         const selezione = selezioneEditor();
         if (selezione) {
           toast('Eseguo solo la selezione');
-          runQuery({ code: selezione });
+          runQuery({ code: selezione })?.catch(() => {});
         } else {
-          runQuery();
+          runQuery()?.catch(() => {});
         }
       }
     });
@@ -531,7 +584,7 @@ function initSqlChunking() {
       document.file = file;
       if (documentoVisibile(tab, collTabId)) activeSqlFile = file;
       await preview(file, 0);
-    } catch (err) { toast(`Impossibile aprire ${source.name}: ${err.message}`, true); }
+    } catch (err) { notifica(`Impossibile aprire ${source.name}: ${err.message}`, { tipo: 'errore', titolo: "Risultati query" }); }
   });
   $('#chunk-prev-btn')?.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index - 1));
   $('#chunk-next-btn')?.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index + 1));
@@ -608,6 +661,10 @@ function setQuerySurface(surface, anima = true) {
   ], { duration: 240, easing: 'cubic-bezier(.16, 1, .3, 1)' });
   completa();
   requestAnimationFrame(() => { resizeChart(); resizeQueryMap(); });
+}
+
+export function mostraRisultatiQueryRiuscita() {
+  if ($('.query-main-panel')?.dataset.surface === 'editor') setQuerySurface('results');
 }
 
 function initVerticalResizer() {
@@ -730,6 +787,9 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
   const view = $('#view-query');
   if (view) view.dataset.queryState = status;
   if (status === 'running') {
+    currentErrorMark = null;
+    segnalaErroreQuery(null);
+    renderQueryError(null);
     for (const id of ['query-table-view', 'query-json-view', 'chart-empty']) renderDataEmpty($('#' + id), null);
   }
   const statusBadge = $('#query-status-badge');
@@ -737,16 +797,16 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
   const timeVal = $('#query-time-val');
   const countMetric = $('#query-count-metric');
   const countVal = $('#query-count-val');
-  const errorBox = $('#query-error-box');
 
   if (statusBadge) {
     statusBadge.className = `badge badge-${status}`;
+    statusBadge.classList.toggle('hidden', status === 'error');
     if (status === 'idle') statusBadge.textContent = '● In attesa';
     else if (status === 'running') {
       statusBadge.textContent = 'Esecuzione...';
       queryRigheRef = null;
       const tableView = $('#query-table-view');
-      if (tableView) showSkeletonGrid(tableView, 8, 5);
+      if (tableView) showSkeletonGrid(tableView, 10, 5);
     }
     else if (status === 'success') statusBadge.textContent = '✓ Completato';
     else if (status === 'error') statusBadge.textContent = 'Errore';
@@ -771,42 +831,48 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
 
   if (count !== null && countMetric && countVal) {
     countVal.textContent = count;
-    countMetric.classList.remove('hidden');
+    countMetric.classList.toggle('hidden', status === 'error' && !count);
   }
 
-  if (errorBox) {
-    if (errorMsg) {
-      errorBox.textContent = errorMsg;
-      errorBox.classList.remove('hidden');
-    } else {
-      errorBox.classList.add('hidden');
-    }
-  }
+  renderQueryError(errorMsg);
   // Gli script possono consegnare le righe prima dello stato finale.
   if (status !== 'running' && !currentResults.length) renderResults(currentResults, currentColumns);
+}
+
+function renderQueryError(message) {
+  const box = $('#query-error-box');
+  if (!box) return;
+  const mark = queryDocument()?.errorMark;
+  if (mark && mark.code !== $('#query-editor-input')?.value) message = null;
+  box.classList.toggle('hidden', !message);
+  $('#query-results-body')?.setAttribute('data-query-error', message ? currentResults.length ? 'partial' : 'empty' : '');
+  renderDataEmpty(box, message ? {
+    kind: 'error', title: 'La query non è riuscita', description: message,
+    actionLabel: 'Vai all’editor query', onAction: vaiAllEditorQuery,
+    copyText: message,
+  } : null);
 }
 
 // Renderizza i risultati nella vista attiva
 function queryEmptyOptions() {
   const status = currentMetrics[0];
-  if (status === 'running') return null;
+  if (status === 'running' || status === 'error' || !$('#query-error-box')?.classList.contains('hidden')) return null;
   const idle = status === 'idle';
-  const error = status === 'error';
   return {
-    title: idle ? 'I risultati iniziano qui' : error ? 'La query non è riuscita' : status === 'cancelled' ? 'Query annullata' : 'Nessun risultato',
+    title: idle ? 'I risultati iniziano qui' : status === 'cancelled' ? 'Query annullata' : 'Nessun risultato',
     description: idle ? 'Scrivi una query nell’editor. Le righe restituite appariranno in questo spazio.'
-      : error ? 'Controlla il messaggio di errore e correggi la query nell’editor.'
-        : status === 'cancelled' ? 'L’esecuzione è stata interrotta. Puoi modificare la query e riprovare.'
+      : status === 'cancelled' ? 'L’esecuzione è stata interrotta. Puoi modificare la query e riprovare.'
           : 'La query non ha restituito righe. Prova a modificare le condizioni di ricerca.',
-    kind: idle ? 'query' : error ? 'error' : 'search',
+    kind: idle ? 'query' : 'search',
     actionLabel: idle ? 'Vai all’editor' : 'Modifica query',
-    onAction: () => { setQuerySurface('editor'); $('#query-editor-input')?.focus(); },
+    onAction: vaiAllEditorQuery,
   };
 }
 
 export function renderResults(data, colonneDichiarate) {
   currentResults = Array.isArray(data) ? data : (data ? [data] : []);
   currentColumns = Array.isArray(colonneDichiarate) ? colonneDichiarate : [];
+  renderQueryError(currentMetrics[3]);
 
   // La scheda 🗺 Mappa esiste solo se in questi risultati ci sono geometrie. Se
   // la si stava guardando e i nuovi risultati non ne hanno, si torna alla
@@ -825,7 +891,7 @@ export function renderResults(data, colonneDichiarate) {
     // di caricamento non deve restare una promessa rifiutata in silenzio.
     renderQueryMap(currentResults).catch((err) => {
       console.error('[QueryTab] Errore nel rendering della mappa:', err);
-      toast(`Impossibile disegnare la mappa: ${err.message}`, true);
+      notifica(`Impossibile disegnare la mappa: ${err.message}`, { tipo: 'vista', titolo: "Risultati query", target: '#query-map-view' });
     });
   } else if (activeViewMode === 'chart') {
     // `renderChart` è asincrona solo al primo uso (carica ECharts da
@@ -833,7 +899,7 @@ export function renderResults(data, colonneDichiarate) {
     // caricamento non deve restare una promessa rifiutata in silenzio.
     renderChart(currentResults).catch((err) => {
       console.error('[QueryTab] Errore nel rendering del grafico:', err);
-      toast(`Impossibile disegnare il grafico: ${err.message}`, true);
+      notifica(`Impossibile disegnare il grafico: ${err.message}`, { tipo: 'vista', titolo: "Risultati query", target: '#query-chart-view' });
     });
     if (!currentResults.length) {
       $('#chart-empty')?.replaceChildren();
@@ -867,6 +933,9 @@ export function renderResults(data, colonneDichiarate) {
  * staccato e questi id semplicemente non esistono.
  */
 export function resetQueryView() {
+  currentErrorMark = null;
+  segnalaErroreQuery(null);
+  renderQueryError(null);
   currentMetrics = ['idle'];
   currentResults = [];
   currentColumns = [];
@@ -1577,7 +1646,7 @@ function renderSchemaTreeForDb(dbName, container, collections) {
         riapplicaFiltroSchema();
       }).catch((err) => {
         relazioniCaricate = false;
-        if (fieldsContainer.isConnected && isForActiveTab(err)) toast(err.message, true);
+        if (fieldsContainer.isConnected && isForActiveTab(err)) notifica(err.message, { tipo: 'errore', titolo: "Risultati query" });
       });
     });
 
@@ -1938,9 +2007,14 @@ export function runQuery(opzioni = {}) {
   if (!editorInput) return;
   const code = String(opzioni.code || editorInput.value).trim();
   if (!code) return;
+  const sorgenteErrore = contestoErroreQuery(code, !!opzioni.code);
 
   // Una nuova esecuzione azzera la segnalazione precedente.
   segnalaRigaErrore(0);
+  currentErrorMark = null;
+  segnalaErroreQuery(null);
+  renderQueryError(null);
+  queryDocument().errorMark = null;
 
   const engine = $('#query-target-engine')?.value || 'auto';
 
@@ -1972,6 +2046,7 @@ export function runQuery(opzioni = {}) {
       db: scriptDb,
       coll: scriptColl,
       stopOnError: !!$('#query-stop-on-error')?.checked,
+      sorgenteErrore,
     });
   }
   updateQueryMetrics('running');
@@ -2077,6 +2152,7 @@ export function runQuery(opzioni = {}) {
         updateQueryMetrics('success', elapsed, rows.length);
         feedbackQuery('success');
         renderResults(rows, colonne);
+        mostraRisultatiQueryRiuscita();
       }
       return res;
     })
@@ -2086,6 +2162,7 @@ export function runQuery(opzioni = {}) {
       const latest = documentoRun.runId === runId;
       const stessoContesto = latest && documentoVisibile(curTab, collTabId);
       if (latest) Object.assign(documentoRun, { runId: null, results: [], columns: [], metrics: ['error', elapsed, 0, err.message] });
+      if (latest) registraErroreQuery(documentoRun, err, sorgenteErrore);
 
       pendingHandle.fail(err, elapsed);
       aggiornaEsecuzione(idStorico, { esito: 'errore', ms: elapsed });
@@ -2094,9 +2171,7 @@ export function runQuery(opzioni = {}) {
         updateQueryMetrics('error', elapsed, 0, err.message || 'Errore durante l\'esecuzione della query');
         feedbackQuery('error');
         renderResults([], []);
-        // "… (riga 12)" nel messaggio: la riga viene evidenziata nel gutter e
-        // portata in vista, invece di lasciarla cercare a mano.
-        if (!opzioni.code) segnalaRigaErrore(rigaDaMessaggio(err.message));
+        mostraErroreQuery(documentoRun.errorMark);
       }
       throw err;
     });

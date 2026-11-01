@@ -12,11 +12,8 @@
     "Script senza cursore recuperato come testo, senza ripetere scritture già applicate",
     "Due connessioni affiancate: risposte invertite, cambio focus e annullamento per run e sessione",
     "Layout, focus e cambio connessione non rimontano gli editor dei pannelli",
-    "Palette globale dall’editor incorporato, ridimensionamento con puntatore e tastiera",
-    "Temi chiaro, scuro e token personalizzati; desktop, laptop e viewport stretto senza overflow della pagina",
-    "Chiusura annullabile con query non salvate; disconnessione del proprietario trasferisce il confronto superstite",
-    "Ripresa dalla sessione chiusa: testo conservato nel registro e nessuna esecuzione sulla sessione superstite",
-    "Errore di connessione senza alterare la sessione già aperta"
+    "Palette globale dall’editor incorporato, ridimensionamento con puntatore e tastiera"
   ],
-  "errors": []
+  "errors": [],
+  "failure": "Error: UNKNOWN: unknown error, open 'C:\\repository\\CodeDB\\test-reports\\workbench\\tema-personalizzato.png'\n    at async open (node:internal/fs/promises:1281:25)\n    at async Object.writeFile (node:internal/fs/promises:1899:14)\n    at async _Page.screenshot (C:\\repository\\CodeDB\\node_modules\\playwright-core\\lib\\coreBundle.js:61393:11)\n    at async C:\\repository\\CodeDB\\test\\e2e-workbench.js:330:5"
 }

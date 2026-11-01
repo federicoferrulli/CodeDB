@@ -8,11 +8,13 @@ import { initSettings } from './settings';
 import { initPrompt } from './prompt';
 import { initControls } from './controls';
 import { initErrors } from './errors';
+import { initNotifiche } from './notifiche';
 import './components/arc/foundation.css';
 export { createArcInput, createArcTextarea, createArcButton, createArcSelect, createArcCheckbox, controlElement, updateArcSelect, mountArcEditActions } from './editor-controls';
 export { initControls as mountArcControls } from './controls';
 export { openNavigationSheet, closeNavigationSheet } from './navigation-sheet';
 export { removeDialog } from './dialogs';
+export { startConnection, startProgress } from './connection-feedback';
 import { DataEmptyArt, renderDataEmpty } from './data-empty';
 export { renderDataEmpty };
 import { initGridFields } from './editor-controls';
@@ -24,6 +26,7 @@ initControls();
 initGridFields();
 observeFields();
 initErrors();
+initNotifiche();
 
 // Le due viste vuote non hanno stato duplicato: visibilità e azioni restano
 // quelle del workspace, i componenti Arc ne possiedono solo il contenuto.

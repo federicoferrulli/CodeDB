@@ -1,7 +1,7 @@
 import { chiediConferma } from './conferma.js';
 import { createArcInput, createArcButton, controlElement } from '../arc/ui.js';
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, isSqlType, isForActiveTab, chiediTesto, conCaricamento, captureContext } from './utils.js';
+import { $, emit, toast, openModal, closeModal, isSqlType, isForActiveTab, chiediTesto, conCaricamento, captureContext, showError, notifica } from './utils.js';
 import { refreshDbTree, collWord, dbWord } from './dbtree.js';
 import { closeCollTabsWhere, updateCollTabs } from './colltabs.js';
 import { loadDetails } from './details.js';
@@ -93,10 +93,12 @@ export async function renameDb(name) {
     // coll-tab sul nuovo nome sarebbe una bugia: l'utente stava guardando
     // l'originale, che è ancora lì.
     const origineSparita = res.modo !== 'dump-restore' || res.origineEliminata === true;
-    toast(res.intervento || (origineSparita
+    const testoEsito = res.intervento || (origineSparita
       ? `${origin.wordCap} rinominato in "${newName}"`
       : `${origin.wordCap} copiato in "${newName}" (${res.documenti} documenti/righe verificati). `
-        + `"${name}" è ancora presente: eliminalo in una finestra senza scritture.`), !!res.intervento);
+        + `"${name}" è ancora presente: eliminalo in una finestra senza scritture.`);
+    if (res.intervento) notifica(testoEsito, { tipo: 'errore', titolo: "Operazione sullo schema", hint: "Aggiorna lo schema e verifica l’esito prima di ripetere la modifica." });
+    else toast(testoEsito);
     if (origineSparita) {
       st.expandedDbs.delete(name);
       // I coll-tab aperti sul vecchio nome seguono la rinomina.
@@ -117,7 +119,7 @@ export async function renameDb(name) {
       import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-rename
       import('./live.js').then(({ startWatch }) => startWatch());
     }
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Operazione sullo schema", hint: "Aggiorna lo schema e verifica l’esito prima di ripetere la modifica." }));
 }
 
 export async function dropDb(name) {
@@ -132,7 +134,7 @@ L'operazione non è reversibile.`)) return;
     res._state.expandedDbs.delete(name);
     closeCollTabsWhere((ct) => ct.db === name, res._state);
     aggiornaAlberoDopoDdl(res);
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Operazione sullo schema", hint: "Aggiorna lo schema e verifica l’esito prima di ripetere la modifica." }));
 }
 
 function addColRow(values = {}) {
@@ -233,7 +235,7 @@ export async function renameColl(dbName, collName) {
       import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-rename
       import('./live.js').then(({ startWatch }) => startWatch());
     }
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Operazione sullo schema", hint: "Aggiorna lo schema e verifica l’esito prima di ripetere la modifica." }));
 }
 
 export async function dropColl(dbName, collName) {
@@ -244,10 +246,11 @@ export async function dropColl(dbName, collName) {
     res._state.dbSchema = null;
     closeCollTabsWhere((ct) => ct.db === dbName && ct.coll === collName, res._state);
     aggiornaAlberoDopoDdl(res);
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Operazione sullo schema", hint: "Aggiorna lo schema e verifica l’esito prima di ripetere la modifica." }));
 }
 
 export function openColumnModal(field) {
+  if ($('#coledit-fields').disabled) return;
   columnEditContext = captureSchemaTarget({ word: collWord(), wordCap: collWord(true) });
   const isSql = isSqlType(columnEditContext.dbType);
   colEditOldName = field ? field.name : null;
@@ -259,13 +262,19 @@ export function openColumnModal(field) {
   }) : null;
   const word = fieldWord(columnEditContext.dbType);
   $('#coledit-title').textContent = field ? `Modifica ${word} "${field.name}"` : `Aggiungi ${word}`;
+  const motore = isSql ? columnEditContext.dbType === 'mysql' ? 'MySQL' : 'PostgreSQL' : 'MongoDB';
+  $('#coledit-target').textContent = `${motore} · ${columnEditContext.db} / ${columnEditContext.coll}`;
+  $('#coledit-save').textContent = field ? 'Salva modifiche' : `Aggiungi ${word}`;
   $('#coledit-name').value = field ? field.name : '';
 
   $('#coledit-type-row').classList.toggle('hidden', !isSql);
   $('#coledit-bsontype-row').classList.toggle('hidden', isSql || !field);
   $('#coledit-null-row').classList.toggle('hidden', !isSql);
   $('#coledit-default-row').classList.toggle('hidden', !isSql && !!field);
-  $('#coledit-default-label').textContent = isSql ? 'Default' : 'Valore iniziale per i documenti esistenti';
+  $('#coledit-default-label').textContent = isSql ? 'Valore predefinito' : 'Valore iniziale';
+  $('#coledit-default-hint').textContent = isSql
+    ? 'Facoltativo. Lascia vuoto per non impostare un valore predefinito.'
+    : 'Applicato ai documenti in cui il campo manca. Vuoto equivale a null.';
   $('#coledit-default').placeholder = isSql
     ? '(nessuno; testo, numero o CURRENT_TIMESTAMP)'
     : '(vuoto = null; testo, numero o EJSON come {"$date": "..."})';
@@ -274,16 +283,19 @@ export function openColumnModal(field) {
     ? 'postgres-types'
     : 'mysql-types';
   $('#coledit-type').setAttribute('list', typeListId);
+  $('#coledit-type').required = isSql;
+  $('#coledit-type').placeholder = typeListId === 'postgres-types' ? 'es. TEXT o NUMERIC(10,2)' : 'es. VARCHAR(255)';
   $('#coledit-type').value = field && isSql ? field.types[0] : '';
   $('#coledit-bsontype').value = '';
   $('#coledit-null').checked = field ? !!field.nullable : true;
   $('#coledit-default').value = field && field.default != null ? field.default : '';
-  $('#coledit-error').classList.add('hidden');
+  showError('#coledit-error', '');
   openModal('#coledit-overlay');
   $('#coledit-name').focus();
 }
 
 export function initSchemaOps() {
+  $('#coledit-form').addEventListener('input', () => showError('#coledit-error', ''));
   $('#dbcreate-cancel').addEventListener('click', () => {
     dbCreateContext = null;
     closeModal('#dbcreate-overlay');
@@ -371,14 +383,23 @@ export function initSchemaOps() {
         (res.modified != null ? ` (${res.modified} documenti aggiornati)` : ''));
       res._state.dbSchema = null;
       if (isForActiveTab(res)) loadDetails();
-    }).catch((err) => toast(err.message, true));
+    }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Operazione sullo schema", hint: "Aggiorna lo schema e verifica l’esito prima di ripetere la modifica." }));
   });
 
-  $('#coledit-save').addEventListener('click', () => {
+  $('#coledit-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
     const ctx = columnEditContext;
-    if (!ctx) return;
+    if (!ctx || $('#coledit-fields').disabled) return;
+    showError('#coledit-error', '');
     const oldName = colEditOldName;
     const isSql = isSqlType(ctx.dbType);
+    const missing = !$('#coledit-name').value.trim() ? '#coledit-name'
+      : isSql && !$('#coledit-type').value.trim() ? '#coledit-type' : null;
+    if (missing) {
+      showError('#coledit-error', missing === '#coledit-name' ? `Indica il nome ${isSql ? 'della colonna' : 'del campo'}.` : 'Indica il tipo della colonna, ad esempio TEXT o VARCHAR(255).');
+      $(missing).focus();
+      return;
+    }
     const column = isSql
       ? {
           name: $('#coledit-name').value.trim(),
@@ -398,11 +419,14 @@ export function initSchemaOps() {
       // La chiave primaria è un vincolo/indice di tabella e alterColumn non
       // legge primaryKey: CHANGE COLUMN la conserva anche in caso di rinomina.
     }
-    const event = oldName ? 'column:alter' : 'column:add';
+    const operation = oldName ? 'column:alter' : 'column:add';
     const payload = oldName
       ? { tabId: ctx.tabId, db: ctx.db, coll: ctx.coll, oldName, column }
       : { tabId: ctx.tabId, db: ctx.db, coll: ctx.coll, column };
-    conCaricamento($('#coledit-save'), () => emit(event, payload), 'Salvo…').then((res) => {
+    $('#coledit-fields').disabled = true;
+    $('#coledit-cancel').disabled = true;
+    try {
+      const res = await conCaricamento($('#coledit-save'), () => emit(operation, payload), 'Salvo…');
       closeModal('#coledit-overlay');
       columnEditContext = null;
       colEditOldName = null;
@@ -411,11 +435,12 @@ export function initSchemaOps() {
       const done = `${fieldWord(ctx.dbType, true)} "${column.name}" ${fieldDone(ctx.dbType, verb)}`;
       toast(done + (res.modified != null ? ` (${res.modified} documenti aggiornati)` : ''));
       res._state.dbSchema = null;
-      if (isForActiveTab(res)) loadDetails();
-    }).catch((err) => {
-      const errorEl = $('#coledit-error');
-      errorEl.textContent = err.message;
-      errorEl.classList.remove('hidden');
-    });
+      if (ctx.isStillActive() && state.db === ctx.db && state.coll === ctx.coll) loadDetails();
+    } catch (err) {
+      showError('#coledit-error', err.message);
+    } finally {
+      $('#coledit-fields').disabled = false;
+      $('#coledit-cancel').disabled = false;
+    }
   });
 }

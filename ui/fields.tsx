@@ -64,11 +64,13 @@ function mountField(model: Model) {
     host.hidden = hidden();
     const label = labelOf(model);
     if (model instanceof HTMLSelectElement) {
+      // Lo z-index non supera il top layer: la lista resta nel contenitore proprietario.
       const options = [...model.options].map((option, i) => ({ value: `option-${i}`, label: option.label,
         disabled: option.disabled || (option.parentElement instanceof HTMLOptGroupElement && option.parentElement.disabled) }));
       root.render(<Select bare {...fieldProps()} label={label} options={options} value={model.selectedIndex < 0 ? '' : `option-${model.selectedIndex}`}
+        aria-describedby={model.getAttribute('aria-describedby') || undefined}
         disabled={model.disabled} open={open} onOpenChange={next => { open = next; sync(); }}
-        portalContainer={model.closest<HTMLElement>('[role="dialog"]') || undefined}
+        portalContainer={model.closest<HTMLElement>('[popover], [role="dialog"]') || undefined}
         onValueChange={value => {
           model.selectedIndex = Number(value.slice(7));
           model.dispatchEvent(new Event('input', { bubbles: true }));

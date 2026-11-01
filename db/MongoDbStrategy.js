@@ -669,11 +669,12 @@ class MongoDbStrategy extends DbStrategy {
    * Una collection inesistente non ha indici e non e' un errore: lo dice il
    * confronto, che trovera' mancante cio' che era atteso.
    */
-  async indexList(db, coll) {
+  async indexList(db, coll, { schemaBson = false } = {}) {
     const client = this.requireClient();
     try {
-      const indexes = await client.db(db).collection(coll).indexes();
-      return indexes.map(({ v, ns, ...index }) => index);
+      const indexes = await client.db(db).collection(coll).indexes(schemaBson ? { promoteValues: false } : {});
+      return indexes.map(({ v, ns, ...index }) => schemaBson
+        ? require('./mongoSchemaBson').codificaMetadati(index) : index);
     } catch (err) {
       if (/NamespaceNotFound/i.test(err.message) || err.code === 26) return [];
       throw err;

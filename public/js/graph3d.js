@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, esc, toast, positionFixedDropdown, isForActiveTab, lucideIconHtml as ICO, refreshLucideIcons, scaricaFile } from './utils.js';
+import { $, emit, esc, toast, positionFixedDropdown, isForActiveTab, lucideIconHtml as ICO, refreshLucideIcons, scaricaFile, notifica } from './utils.js';
 import { openCollTab } from './colltabs.js';
 import { activeTab } from './tabs.js';
 // Le euristiche di analisi dello schema stanno in un modulo condiviso col
@@ -929,7 +929,7 @@ function computeShortestPath(startNode, endNode) {
 function analyzeDependencies() {
   const schema = state.dbSchema || currentSchemaData;
   if (!schema || !schema.collections || !schema.collections.length) {
-    toast('Nessuno schema disponibile per le dipendenze.', true);
+    notifica('Nessuno schema disponibile per le dipendenze.', { tipo: 'avviso', titolo: "Schema 3D" });
     return;
   }
 
@@ -1013,7 +1013,7 @@ function analyzeDependencies() {
 function runSchemaAudit() {
   const schema = state.dbSchema || currentSchemaData;
   if (!schema || !schema.collections || !schema.collections.length) {
-    toast('Nessuno schema disponibile per la diagnostica.', true);
+    notifica('Nessuno schema disponibile per la diagnostica.', { tipo: 'avviso', titolo: "Schema 3D" });
     return;
   }
 
@@ -1069,7 +1069,7 @@ function runSchemaAudit() {
 async function saveSchemaSnapshotLocal() {
   const schema = state.dbSchema || currentSchemaData;
   if (!schema) {
-    toast('Nessuno schema disponibile da salvare.', true);
+    notifica('Nessuno schema disponibile da salvare.', { tipo: 'avviso', titolo: "Schema 3D" });
     return;
   }
   const payload = {
@@ -1419,7 +1419,7 @@ export function initGraph3d() {
     pathBtn.addEventListener('click', () => {
       const schema = state.dbSchema || currentSchemaData;
       if (!schema || !schema.collections || !schema.collections.length) {
-        toast('Nessuno schema disponibile.', true);
+        notifica('Nessuno schema disponibile.', { tipo: 'avviso', titolo: "Schema 3D" });
         return;
       }
 
@@ -1448,7 +1448,7 @@ export function initGraph3d() {
       const end = $('#path-to-select').value;
 
       if (start === end) {
-        toast('Seleziona due tabelle differenti.', true);
+        notifica('Seleziona due tabelle differenti.', { tipo: 'avviso', titolo: "Schema 3D" });
         return;
       }
 
@@ -1612,10 +1612,10 @@ export function initGraph3d() {
           const snapshot = JSON.parse(evt.target.result);
           renderDiffReport(snapshot);
         } catch (err) {
-          toast('Impossibile leggere il file JSON: ' + err.message, true);
+          notifica('Impossibile leggere il file JSON: ' + err.message, { tipo: 'errore', titolo: "Schema 3D" });
         }
       };
-      reader.onerror = () => toast('Impossibile leggere il file selezionato. Sceglilo di nuovo.', true);
+      reader.onerror = () => notifica('Impossibile leggere il file selezionato. Sceglilo di nuovo.', { tipo: 'errore', titolo: "Schema 3D" });
       reader.readAsText(file);
     });
   }
@@ -1637,12 +1637,12 @@ export function initGraph3d() {
       const textarea = $('#import-schema-textarea');
       const format = $('#import-schema-format').value;
       if (!textarea || !textarea.value.trim()) {
-        toast('Incolla uno script SQL o DBML valido.', true);
+        notifica('Incolla uno script SQL o DBML valido.', { tipo: 'inline', titolo: "Schema 3D", target: "#import-schema-textarea" });
         return;
       }
       const parsed = parseSchemaInput(textarea.value, format);
       if (!parsed.collections.length) {
-        toast('Impossibile interpretare lo schema fornito.', true);
+        notifica('Impossibile interpretare lo schema fornito.', { tipo: 'inline', titolo: "Schema 3D", target: "#import-schema-textarea" });
         return;
       }
       state.dbSchema = parsed;
@@ -1704,7 +1704,7 @@ export function initGraph3d() {
         if (await scaricaFile(dataUrl, `schema-${state.db || 'db'}-3d.png`)) toast('Download dell’immagine PNG avviato.');
       } catch (err) {
         console.error('Errore export PNG:', err);
-        toast('Impossibile esportare l\'immagine PNG.', true);
+        notifica('Impossibile esportare l\'immagine PNG.', { tipo: 'errore', titolo: "Schema 3D" });
       }
     });
   }
@@ -1714,7 +1714,7 @@ export function initGraph3d() {
     exportMermaidBtn.addEventListener('click', () => {
       const mermaidText = generaMermaid(state.dbSchema || currentSchemaData);
       if (!mermaidText) {
-        toast('Nessun dato di schema disponibile per Mermaid.', true);
+        notifica('Nessun dato di schema disponibile per Mermaid.', { tipo: 'avviso', titolo: "Schema 3D" });
         return;
       }
       const textarea = $('#mermaid-textarea');
@@ -1751,7 +1751,7 @@ export function initGraph3d() {
     exportDbmlBtn.addEventListener('click', () => {
       const dbmlText = generaDbml(state.dbSchema || currentSchemaData, { db: state.db || 'database', dbType: state.dbType || 'MySQL' });
       if (!dbmlText) {
-        toast('Nessun dato di schema disponibile per DBML.', true);
+        notifica('Nessun dato di schema disponibile per DBML.', { tipo: 'avviso', titolo: "Schema 3D" });
         return;
       }
       const textarea = $('#dbml-textarea');
@@ -1788,7 +1788,7 @@ export function initGraph3d() {
     exportSqlBtn.addEventListener('click', () => {
       const sqlText = generaDdl(state.dbSchema || currentSchemaData, { db: state.db || 'db' });
       if (!sqlText) {
-        toast('Nessun dato di schema disponibile per SQL DDL.', true);
+        notifica('Nessun dato di schema disponibile per SQL DDL.', { tipo: 'avviso', titolo: "Schema 3D" });
         return;
       }
       const textarea = $('#sql-textarea');

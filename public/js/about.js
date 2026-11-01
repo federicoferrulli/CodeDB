@@ -16,7 +16,7 @@
  * per dire il vero.
  * ------------------------------------------------------------------------- */
 
-import { $, emit, esc, toast, conCaricamento } from './utils.js';
+import { $, emit, esc, toast, conCaricamento, notifica } from './utils.js';
 
 let dati = null;
 
@@ -58,7 +58,7 @@ async function initAggiornamentiDesktop() {
       // c'è altro da mostrare, e un toast in più coprirebbe la finestra che
       // sta per aprirsi.
     } catch (err) {
-      toast(`Controllo aggiornamenti non riuscito: ${err.message}`, true);
+      notifica(`Controllo aggiornamenti non riuscito: ${err.message}`, { tipo: 'errore', titolo: "Informazioni e aggiornamenti" });
     }
   });
 }
@@ -174,7 +174,7 @@ function disegna(corpo) {
         await navigator.clipboard.writeText(testo);
         toast('Informazioni di licenza copiate.');
       } catch {
-        toast('Copia non riuscita: il browser l\'ha negata.', true);
+        notifica('Copia non riuscita: il browser l\'ha negata.', { tipo: 'errore', titolo: "Informazioni e aggiornamenti" });
       }
     });
   }

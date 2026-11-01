@@ -86,6 +86,7 @@ function createServer(options = {}) {
       // Le operazioni accettate terminano prima di spegnere le strategie che possiedono.
       await release(() => socket.drain());
       await release(() => operazioni.importOperations.close());
+      await release(() => operazioni.restoreOperations.close());
       await release(() => operazioni.importUploads.close());
       await release(() => socket.close());
       await release(() => mcpControl.shutdownMcp());

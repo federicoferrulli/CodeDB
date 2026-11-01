@@ -21,7 +21,7 @@
  * delle geometrie dentro le righe è `geo-risultati.js`, puro e provato in Node.
  * ------------------------------------------------------------------------- */
 
-import { $, toast } from './utils.js';
+import { $, toast, notifica } from './utils.js';
 import { tileAttive, impostaTile } from './geo-leaflet.js';
 import { creaVistaGeo, copia, scaricaGeoJson } from './geo-vista.js';
 import { haGeometrie, vociGeometriche, notaTroncamento, MAX_CELLE } from './geo-risultati.js';
@@ -189,7 +189,7 @@ export function initQueryMap() {
     try {
       if (document.fullscreenElement === view) await document.exitFullscreen();
       else await view.requestFullscreen();
-    } catch { toast('Impossibile espandere la mappa in questo browser.', true); }
+    } catch { notifica('Impossibile espandere la mappa in questo browser.', { tipo: 'errore', titolo: "Mappa dei risultati" }); }
   });
   document.addEventListener('fullscreenchange', () => {
     const espansa = document.fullscreenElement === view;
@@ -214,7 +214,7 @@ export function initQueryMap() {
   if (copy) {
     copy.addEventListener('click', () => {
       const tsv = creaVista().riepilogoTsv();
-      if (!tsv) { toast('Nessuna geometria da riepilogare', true); return; }
+      if (!tsv) { notifica('Nessuna geometria da riepilogare', { tipo: 'avviso', titolo: "Mappa dei risultati" }); return; }
       copia(tsv, 'Riepilogo copiato');
     });
   }
@@ -224,7 +224,7 @@ export function initQueryMap() {
   if (exp) {
     exp.addEventListener('click', () => {
       const fc = creaVista().geojson();
-      if (!fc) { toast('Nessuna geometria da esportare', true); return; }
+      if (!fc) { notifica('Nessuna geometria da esportare', { tipo: 'avviso', titolo: "Mappa dei risultati" }); return; }
       scaricaGeoJson(fc, 'risultati.geojson');
     });
   }

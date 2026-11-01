@@ -20,7 +20,7 @@ function catalogoEventi() {
   for (const file of fs.readdirSync(path.join(__dirname, '..', 'server')).filter(f => /^eventi-.*\.js$/.test(f))) {
     const lifecycle = Object.fromEntries(['safeOn', 'delegate', 'amministrativo', 'operazioneLunga']
       .map(famiglia => [famiglia, (evento, handler) => result.push({ evento, famiglia, handler, file })]));
-    require('../server/' + file).createModule({})(contestoFinto(), lifecycle);
+    require('../server/' + file).createModule({ operazioni: {} })(contestoFinto(), lifecycle);
   }
   return result;
 }

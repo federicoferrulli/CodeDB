@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
 const mutant = process.argv.includes('--mutant');
 const checksOnly = process.argv.includes('--checks-only');
-const dir = `test-reports/dettagli-design-2026-10-12/${mutant ? 'mutante' : process.argv.includes('--confirm') ? 'conferma' : 'dopo'}`;
+const dir = process.env.CODEDB_REPORT_DIR || `test-reports/dettagli-design-2026-10-12/${mutant ? 'mutante' : process.argv.includes('--confirm') ? 'conferma' : 'dopo'}`;
 
 (async () => {
   const server = await startTestServer({ port: 3213 });

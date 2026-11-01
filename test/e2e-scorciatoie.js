@@ -24,7 +24,7 @@ const { startTestServer } = require('./e2e-harness');
     `);
     const env = { ...process.env, PORT: String(server.port), CODEDB_ELECTRON_INSTANCE_SECRET: secret, CODEDB_NO_UPDATE_CHECK: '1' };
     delete env.ELECTRON_RUN_AS_NODE;
-    desktop = await electron.launch({ args: [entry], env, timeout: 30000 });
+    desktop = await electron.launch({ args: require('./electron-harness').argomentiElectron([entry]), env, timeout: 30000 });
     const page = await desktop.firstWindow();
     page.setDefaultTimeout(10000);
     const errors = [];

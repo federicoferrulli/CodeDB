@@ -31,7 +31,7 @@ import { mountArcControls, closeNavigationSheet, renderDataEmpty } from '../arc/
  *     un guasto dell'applicazione.
  * ------------------------------------------------------------------------- */
 
-import { $, emit, esc, cut, toast, iniziaCaricamento, conCaricamento, openModal, closeModal, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
+import { $, emit, esc, cut, toast, iniziaCaricamento, conCaricamento, openModal, closeModal, lucideIconHtml as ICO, refreshLucideIcons, notifica } from './utils.js';
 import { tabs } from './tabs.js';
 
 let autoTimer = null;
@@ -59,7 +59,7 @@ export function initSessions() {
   document.body.append(queryOverlay);
   mountArcControls(queryOverlay);
   $('#session-query-close').addEventListener('click', () => closeModal(queryOverlay));
-  $('#session-query-copy').addEventListener('click', () => navigator.clipboard.writeText($('#session-query-text').value).then(() => toast('Query copiata')).catch(err => toast(err.message, true)));
+  $('#session-query-copy').addEventListener('click', () => navigator.clipboard.writeText($('#session-query-text').value).then(() => toast('Query copiata')).catch(err => notifica(err.message, { tipo: 'errore', titolo: "Monitor sessioni" })));
   const btn = $('#btn-sessions');
   if (btn) btn.addEventListener('click', apri);
 
@@ -124,7 +124,7 @@ function apri() {
   const modal = $('#modal-sessions');
   if (!modal) return;
   if (!popolaConnessioni()) {
-    toast('Apri prima una connessione: il monitor mostra le sessioni di un server di database.', true);
+    notifica('Apri prima una connessione: il monitor mostra le sessioni di un server di database.', { tipo: 'avviso', titolo: "Monitor sessioni" });
     return;
   }
   closeNavigationSheet(true);
@@ -558,10 +558,10 @@ async function onClickLista(e) {
         // Su PostgreSQL `pg_cancel_backend` restituisce false quando il pid non
         // esiste più: quasi sempre significa che la query è finita da sola nel
         // frattempo, non che l'operazione sia fallita.
-        toast(`Nessuna operazione da fermare per la sessione ${id}: potrebbe essere già terminata.`, true);
+        notifica(`Nessuna operazione da fermare per la sessione ${id}: potrebbe essere già terminata.`, { tipo: 'avviso', titolo: "Monitor sessioni" });
       }
     } catch (err) {
-      toast(err.message, true);
+      notifica(err.message, { tipo: 'errore', titolo: "Monitor sessioni" });
     }
     await carica({ auto: true });
   }, '');

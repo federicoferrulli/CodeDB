@@ -212,7 +212,8 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
           // Solo la prima impronta SSH è approvabile: mai una chiave cambiata.
           const ssh = ['mongo:connect', 'connections:test'].includes(event) && err?.code === 'SSH_HOST_KEY_UNKNOWN'
             ? { code: err.code, sshHostKey: err.sshHostKey } : {};
-          cb({ ok: false, error: errori.errMsg(err), ...ssh });
+          const queryError = event === 'query:execute' && err.queryError ? { queryError: err.queryError } : {};
+          cb({ ok: false, error: errori.errMsg(err), ...ssh, ...queryError });
         }
       })()));
     }

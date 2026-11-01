@@ -29,7 +29,7 @@ import { mountArcControls } from '../arc/ui.js';
  * senza toccare questo file.
  * ------------------------------------------------------------------------- */
 
-import { $, toast, esc, safeUUID, positionFixedDropdown, chiediTesto, lucideIconHtml as ICO, refreshLucideIcons, scaricaFile } from './utils.js';
+import { $, toast, esc, safeUUID, positionFixedDropdown, chiediTesto, lucideIconHtml as ICO, refreshLucideIcons, scaricaFile, notifica } from './utils.js';
 import { state } from './state.js';
 import {
   CATEGORICA, TAVOLOZZE, TIPI, AGGREGAZIONI, AGG_GREZZO, famigliaDi, serieDefault, cfgDefault,
@@ -174,20 +174,14 @@ const seqDisegno = sequenziatore();
 export async function renderChart(righe) {
   righeCorrenti = Array.isArray(righe) ? righe : [];
   const disegno = seqDisegno.nuovo();
+  campiCache = [];
+  costruisciSuggeriti();
   const contenitore = $('#query-chart-canvas');
   if (!contenitore) return;
 
   const vuoto = $('#chart-empty');
   if (!righeCorrenti.length) {
-    // I campi appartengono ai risultati che non ci sono più: lasciarli farebbe
-    // costruire il pannello con le colonne della query precedente.
-    campiRighe = [];
-    if (grafico) { grafico.clear(); }
-    if (vuoto) {
-      vuoto.classList.remove('hidden');
-      vuoto.textContent = 'Esegui una query: i risultati compaiono qui come grafico.';
-    }
-    aggiornaAvvisi([]);
+    clearChart();
     return;
   }
   if (vuoto) vuoto.classList.add('hidden');
@@ -199,6 +193,8 @@ export async function renderChart(righe) {
   const campi = await campiAsync(righeCorrenti);
   if (!seqDisegno.attuale(disegno)) return; // risultati già sostituiti
   campiRighe = campi;
+  campiCache = campi;
+  costruisciSuggeriti();
   autoConfigura(righeCorrenti, c, campiRighe);
 
   let echarts;
@@ -295,8 +291,11 @@ function disegna() {
  * ResizeObserver continuano a funzionare su quella esistente.
  */
 export function clearChart() {
+  seqDisegno.nuovo(); // Un disegno ancora in attesa non deve ripristinare dati o proposte vecchi.
   righeCorrenti = [];
   campiRighe = [];
+  campiCache = [];
+  costruisciSuggeriti();
   // Il precalcolo tenuto da parte punta all'array delle righe: lasciarlo lì
   // significherebbe tenere in memoria un result set che non serve più.
   scordaPrecalcolo();
@@ -421,7 +420,6 @@ function costruisciPannello() {
   if (!host) return;
   const c = cfg();
   campiCache = righeCorrenti.length ? campiRighe : [];
-  costruisciSuggeriti();
   const fam = famigliaDi((c.serie.find((s) => s.visibile !== false) || c.serie[0]).tipo);
   const cartesiano = fam === 'cartesiano';
 
@@ -644,7 +642,11 @@ function costruisciSuggeriti() {
   const btn = $('#chart-suggest-btn');
   if (!menu || !btn) return;
   const lista = suggerimenti(campiCache);
-  btn.classList.toggle('hidden', !lista.length);
+  btn.disabled = !lista.length;
+  btn.title = lista.length ? 'Grafici già pronti, dedotti dalla forma dei risultati'
+    : righeCorrenti.length ? 'Nessun grafico suggerito per questi risultati.'
+      : 'Esegui una query per ottenere grafici suggeriti';
+  if (!lista.length) menu.classList.add('hidden');
   // `approssimato` e' il FATTO dichiarato da `suggerimenti()`; la parola con cui
   // mostrarlo sta qui, dove c'e' il DOM. Un menu che dicesse solo "Totale
   // importo" prometterebbe una precisione che il renderer non ha.
@@ -722,14 +724,14 @@ function salvaPreset(nome, c) {
   const tutti = tuttiPreset();
   tutti[nome] = JSON.parse(JSON.stringify(c));
   try { localStorage.setItem(CHIAVE_PRESET, JSON.stringify(tutti)); } catch (err) {
-    toast(`Impossibile salvare la preimpostazione: ${err.message}`, true);
+    notifica(`Impossibile salvare la preimpostazione: ${err.message}`, { tipo: 'errore', titolo: "Grafici" });
   }
 }
 
 /* ================================ Export ================================= */
 
 async function esportaPng() {
-  if (!grafico || grafico.isDisposed()) { toast('Nessun grafico da esportare.', true); return; }
+  if (!grafico || grafico.isDisposed()) { notifica('Nessun grafico da esportare.', { tipo: 'avviso', titolo: "Grafici" }); return; }
   // Fondo pieno, non trasparente: un PNG trasparente incollato in un documento
   // chiaro mostra assi ed etichette chiari su bianco, cioè illeggibili.
   const url = grafico.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: INK.fondo });
@@ -737,7 +739,7 @@ async function esportaPng() {
 }
 
 function esportaOption() {
-  if (!ultimoOption) { toast('Nessun grafico da esportare.', true); return; }
+  if (!ultimoOption) { notifica('Nessun grafico da esportare.', { tipo: 'avviso', titolo: "Grafici" }); return; }
   // Le funzioni (formattatori) non sono serializzabili: si annotano come stringa
   // invece di sparire in silenzio lasciando un JSON che sembra completo.
   const testo = JSON.stringify(ultimoOption, (k, v) => (typeof v === 'function' ? '[funzione: formattatore]' : v), 2);
@@ -839,7 +841,7 @@ export function initCharts() {
     let ricostruisci = true;
 
     if (azione === 'serie-aggiungi') {
-      if (c.serie.length >= 12) { toast('Massimo 12 serie: oltre, il grafico non si legge più.', true); return; }
+      if (c.serie.length >= 12) { notifica('Massimo 12 serie: oltre, il grafico non si legge più.', { tipo: 'inline', tono: 'avviso', titolo: "Grafici", target: "#chart-builder" }); return; }
       // Lo slot di colore è il primo LIBERO, non la lunghezza dell'elenco: dopo
       // aver rimosso una serie in mezzo, la nuova non ruba il colore di un'altra.
       const usati = new Set(c.serie.map((s) => s.slot));
@@ -851,10 +853,10 @@ export function initCharts() {
       nuova.agg = c.serie[0]?.agg || 'somma';
       c.serie.push(nuova);
       if (c.serie.length > CATEGORICA.length) {
-        toast('Oltre 8 serie i colori verificati finiscono: meglio dividere in più grafici.', true);
+        notifica('Oltre 8 serie i colori verificati finiscono: meglio dividere in più grafici.', { tipo: 'inline', tono: 'avviso', titolo: "Grafici", target: "#chart-builder" });
       }
     } else if (azione === 'serie-rimuovi') {
-      if (c.serie.length <= 1) { toast('Serve almeno una serie.', true); return; }
+      if (c.serie.length <= 1) { notifica('Serve almeno una serie.', { tipo: 'inline', tono: 'avviso', titolo: "Grafici", target: "#chart-builder" }); return; }
       c.serie = c.serie.filter((s) => s.id !== id);
     } else if (azione === 'serie-duplica') {
       const s = serieDaId(c, id);
@@ -870,7 +872,7 @@ export function initCharts() {
       const s = serieDaId(c, id);
       if (s) s.colore = '';
     } else if (azione === 'option-copia') {
-      if (!ultimoOption) { toast('Esegui prima una query.', true); return; }
+      if (!ultimoOption) { notifica('Esegui prima una query.', { tipo: 'avviso', titolo: "Grafici" }); return; }
       const area = $('#chart-override');
       if (area) {
         area.value = JSON.stringify(ultimoOption, (k, v) => (typeof v === 'function' ? undefined : v), 2);
@@ -896,9 +898,9 @@ export function initCharts() {
       return;
     } else if (azione === 'preset-carica') {
       const nome = $('#chart-preset-select')?.value;
-      if (!nome) { toast('Scegli una preimpostazione.', true); return; }
+      if (!nome) { notifica('Scegli una preimpostazione.', { tipo: 'inline', tono: 'avviso', titolo: "Grafici", target: "#chart-preset-select" }); return; }
       const p = tuttiPreset()[nome];
-      if (!p) { toast('Preimpostazione non trovata.', true); return; }
+      if (!p) { notifica('Preimpostazione non trovata.', { tipo: 'inline', tono: 'avviso', titolo: "Grafici", target: "#chart-preset-select" }); return; }
       // I campi salvati potrebbero non esistere nel result set corrente:
       // autoConfigura li rimpiazza al primo disegno invece di lasciare un
       // grafico vuoto senza spiegazione.
@@ -907,7 +909,7 @@ export function initCharts() {
       toast(`Preimpostazione "${nome}" caricata.`);
     } else if (azione === 'preset-elimina') {
       const nome = $('#chart-preset-select')?.value;
-      if (!nome) { toast('Scegli una preimpostazione.', true); return; }
+      if (!nome) { notifica('Scegli una preimpostazione.', { tipo: 'inline', tono: 'avviso', titolo: "Grafici", target: "#chart-preset-select" }); return; }
       const tutti = tuttiPreset();
       delete tutti[nome];
       try { localStorage.setItem(CHIAVE_PRESET, JSON.stringify(tutti)); } catch { /* spazio esaurito: nulla da fare */ }
@@ -945,7 +947,7 @@ export function initCharts() {
       const voce = e.target.closest('[data-suggerimento]');
       if (!voce) return;
       menuSug.classList.add('hidden');
-      if (!applicaSuggerimento(voce.dataset.suggerimento)) { toast('Proposta non più valida per questi dati.', true); return; }
+      if (!applicaSuggerimento(voce.dataset.suggerimento)) { notifica('Proposta non più valida per questi dati.', { tipo: 'avviso', titolo: "Grafici" }); return; }
       host.dataset.firma = '';
       if (barra) barra.dataset.firma = '';
       disegna();

@@ -20,7 +20,7 @@
  * il canvas, i controlli e l'export.
  * ------------------------------------------------------------------------- */
 
-import { $, esc, toast, openModal, closeModal, refreshLucideIcons, scaricaFile } from './utils.js';
+import { $, esc, toast, openModal, closeModal, refreshLucideIcons, scaricaFile, notifica } from './utils.js';
 import {
   TIPI, AGGREGAZIONI, AGG_GREZZO, INK, applicaInk, costruisciOption, azzeraAvvisi, prendiAvvisi,
   famigliaDi, serieDefault, CATEGORICA,
@@ -48,7 +48,7 @@ let timerRidisegno = 0;
 export function apriGraficoSelezione({ voci, titolo } = {}) {
   const dati = datiSelezione(voci);
   if (!dati.righe.length || !dati.colonne.length) {
-    toast('Seleziona prima delle celle da rappresentare', true);
+    notifica('Seleziona prima delle celle da rappresentare', { tipo: 'avviso', titolo: "Grafico della selezione" });
     return;
   }
 
@@ -227,11 +227,11 @@ function commutaMisura(nome, { ridisegna = true } = {}) {
   const attive = misureAttive();
   const modello = cfg.serie[0] || serieDefault(0);
   if (attive.includes(nome)) {
-    if (attive.length <= 1) { toast('Serve almeno una misura da rappresentare', true); return; }
+    if (attive.length <= 1) { notifica('Serve almeno una misura da rappresentare', { tipo: 'inline', tono: 'avviso', titolo: "Grafico della selezione", target: "#cellchart-bar" }); return; }
     cfg.serie = cfg.serie.filter((s) => s.campoY !== nome);
   } else {
     if (cfg.serie.length >= CATEGORICA.length) {
-      toast(`Massimo ${CATEGORICA.length} misure insieme: oltre, i colori distinguibili finiscono.`, true);
+      notifica(`Massimo ${CATEGORICA.length} misure insieme: oltre, i colori distinguibili finiscono.`, { tipo: 'inline', tono: 'avviso', titolo: "Grafico della selezione", target: "#cellchart-bar" });
       return;
     }
     // Lo slot di colore è il primo LIBERO: togliendo una misura in mezzo, la
@@ -317,7 +317,7 @@ async function disegna() {
 }
 
 async function esportaPng() {
-  if (!grafico || grafico.isDisposed()) { toast('Nessun grafico da esportare.', true); return; }
+  if (!grafico || grafico.isDisposed()) { notifica('Nessun grafico da esportare.', { tipo: 'avviso', titolo: "Grafico della selezione" }); return; }
   // Fondo pieno, non trasparente: un PNG trasparente incollato in un documento
   // chiaro mostra assi ed etichette chiari su bianco, cioè illeggibili.
   const url = grafico.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: INK.fondo });

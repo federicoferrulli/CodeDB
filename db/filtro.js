@@ -168,7 +168,7 @@ function normalizzaCondizione(c, i) {
  */
 function rendiSql(filtro, dialetto, da = 1) {
   if (!filtro) return { sql: '', params: [] };
-  const { qid, segnaposto, testoDi } = dialetto || {};
+  const { qid, segnaposto, testoDi, valore } = dialetto || {};
   if (typeof qid !== 'function' || typeof segnaposto !== 'function') {
     throw new Error('Dialetto del filtro incompleto: servono qid e segnaposto.');
   }
@@ -183,7 +183,7 @@ function rendiSql(filtro, dialetto, da = 1) {
     if (c.operatore === 'nonVuoto') return `${col} IS NOT NULL`;
 
     if (c.operatore === 'dentro') {
-      const segni = c.valore.map((v) => { const s = prossimo(); params.push(v); return s; });
+      const segni = c.valore.map((v) => { const s = prossimo(); params.push(valore ? valore(c.campo, v, c.operatore) : v); return s; });
       return `${col} IN (${segni.join(', ')})`;
     }
 
@@ -206,7 +206,7 @@ function rendiSql(filtro, dialetto, da = 1) {
     }
 
     const s = prossimo();
-    params.push(c.valore);
+    params.push(valore ? valore(c.campo, c.valore, c.operatore) : c.valore);
     return `${col} ${spec.sql} ${s}`;
   });
 

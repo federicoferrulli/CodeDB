@@ -32,6 +32,14 @@ function canon(value) {
 }
 const digest = value => crypto.createHash('sha256').update(JSON.stringify(canon(value))).digest('hex');
 function equivalente(actual, expected, label) {
+  if (digest(actual) !== digest(expected)) {
+    const differences = Object.fromEntries([...new Set([...Object.keys(actual), ...Object.keys(expected)])]
+      .map(key => [key, { uguale: digest(actual[key]) === digest(expected[key]),
+        atteso: key === 'options' ? expected[key] : digest(expected[key]),
+        ottenuto: key === 'options' ? actual[key] : digest(actual[key]) }]));
+    fs.mkdirSync(artifactsDir, { recursive: true });
+    fs.writeFileSync(path.join(artifactsDir, `divergenza-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.json`), JSON.stringify({ label, differences }, null, 2));
+  }
   assert.equal(digest(actual), digest(expected), `${label}: contenuto diverso; atteso ${digest(expected)}, ottenuto ${digest(actual)}`);
 }
 async function prova(nome, action) {
@@ -166,7 +174,10 @@ async function fixtureMongo() {
       const indexes = await client.db(db).collection('misure').indexes();
       const metadata = await client.db(db).listCollections({ name: 'misure' }).next();
       return { docs: docs.map(d => bson.EJSON.serialize(d, { relaxed: false })),
-        indexes: indexes.map(({ v, ns, ...i }) => i).sort((a, b) => a.name.localeCompare(b.name)), options: metadata.options,
+        indexes: indexes.map(({ v, ns, ...i }) => i).sort((a, b) => a.name.localeCompare(b.name)),
+        // listCollections omette i default impliciti; collMod li materializza.
+        // L'oracolo indipendente confronta la stessa politica effettiva.
+        options: { validationLevel: 'strict', validationAction: 'error', ...metadata.options },
         vuota: Boolean(await client.db(db).listCollections({ name: 'vuota' }).next()) };
     },
     async mutate() {
@@ -388,6 +399,10 @@ async function esercita(fixture) {
     const alteredValue = structuredClone(expected);
     (alteredValue.docs || alteredValue.rows)[0].testo = 'Valore corrotto deliberatamente';
     assert.throws(() => equivalente(alteredValue, expected, 'valore alterato'), /contenuto diverso/);
+    if (type === 'mongodb') for (const [key, value] of [['validationLevel', 'off'], ['validationAction', 'warn'], ['validator', {}]]) {
+      const alteredOptions = structuredClone(expected); alteredOptions.options[key] = value;
+      assert.throws(() => equivalente(alteredOptions, expected, 'validator alterato'), /contenuto diverso/);
+    }
     return { righe: (expected.docs || expected.rows).length, sha256: digest(expected) };
   });
   await prova(`${type}: backup full e verify`, async () => {

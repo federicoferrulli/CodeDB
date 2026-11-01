@@ -14,7 +14,8 @@
 import { socket } from './socket.js';
 import { tabs, createTab } from './tabs.js';
 import { state } from './state.js';
-import { $, toast, safeUUID } from './utils.js';
+import { $, safeUUID, notifica } from './utils.js';
+import { startProgress } from '../arc/ui.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace } from './workspace.js';
 import { ensureActiveCollLoaded } from './colltabs.js';
@@ -219,35 +220,39 @@ async function doRestoreSession() {
   if (!saved || !Array.isArray(saved.tabs) || !saved.tabs.length) {
     // Se restano solo connessioni non salvate, avvisa comunque.
     if (saved && saved.skippedUnsaved) {
-      toast(`${saved.skippedUnsaved} connessione/i non salvata/e non è possibile ripristinarla/e.`, true);
+      notifica(`${saved.skippedUnsaved} connessione/i non salvata/e non è possibile ripristinarla/e.`, { tipo: 'avviso', titolo: "Ripristino sessione" });
     }
     return false;
   }
 
-  toast('Ripristino della sessione in corso…');
-  for (const info of saved.tabs) {
-    try {
-      await reconnectTab(info);
-    } catch (err) {
-      toast(`Ripristino di "${info.connName}" non riuscito: ${err.message}`, true);
+  const finishProgress = startProgress('Ripristino sessione in corso');
+  try {
+    for (const info of saved.tabs) {
+      try {
+        await reconnectTab(info);
+      } catch (err) {
+        notifica(`Ripristino di "${info.connName}" non riuscito: ${err.message}`, { tipo: 'errore', titolo: "Ripristino sessione", hint: "Riapri la connessione interessata dall’elenco delle connessioni." });
+      }
     }
-  }
 
-  // Tab attivo (se ancora presente dopo eventuali fallimenti).
-  if (saved.activeId && tabs.list.some((t) => t.id === saved.activeId)) {
-    tabs.activeId = saved.activeId;
-  } else if (tabs.list.length) {
-    tabs.activeId = tabs.list[0].id;
-  }
+    // Tab attivo (se ancora presente dopo eventuali fallimenti).
+    if (saved.activeId && tabs.list.some((t) => t.id === saved.activeId)) {
+      tabs.activeId = saved.activeId;
+    } else if (tabs.list.length) {
+      tabs.activeId = tabs.list[0].id;
+    }
 
-  renderTabBar();
-  renderWorkspace();
-  ensureActiveCollLoaded(); // esegue la query del coll-tab attivo del tab attivo
+    renderTabBar();
+    renderWorkspace();
+    ensureActiveCollLoaded(); // esegue la query del coll-tab attivo del tab attivo
 
-  if (saved.skippedUnsaved) {
-    toast(`${saved.skippedUnsaved} connessione/i non salvata/e non è stato possibile ripristinarla/e.`, true);
+    if (saved.skippedUnsaved) {
+      notifica(`${saved.skippedUnsaved} connessione/i non salvata/e non è stato possibile ripristinarla/e.`, { tipo: 'avviso', titolo: "Ripristino sessione" });
+    }
+    return true;
+  } finally {
+    finishProgress();
   }
-  return true;
 }
 
 // Registra il salvataggio del layout alla chiusura/ricarica della pagina.

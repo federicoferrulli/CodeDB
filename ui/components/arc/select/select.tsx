@@ -1,7 +1,7 @@
 "use client";
 
-import { forwardRef, useId, useRef, useState } from "react";
-import type { ComponentPropsWithoutRef } from "react";
+import { forwardRef, useId, useLayoutEffect, useRef, useState } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { Variants } from "motion/react";
@@ -19,6 +19,7 @@ export interface SelectProps extends Omit<ComponentPropsWithoutRef<typeof Select
   /** CodeDB: etichetta accessibile compatta e portal nella finestra proprietaria. */
   bare?: boolean;
   portalContainer?: HTMLElement;
+  'aria-describedby'?: string;
   options: { value: string; label: string; disabled?: boolean }[];
 }
 
@@ -31,8 +32,20 @@ const valueRoll: Variants = {
 /** Reduced motion keeps a short crossfade; the resting state matches valueRoll so server and client markup agree. */
 const valueFade: Variants = { enter: { opacity: 0 }, center: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: motionTokens.duration.instant } }, exit: { opacity: 0, transition: { duration: motionTokens.duration.instant } } };
 
+// Un livello nativo annidato supera anche il ritaglio del pannello scorrevole.
+// Resta suo discendente: clic esterno, Escape e focus conservano il contesto.
+function NativeSelectLayer({ open, children }: { open: boolean; children: ReactNode }) {
+  const layer = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const node = layer.current;
+    if (open) node?.showPopover();
+    else if (node?.matches(':popover-open')) node.hidePopover();
+  }, [open]);
+  return <div ref={layer} popover="manual" className={styles.nativeLayer}>{children}</div>;
+}
+
 export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
-  { label, description, placeholder = "Scegli un valore", options, id, className, disabled, onValueChange, bare, portalContainer, ...rootProps },
+  { label, description, placeholder = "Scegli un valore", options, id, className, disabled, onValueChange, bare, portalContainer, 'aria-describedby': describedBy, ...rootProps },
   ref,
 ) {
   const generatedId = useId();
@@ -59,7 +72,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
           id={controlId}
           aria-label={bare ? label : undefined}
           data-arc-component="select"
-          aria-describedby={hintId}
+          aria-describedby={[describedBy, hintId].filter(Boolean).join(' ') || undefined}
           className={[styles.trigger, className].filter(Boolean).join(" ")}
         >
           {/* Radix keeps the real value for assistive tech; the visible copy below animates between values. */}
@@ -74,6 +87,15 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
           </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal container={portalContainer}>
+          {portalContainer?.closest('[popover]') ? <NativeSelectLayer open={rootProps.open ?? uncontrolledOpen}>{content()}</NativeSelectLayer> : content()}
+        </SelectPrimitive.Portal>
+      </SelectPrimitive.Root>
+      {description && <span id={hintId} className={styles.hint}>{description}</span>}
+    </div>
+  );
+
+  function content() {
+    return (
           <SelectPrimitive.Content data-arc-select-popup="" className={styles.content} position="popper" sideOffset={gap} collisionPadding={collisionPadding}>
             <SelectPrimitive.ScrollUpButton className={styles.scrollButton}>
               <ChevronUp size={16} strokeWidth={1.75} aria-hidden="true" />
@@ -92,9 +114,6 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
               <ChevronDown size={16} strokeWidth={1.75} aria-hidden="true" />
             </SelectPrimitive.ScrollDownButton>
           </SelectPrimitive.Content>
-        </SelectPrimitive.Portal>
-      </SelectPrimitive.Root>
-      {description && <span id={hintId} className={styles.hint}>{description}</span>}
-    </div>
-  );
+    );
+  }
 });

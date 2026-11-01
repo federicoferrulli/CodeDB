@@ -177,7 +177,7 @@ module.exports = (async () => {
     const mongoConnection = await call(client, 'connect_database', { saved: 'mongo' });
     assert(mongoConnection.ok, `la connessione MongoDB deve aprirsi (${mongoConnection.text})`);
     const mongoOperations = [
-      { collection: 'persone', operation: 'insert', doc: '{ "nome": "Ada" }' },
+      { collection: 'persone', operation: 'insert', doc: [{ nome: 'Ada', attivo: true, dati: { punteggi: [1, 2], nullo: null } }] },
       { collection: 'persone', operation: 'update', filter: '{ "nome": "Ada" }', set: '{ "attivo": true }', upsert: true },
       { collection: 'obsolete', operation: 'delete', filter: '{ "archiviato": true }' },
     ];

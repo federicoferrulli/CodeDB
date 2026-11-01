@@ -58,7 +58,7 @@ function chiaveColonne(dialetto, db, coll) {
 // colonna singola) e il chiamante usa OFFSET. Il filtro utente (WHERE) viene
 // combinato in AND con il vincolo sul cursore. L'unica differenza fra i due
 // motori è il segnaposto: `?` su MySQL, `$n` su PostgreSQL.
-function componiKeyset(dialetto, payload, table, whereSql, limit, pk, selectList = '*', whereParams = []) {
+function componiKeyset(dialetto, payload, table, whereSql, limit, pk, selectList = '*', whereParams = [], valore) {
   const { qid, segnaposto } = dialetto;
   const ks = payload && payload.keyset;
   if (!ks) return null;
@@ -76,12 +76,12 @@ function componiKeyset(dialetto, payload, table, whereSql, limit, pk, selectList
   if (whereSql) conds.push(`(${whereSql.replace(/^\s*WHERE\s+/i, '')})`); // filtro utente
   let dir = 'ASC', reverse = false;
   if (ks.after != null) {
-    conds.push(`${qid(col)} > ${prossimo()}`); params.push(valoreKeyset(ks.after, col));
+    conds.push(`${qid(col)} > ${prossimo()}`); params.push(valoreKeyset(ks.after, col, valore));
   } else if (ks.from != null) {
     // Refresh in place: pagina corrente a partire (incluso) dal primo id noto.
-    conds.push(`${qid(col)} >= ${prossimo()}`); params.push(valoreKeyset(ks.from, col));
+    conds.push(`${qid(col)} >= ${prossimo()}`); params.push(valoreKeyset(ks.from, col, valore));
   } else if (ks.before != null) {
-    conds.push(`${qid(col)} < ${prossimo()}`); params.push(valoreKeyset(ks.before, col));
+    conds.push(`${qid(col)} < ${prossimo()}`); params.push(valoreKeyset(ks.before, col, valore));
     dir = 'DESC'; reverse = true;
   }
   // ks.first (o nessun estremo): prima pagina, solo ORDER BY pk ASC.
@@ -94,11 +94,11 @@ function componiKeyset(dialetto, payload, table, whereSql, limit, pk, selectList
 // Estrae il valore della chiave dal cursore inviato dal client: è l'_id della
 // riga (JSON.stringify di `{ colonna: valore }`) oppure il valore scalare.
 // Nessun dialetto: è il protocollo del client (vedi db/sqlValori.js).
-function valoreKeyset(rawId, col) {
+function valoreKeyset(rawId, col, valore) {
   const parsed = parseClientValue(rawId);
   const v = (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && !parsed._bsontype)
     ? parsed[col] : parsed;
-  return toSqlValue(v);
+  return valore ? valore(col, v) : toSqlValue(v);
 }
 
 /* --- Lettura del catalogo --------------------------------------------------- */
@@ -162,6 +162,7 @@ async function infoColonne(dialetto, strategia, db, coll) {
       // quali colonne si possono SCRIVERE non costa una lettura di catalogo in
       // piu' — e questa lettura e' in cache, mentre l'elenco dei campi no.
       generated: d.generato ? !!d.generato(r) : false,
+      ...(d.dettagli ? d.dettagli(r) : {}),
     }));
   const info = { columns: tutte.filter((_c, i) => visibile(rows[i])) };
   // Le classi sono dichiarate dal dialetto e valutate NELL'ORDINE dichiarato:
@@ -388,8 +389,8 @@ function metodi(dialetto) {
     }
   }
   return {
-    buildKeyset(payload, table, whereSql, limit, pk, selectList = '*', whereParams = []) {
-      return componiKeyset(dialetto, payload, table, whereSql, limit, pk, selectList, whereParams);
+    buildKeyset(payload, table, whereSql, limit, pk, selectList = '*', whereParams = [], valore) {
+      return componiKeyset(dialetto, payload, table, whereSql, limit, pk, selectList, whereParams, valore);
     },
     keysetValue(rawId, col) {
       return valoreKeyset(rawId, col);

@@ -6,8 +6,8 @@ const { preparaCollectionMongo } = require('../../db/mongoCollectionOptions');
  * Ripristino da una cartella di backup. Se il backup è incrementale o
  * differenziale la catena viene risolta automaticamente risalendo i baseId
  * tra le cartelle sorelle (full → ... → backup richiesto) e i layer vengono
- * applicati in ordine: il primo con INSERT, i successivi come upsert
- * (replaceOne upsert su MongoDB, REPLACE INTO su MySQL, INSERT ... ON
+ * applicati in ordine: il primo con INSERT su destinazione vuota o upsert nel
+ * merge, i successivi come upsert (replaceOne su MongoDB, ON DUPLICATE KEY UPDATE su MySQL, INSERT ... ON
  * CONFLICT DO UPDATE su PostgreSQL).
  *
  * Restore selettivo: --collections limita il ripristino alle collection o
@@ -30,6 +30,7 @@ const {
   validaManifestIdentita, chiaveIdentita, identityCompatibile,
 } = require('./identity');
 const { equivalenzaCatena } = require('./tombstones');
+const { risolviOggettiCatena, coerenzaOggetti, equivalenzaConSchema } = require('./schema-snapshot');
 // Come si legge una riga del dump e come diventa un parametro SQL: e' il
 // protocollo del file, non il dialetto del server, e vive gia' in un modulo
 // solo (vedi db/sqlValori.js). Qui ce n'era una seconda copia, rimasta indietro
@@ -79,9 +80,9 @@ function trackerPer(tracker, collection, identity) {
 
 function registraFileAtteso(tracker, file) {
   const entry = trackerPer(tracker, file.collection, file.identity || null);
-  entry.expectedCardinality = file.sourceCardinality == null ? (file.count == null ? 0 : file.count) : file.sourceCardinality;
+  entry.expectedCardinality = file.replayCardinality ?? file.sourceCardinality ?? file.count ?? 0;
   entry.expectedDistinctIdentities = file.identity
-    ? (file.sourceDistinctIdentities == null ? file.count : file.sourceDistinctIdentities)
+    ? (file.replayCardinality ?? file.sourceDistinctIdentities ?? file.count)
     : null;
   return entry;
 }
@@ -291,9 +292,10 @@ async function preflightChain(chain, log, { allowUnsafeSchema = false } = {}) {
       sql: fs.readFileSync(fileDelBackup(layer.dir, file.path, 'file di schema'), 'utf8'),
     }));
     const objectsFile = layer.manifest.files.find((f) => f.kind === 'objects');
-    const objects = objectsFile
-      ? EJSON.parse(fs.readFileSync(fileDelBackup(layer.dir, objectsFile.path, 'file di oggetti'), 'utf8'))
-      : null;
+    const objectText = objectsFile
+      ? fs.readFileSync(fileDelBackup(layer.dir, objectsFile.path, 'file di oggetti'), 'utf8') : null;
+    const objects = objectText == null ? null : layer.manifest.dbType === 'mongodb'
+      ? JSON.parse(objectText) : EJSON.parse(objectText);
     for (const file of layer.manifest.files.filter(f=>f.kind==='large-objects')) {
       if (!['postgresql','postgres'].includes(layer.manifest.dbType)) throw new Error('Large Objects in un backup non PostgreSQL.');
       require('../../db/pg-references').validateLargeObjects(JSON.parse(fs.readFileSync(fileDelBackup(layer.dir,file.path,'Large Objects'),'utf8')));
@@ -495,6 +497,10 @@ async function mysqlGeoTargetColumns(conn, targetDb, table) {
  */
 function riqualificaDdl(ddl, dbOrigine, dbDestinazione, dbType = null) {
   if (!dbOrigine || dbOrigine === dbDestinazione) return String(ddl);
+  if (dbType === 'postgresql' || dbType === 'postgres') {
+    const indice = require('../../db/pg-indici').riqualificaIndice(ddl, dbOrigine, dbDestinazione);
+    if (indice != null) return indice;
+  }
   const esc = String(dbOrigine).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const escapedPg = String(dbOrigine).replace(/"/g, '""');
   const escapedPgRegex = escapedPg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -556,7 +562,7 @@ function senzaDefiner(ddl) {
  * ripristino dichiarato incompleto.
  */
 async function restoreSchemaObjects({
-  strategy, targetDb, dbType, oggetti, dbOrigine, problems, log, allowUnsafeSchema = false,
+  strategy, targetDb, dbType, oggetti, dbOrigine, problems, log, allowUnsafeSchema = false, applied = null, preserveViewIdentity = false,
 }) {
   if (!oggetti || typeof oggetti !== 'object') return;
 
@@ -575,21 +581,40 @@ async function restoreSchemaObjects({
     const client = strategy.client;
     for (const opt of oggetti.collectionOptions || []) {
       try {
-        await preparaCollectionMongo(client, targetDb, opt.name, opt.options);
+        await preparaCollectionMongo(client, targetDb, opt.name, opt.options, { metadata: opt });
       } catch (err) {
         problems.push(`opzioni di "${opt.name}": ${err.message}`);
       }
     }
-    for (const v of oggetti.views || []) {
-      try {
-        await client.db(targetDb).createCollection(v.name, {
-          viewOn: v.viewOn,
-          pipeline: v.pipeline || [],
-          ...(v.collation ? { collation: v.collation } : {}),
-        });
-      } catch (err) {
-        if (!/already exists/i.test(err.message)) problems.push(`view "${v.name}": ${err.message}`);
+    let pending = (oggetti.views || []).map(require('../../db/mongoSchemaBson').decodificaMetadati);
+    while (pending.length) {
+      const failed = [];
+      for (const v of pending) {
+        try {
+          const database = client.db(targetDb);
+          try {
+            await database.createCollection(v.name, {
+              viewOn: v.viewOn, pipeline: v.pipeline || [],
+              ...(v.collation ? { collation: v.collation } : {}),
+            });
+          } catch (err) {
+            if (err.code !== 48 && !/already exists/i.test(err.message)) throw err;
+            const existing = (await database.listCollections({ name: v.name }).toArray()).find(item => item.name === v.name);
+            if (existing?.type !== 'view') throw new Error(`"${v.name}" esiste ma non è una vista.`);
+            // collMod aggiorna pipeline e viewOn; la collation è immutabile.
+            const current = existing.options || {};
+            if (JSON.stringify(current.collation || null) !== JSON.stringify(v.collation || null)) {
+              await database.collection(v.name).drop();
+              await database.createCollection(v.name, { viewOn: v.viewOn, pipeline: v.pipeline || [], ...(v.collation ? { collation: v.collation } : {}) });
+            } else await database.command({ collMod: v.name, viewOn: v.viewOn, pipeline: v.pipeline || [] });
+          }
+        } catch (err) { failed.push({ ...v, error: err.message }); }
       }
+      if (failed.length === pending.length) {
+        problems.push(...failed.map(v => `view "${v.name}": ${v.error}`));
+        break;
+      }
+      pending = failed;
     }
     const n = (oggetti.views || []).length + (oggetti.collectionOptions || []).length;
     if (n && log) log.info(`  Oggetti di schema applicati: ${n}`);
@@ -597,22 +622,33 @@ async function restoreSchemaObjects({
   }
 
   // --- SQL -----------------------------------------------------------------
+  const visteDaSostituire = new Set();
+  const materializzateDaAggiornare = new Set();
   const esegui = async (sql, cosa) => {
-    let pulito = riqualificaDdl(senzaDefiner(String(sql).trim()), dbOrigine, targetDb, dbType);
+    const testo = String(sql).trim();
+    // DEFINER= appartiene a MySQL. In PostgreSQL può comparire dentro una
+    // stringa di un'espressione o di una routine: rimuoverlo altera la DDL.
+    let pulito = riqualificaDdl(dbType === 'mysql' ? senzaDefiner(testo) : testo, dbOrigine, targetDb, dbType);
     if (dbType === 'postgresql') pulito = pulito.replace(/^CREATE\s+(FUNCTION|PROCEDURE)\b/i,'CREATE OR REPLACE $1');
-    await strategy.collectionAggregate(targetDb, null, { pipeline: pulito });
+    if (visteDaSostituire.has(cosa) && !/^CREATE\s+MATERIALIZED\s+VIEW/i.test(pulito)) {
+      pulito = pulito.replace(/^CREATE\s+(?!OR\s+REPLACE\b)/i, 'CREATE OR REPLACE ');
+    }
+    if (applied?.has(pulito)) return;
+    try { await strategy.collectionAggregate(targetDb, null, { pipeline: pulito }); }
+    catch (err) {
+      // MySQL non ha OR REPLACE per routine/eventi: sul solo nome dichiarato
+      // si sostituisce l'oggetto preesistente, senza coinvolgere gli estranei.
+      if (dbType !== 'mysql' || !/^(routine|evento) /.test(cosa)
+          || !([1304, 1537].includes(err.errno) || /already exists/i.test(err.message))) throw err;
+      const target = require('../../db/artefatti').estraiBersaglio(pulito);
+      const kind = { 'create-function': 'FUNCTION', 'create-procedure': 'PROCEDURE', 'create-event': 'EVENT' }[target.kind];
+      if (!kind) throw err;
+      await strategy.collectionAggregate(targetDb, null, { pipeline: `DROP ${kind} ${myQid(targetDb)}.${myQid(target.object.name)}` });
+      await strategy.collectionAggregate(targetDb, null, { pipeline: pulito });
+    }
+    if (applied) applied.add(pulito);
     if (log) log.info(`  ${cosa} applicato/a`);
   };
-
-  for (const fk of oggetti.foreignKeys || []) {
-    try {
-      await esegui(fk, 'vincolo');
-    } catch (err) {
-      if (!/duplicate|already exists|esiste già/i.test(err.message)) {
-        problems.push(`chiave esterna: ${err.message}`);
-      }
-    }
-  }
 
   if (oggetti.collations?.length) {
     const existing = await require('../../db/pg-types').readCollations((s,p)=>strategy.pool.query(s,p), targetDb);
@@ -635,7 +671,10 @@ async function restoreSchemaObjects({
   }
   for(const t of types.filter(t=>t.shell)) await esegui(`CREATE TYPE ${pgQid(t.name)}`,`tipo shell "${t.name}"`);
   let routines = [...(oggetti.typeRoutines || [])];
-  while (types.length) {
+  // Anche senza tipi personalizzati, DEFAULT e CHECK possono richiedere una
+  // routine prima del CREATE TABLE. Quelle dipendenti da tabelle/viste restano
+  // differite alla fase successiva; ogni giro deve fare progresso reale.
+  while (types.length || routines.length) {
     let routineProgress=false;
     const deferred=[];
     for(const r of routines){try{await esegui(r.ddl,`routine del tipo "${r.name}"`);routineProgress=true;}catch{deferred.push(r);}}
@@ -649,23 +688,77 @@ async function restoreSchemaObjects({
     types = failed;
   }
 
-  // Le view possono dipendere da altre view: invece di indovinare un ordine, si
-  // riprova finché almeno una riesce. Il ciclo termina sempre — o non resta
-  // nulla, o un giro intero non fa progresso.
-  let rimaste = [...(oggetti.views || [])];
+  // In un merge lo staging può già contenere le viste della fotografia.
+  // Si ricreano soltanto quelle dichiarate, senza CASCADE: le viste estranee
+  // e le loro dipendenze non vengono eliminate. L'ordine inverso si ottiene
+  // riprovando le DROP bloccate finché c'è progresso. Se una dipendenza
+  // estranea impedisce la DROP resta disponibile CREATE OR REPLACE.
+  if (oggetti.views?.length && typeof strategy.pool?.query === 'function') {
+    const names = new Set(oggetti.views.map(v => v.name));
+    let existing;
+    if (dbType === 'postgresql') {
+      existing = (await strategy.pool.query(`SELECT c.relname AS name, c.relkind AS kind
+        FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+        WHERE n.nspname=$1 AND c.relkind IN ('v','m')`, [targetDb])).rows;
+    } else {
+      const [rows] = await strategy.pool.query(`SELECT TABLE_NAME AS name FROM information_schema.VIEWS WHERE TABLE_SCHEMA=?`, [targetDb]);
+      existing = rows;
+    }
+    let pending = existing.filter(v => names.has(v.name));
+    if (preserveViewIdentity) {
+      for (const view of pending.filter(item => item.kind !== 'm')) visteDaSostituire.add(`view "${view.name}"`);
+      const current = dbType === 'postgresql'
+        ? await require('../../db/schemaObjects').readSchemaObjects(strategy, dbType, targetDb) : null;
+      for (const view of pending.filter(item => item.kind === 'm')) {
+        const wanted = oggetti.views.find(item => item.name === view.name);
+        const found = current?.views.find(item => item.name === view.name);
+        const canonical = require('../../db/schemaObjects').canonicalSqlForDb;
+        if (wanted && found && canonical(wanted.ddl, dbOrigine) === canonical(found.ddl, targetDb)) {
+          materializzateDaAggiornare.add(view.name);
+        }
+      }
+      pending = pending.filter(item => item.kind === 'm');
+      pending = pending.filter(item => !materializzateDaAggiornare.has(item.name));
+    }
+    while (pending.length) {
+      const failed = [];
+      for (const v of pending) {
+        try {
+          const quota = dbType === 'mysql' ? myQid : pgQid;
+          await strategy.collectionAggregate(targetDb, null, { pipeline:
+            `DROP ${v.kind === 'm' ? 'MATERIALIZED ' : ''}VIEW ${quota(targetDb)}.${quota(v.name)}` });
+        } catch (error) { failed.push(v); }
+      }
+      if (failed.length === pending.length) {
+        for (const v of failed) visteDaSostituire.add(`view "${v.name}"`);
+        break;
+      }
+      pending = failed;
+    }
+  }
+
+  // Le view possono usare routine nuove e le routine possono usare view.
+  // Un'unica coda risolve entrambe le direzioni, con un limite naturale: ogni
+  // giro deve applicare almeno un oggetto e nessun successo viene ripetuto.
+  let rimaste = [
+    ...(oggetti.routines || []).map(r => ({ ...r, etichetta: `routine "${r.name}"` })),
+    ...(oggetti.views || []).map(v => ({ ...v, etichetta: `view "${v.name}"` })),
+  ];
   while (rimaste.length) {
     const falliti = [];
     let progresso = false;
     for (const v of rimaste) {
       try {
-        await esegui(v.ddl, `view "${v.name}"`);
+        if (v.materialized && materializzateDaAggiornare.has(v.name)) {
+          await strategy.pool.query(`REFRESH MATERIALIZED VIEW ${pgQid(targetDb)}.${pgQid(v.name)}`);
+        } else await esegui(v.ddl, v.etichetta);
         progresso = true;
       } catch (err) {
         falliti.push({ ...v, errore: err.message });
       }
     }
     if (!progresso) {
-      for (const v of falliti) problems.push(`view "${v.name}": ${v.errore}`);
+      for (const v of falliti) problems.push(`${v.etichetta}: ${v.errore}`);
       break;
     }
     rimaste = falliti;
@@ -673,7 +766,6 @@ async function restoreSchemaObjects({
 
   for (const gruppo of [
     { voci: oggetti.sequences || [], etichetta: (s) => `sequenza "${s.name}"` },
-    { voci: oggetti.routines || [], etichetta: (r) => `routine "${r.name}"` },
     { voci: oggetti.triggers || [], etichetta: (t) => `trigger "${t.name}"` },
     { voci: oggetti.events || [], etichetta: (e) => `evento "${e.name}"` },
   ]) {
@@ -687,6 +779,39 @@ async function restoreSchemaObjects({
       } catch (err) {
         problems.push(`${gruppo.etichetta(voce)}: ${err.message}`);
       }
+    }
+  }
+
+  // Le espressioni degli indici possono usare routine e collations. Una FK
+  // può invece riferire un indice UNIQUE autonomo: va applicata dopo gli indici.
+  for (const indice of oggetti.indexes || []) {
+    try {
+      await esegui(indice, 'indice');
+    } catch (err) {
+      // I layer storici ripetono gli stessi indici. Un nome già esistente non
+      // basta: si tollera soltanto la stessa definizione sulla stessa tabella.
+      let uguale = false;
+      if (err.code === '42P07' || /already exists|esiste già/i.test(err.message)) {
+        const target = require('../../db/artefatti').estraiBersaglio(indice);
+        if (typeof strategy.tableAuxDdl === 'function') {
+          try {
+            const table = target.table.parts.at(-1);
+            const aux = await strategy.tableAuxDdl(targetDb, table.quoted ? table.value : table.value.toLowerCase());
+            const canonical = require('../../db/schemaObjects').canonicalSqlForDb;
+            const expected = canonical(riqualificaDdl(indice, dbOrigine, targetDb, dbType), targetDb);
+            uguale = (aux.indexes || []).some(sql => canonical(sql, targetDb) === expected);
+          } catch (checkError) {
+            problems.push(`Verifica dell'indice esistente: ${checkError.message}`);
+          }
+        }
+      }
+      if (!uguale) problems.push(`indice: ${err.message}`);
+    }
+  }
+  for (const fk of oggetti.foreignKeys || []) {
+    try { await esegui(fk, 'vincolo'); }
+    catch (err) {
+      if (!/duplicate|already exists|esiste già/i.test(err.message)) problems.push(`chiave esterna: ${err.message}`);
     }
   }
 
@@ -734,7 +859,8 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
     // dichiara nel manifest: va materializzata, come fa gia' il motore del
     // piano per l'import.
     if (isFirst) {
-      await preparaCollectionMongo(client, targetDb, f.collection, mongoOptions.get(f.collection) || {}, { deferValidation: true });
+      const metadata = mongoOptions.get(f.collection);
+      await preparaCollectionMongo(client, targetDb, f.collection, metadata?.options || {}, { deferValidation: true, metadata });
     }
     if (!f.identity) {
       const empty = (await collection.countDocuments({})) === 0;
@@ -765,13 +891,17 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
     const flush = async () => {
       if (!batch.length) return;
       if (f.encoding === 'bson-base64') {
-        const result = await require('../../db/mongoBson').importRows(client, targetDb, f.collection, batch, !isFirst);
+        const result = await require('../../db/mongoBson').importRows(client, targetDb, f.collection, batch,
+          !isFirst || (!drop && !!f.identity), { preservaIdentita: !drop && !!f.identity });
         if (result.failed) throw new Error(result.errors.join('; '));
-      } else if (isFirst) {
+      } else if (isFirst && (drop || !f.identity)) {
         await collection.insertMany(batch, { ordered: false });
       } else {
         await collection.bulkWrite(
-          batch.map((doc) => ({ replaceOne: { filter: { _id: doc._id }, replacement: doc, upsert: true } })),
+          batch.map((doc) => {
+            const { _id, ...fields } = doc;
+            return { replaceOne: { filter: { _id }, replacement: !drop && f.identity ? fields : doc, upsert: true } };
+          }),
           { ordered: false }
         );
       }
@@ -789,26 +919,8 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
     log.info(`  ${f.collection}: ${applied} documenti applicati (layer ${layer.manifest.id}).`);
     checkApplied(problems, layer, f, applied);
 
-    // Indici: solo dal layer full, dopo i dati.
-    if (isFirst) {
-      const idxFile = layer.manifest.files.find((x) => x.kind === 'indexes' && x.collection === f.collection);
-      if (idxFile) {
-        const idxPath = fileDelBackup(layer.dir, idxFile.path, 'file degli indici');
-        const indexes = EJSON.deserialize(JSON.parse(fs.readFileSync(idxPath, 'utf8')), { relaxed: false });
-        for (const idx of indexes) {
-          if (idx.name === '_id_') continue;
-          const { key, name, v, ns, ...opts } = idx;
-          try {
-            await collection.createIndex(key, { name, ...opts });
-          } catch (err) {
-            throw new Error(
-              `Indice "${name || '(senza nome)'}" su "${f.collection}" non ricreato: ${err.message}. `
-              + 'Il ripristino è stato interrotto per non dichiarare riuscito un database privo dei vincoli originali.'
-            );
-          }
-        }
-      }
-    }
+    // Gli indici vengono applicati dalla fotografia finale in runRestore,
+    // dopo TUTTI i layer: i vincoli del full possono essere stati modificati.
   }
   return total;
 }
@@ -879,7 +991,8 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
           const ddl = readSchemaFile(layer.dir, schemaFile, f.collection, {
             ...opts, dbType: 'mysql', database: layer.manifest.db,
           });
-          await conn.query(ddl.replace(/;\s*$/, ''));
+          const separated = require('./engine').splitMySqlForeignKeys(ddl, f.collection);
+          await conn.query(riqualificaDdl(separated.ddl, layer.manifest.db, targetDb, 'mysql').replace(/;\s*$/, ''));
           existingTables.add(f.collection);
         }
       }
@@ -887,6 +1000,10 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
       const targetMeta = await mysqlTargetIdentity(conn, targetDb, f.collection, f.identity);
       let empty = false;
       if (!f.identity) {
+        if (!isFirst && f.mode === 'full' && f.content?.mode === 'snapshot') {
+          assertColumnsAndIdentity(f, targetMeta.columnSchema, targetMeta.identity, { empty: true });
+          await conn.query(`DELETE FROM ${tableId}`);
+        }
         const [[row]] = await conn.query(`SELECT NOT EXISTS(SELECT 1 FROM ${tableId} LIMIT 1) AS \`is_empty\``);
         empty = !!Number(row.is_empty);
       }
@@ -918,7 +1035,8 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
 
       // I layer successivi al primo (e le tabelle senza colonna data incluse
       // per intero in un incrementale) vanno applicati come upsert.
-      const verb = isFirst ? 'INSERT' : 'UPSERT';
+      const upsert = !!f.identity && (!isFirst || !drop);
+      const verb = upsert ? 'UPSERT' : 'INSERT';
       let batch = [];
       let columns = null;
       let applied = 0;
@@ -926,11 +1044,11 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
         if (!batch.length) return;
         const listaColonne = columns.map((c) => myQid(c)).join(', ');
         const conflictColumns = f.identity ? f.identity.columns : [];
-        if (!isFirst && !conflictColumns.length) {
+        if (upsert && !conflictColumns.length) {
           throw new Error(`Upsert rifiutato per "${f.collection}": il manifest non dichiara un'identita stabile.`);
         }
         const aggiornabili = columns.filter((c) => !conflictColumns.includes(c));
-        const upsertSql = !isFirst
+        const upsertSql = upsert
           ? ` ON DUPLICATE KEY UPDATE ${(
             aggiornabili.length
               ? aggiornabili.map((c) => `${myQid(c)} = VALUES(${myQid(c)})`)
@@ -1048,6 +1166,7 @@ async function pgTargetIdentity(strategy, schema, table, expectedIdentity = null
   const columns = (await require('../../db/pg-ddl').pgColonne((s, p) => pool.query(s, p), schema, table)).map((c) => ({
     name: c.name,
     type: c.ctype.toLowerCase(),
+    cast: c.ctype,
     nullable: !c.notnull,
   }));
   const identities = await leggiIdentitaPostgres(
@@ -1085,19 +1204,35 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
   targetDb = pgTargetSchema(targetDb, layer, explicitTarget);
   if (isFirst) {
     await strategy.pool.query(`CREATE SCHEMA IF NOT EXISTS ${pgQid(targetDb)}`);
+    if (onlyCollections) {
+      // Le routine condivise non appartengono alla tabella selezionata.
+      // Si aggiornano quelle necessarie ai suoi vincoli, default e trigger;
+      // le versioni locali estranee restano intatte.
+      const sourceDdl = layer.manifest.files.filter(file => file.kind === 'schema' && onlyCollections.includes(file.collection))
+        .map(file => readSchemaFile(layer.dir, file, file.collection, {
+          ...opts, dbType: 'postgresql', database: layer.manifest.db,
+        })).join('\n');
+      opts.selectedRoutines = await require('../../db/pg-routine-selezione').routineSelettivePg({
+        query: (sql, params) => strategy.pool.query(sql, params), targetDb, collections: onlyCollections,
+        objects: opts.schemaSnapshot.objects, ddl: sourceDdl,
+        references: opts.routineReferences,
+      });
+    }
     // DROP elimina anche le sequenze possedute: i prerequisiti vanno ricreati dopo.
     if (drop) for (const f of dataFiles) {
       await eliminaSePresente(() => strategy.dropCollection(targetDb, f.collection), {
         dbType: 'postgresql', target: `${targetDb}.${f.collection}`,
       });
     }
-    for (const file of layer.manifest.files.filter(f => f.kind === 'objects')) {
-      const objects = JSON.parse(fs.readFileSync(fileDelBackup(layer.dir, file.path, 'file di oggetti'), 'utf8'));
+    {
+      // La forma finale è già risolta prima dei dati. Precaricare la fotografia
+      // full lascerebbe routine poi rimosse, e perderebbe quelle aggiunte dopo.
+      const objects = opts.schemaSnapshot.objects;
       const sequences = (objects.sequences || []).filter(s => !onlyCollections || onlyCollections.includes(s.ownerTable));
       await require('../../db/pg-types').checkExtensions(strategy, objects.extensions);
       await restoreSchemaObjects({ strategy, targetDb, dbType: 'postgresql',
-        oggetti: { collations: objects.collations, types: objects.types, typeRoutines: objects.routines, sequences: sequences.map(({ ownerTable, ownerColumn, ...s }) => s) },
-        dbOrigine: layer.manifest.db, problems, log, allowUnsafeSchema: opts.allowUnsafeSchema });
+        oggetti: { collations: objects.collations, types: objects.types, typeRoutines: opts.selectedRoutines || objects.routines, sequences: sequences.map(({ ownerTable, ownerColumn, ...s }) => s) },
+        dbOrigine: opts.schemaSnapshot.db, problems, log, allowUnsafeSchema: opts.allowUnsafeSchema, applied: opts.appliedObjects });
       if (problems.length) throw new Error(problems.join('; '));
     }
   }
@@ -1136,23 +1271,34 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
       }
     }
   }
-  if(isFirst)for(const file of layer.manifest.files.filter(f=>f.kind==='objects')){
-    const objects=JSON.parse(fs.readFileSync(fileDelBackup(layer.dir,file.path,'file di oggetti'),'utf8'));
+  if (isFirst) {
+    const objects = opts.schemaSnapshot.objects;
     // Regproc può riferire routine senza tipi custom: servono prima dei dati.
     // Quelle che dipendono da view vengono riprovate nella fase finale.
-    await restoreSchemaObjects({strategy,targetDb,dbType:'postgresql',oggetti:{routines:objects.routines},dbOrigine:layer.manifest.db,problems:[],log,allowUnsafeSchema:opts.allowUnsafeSchema});
+    await restoreSchemaObjects({strategy,targetDb,dbType:'postgresql',oggetti:{routines:opts.selectedRoutines || objects.routines},dbOrigine:opts.schemaSnapshot.db,problems:[],log,allowUnsafeSchema:opts.allowUnsafeSchema,applied:opts.appliedObjects});
   }
   const referenceShapes=new Map();
   let wantedLargeObjects=null;
-  if (onlyCollections && layer.manifest.files.some(f=>['large-object','large-objects'].includes(f.kind))) {
+  if (onlyCollections) {
     wantedLargeObjects=new Set();
+    opts.largeObjectReferences ||= new Map();
     for(const f of dataFiles) {
       const shape=await require('../../db/pg-references').columnReferences((s,p)=>strategy.pool.query(s,p),targetDb,f.collection);
       referenceShapes.set(f.collection,shape);
+      if (f.mode === 'full' || !opts.largeObjectReferences.has(f.collection)) opts.largeObjectReferences.set(f.collection, new Map());
+      const state = opts.largeObjectReferences.get(f.collection);
+      const tombstone = layer.manifest.files.find(file => file.kind === 'tombstones' && file.collection === f.collection);
+      if (tombstone) for await (const line of readLines(fileDelBackup(layer.dir, tombstone.path))) {
+        state.delete(require('./content-state').chiaveRiga(parseClientValue(line), f));
+      }
+      let ordinal = 0;
       for await (const line of readLines(fileDelBackup(layer.dir,f.path,'riferimenti Large Objects'))) {
-        require('../../db/pg-references').rowReferences(parseClientValue(line),shape,id=>{wantedLargeObjects.add(id);return id;});
+        const row = parseClientValue(line), ids = new Set();
+        require('../../db/pg-references').rowReferences(row,shape,id=>{ids.add(id);return id;});
+        state.set(f.identity ? require('./content-state').chiaveRiga(row, f) : ordinal++, ids);
       }
     }
+    for (const state of opts.largeObjectReferences.values()) for (const ids of state.values()) for (const id of ids) wantedLargeObjects.add(id);
   }
   for (const file of layer.manifest.files.filter(f=>f.kind==='large-objects')) {
     const objects=JSON.parse(fs.readFileSync(fileDelBackup(layer.dir,file.path,'Large Objects'),'utf8'));
@@ -1172,6 +1318,11 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     const targetMeta = await pgTargetIdentity(strategy, targetDb, f.collection, f.identity);
     let empty = false;
     if (!f.identity) {
+      if (!isFirst && f.mode === 'full' && f.content?.mode === 'snapshot') {
+        const metadata = { ...f, columnSchema: f.columnSchema?.map(c => ({ ...c, type: riqualificaDdl(c.type, layer.manifest.db, targetDb, 'postgresql') })) };
+        assertColumnsAndIdentity(metadata, targetMeta.columnSchema, targetMeta.identity, { empty: true });
+        await strategy.pool.query(`DELETE FROM ${pgQid(targetDb)}.${pgQid(f.collection)}`);
+      }
       const res = await strategy.pool.query(
         `SELECT NOT EXISTS(SELECT 1 FROM ${pgQid(targetDb)}.${pgQid(f.collection)} LIMIT 1) AS empty`,
       );
@@ -1181,12 +1332,24 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     assertColumnsAndIdentity(expectedMeta, targetMeta.columnSchema, targetMeta.identity, { empty });
     const eliminazioni = layer.manifest.files.find((x) => x.kind === 'tombstones' && x.collection === f.collection);
     if (!isFirst && eliminazioni) {
-      const whereDelete = f.identity.columns.map((c, i) => `${pgQid(c)} = $${i + 1}`).join(' AND ');
+      const columnTypes = new Map(targetMeta.columnSchema.map(column => [column.name, column]));
       for await (const line of readLines(fileDelBackup(layer.dir, eliminazioni.path, 'file di cancellazioni'))) {
         const id = rewrite(EJSON.parse(line, { relaxed: false }));
+        await require('../../db/pg-alias').resolveNested((sql, params) => strategy.pool.query(sql, params), [id], references);
+        const params = [];
+        const whereDelete = f.identity.columns.map(c => {
+          const column = columnTypes.get(c), value = id[c];
+          const reference = value?.$pgReference && value.$pgReference.kind === column.type
+            ? require('../../db/pg-alias').binding(value) : null;
+          params.push(reference ? reference.param : (f.binarie || []).includes(c) && typeof value === 'string' ? Buffer.from(value, 'hex') : toSqlValue(value));
+          // record_eq non deduce il tipo composto dal solo operatore: il cast
+          // proviene dal catalogo della destinazione, non dal file di backup.
+          const placeholder = `$${params.length}`;
+          return `${pgQid(c)} = ${reference ? reference.sql.replace('$1', placeholder) : `${placeholder}::${column.cast}`}`;
+        }).join(' AND ');
         await strategy.pool.query(
           `DELETE FROM ${pgQid(targetDb)}.${pgQid(f.collection)} WHERE ${whereDelete}`,
-          f.identity.columns.map((c) => (f.binarie || []).includes(c) && typeof id[c] === 'string' ? Buffer.from(id[c], 'hex') : toSqlValue(id[c]))
+          params,
         );
       }
     }
@@ -1200,7 +1363,7 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
       if (!batch.length) return;
       const imp = await strategy.collectionImport(targetDb, f.collection, {
         docs: batch,
-        upsert: !isFirst,
+        upsert: !!f.identity && (!isFirst || !drop),
         conflictColumns: f.identity ? f.identity.columns : undefined,
       });
       applied += imp.inserted;
@@ -1239,7 +1402,7 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     }
     await flush();
     total += applied;
-    log.info(`  ${f.collection}: ${applied} righe applicate (layer ${layer.manifest.id}, ${isFirst ? 'INSERT' : 'UPSERT'}).`);
+    log.info(`  ${f.collection}: ${applied} righe applicate (layer ${layer.manifest.id}, ${!isFirst || (!drop && f.identity) ? 'UPSERT' : 'INSERT'}).`);
     if (failed) log.error(`  ${f.collection}: ${failed} righe NON applicate. Primi errori: ${firstErrors.join(' | ')}`);
     checkApplied(problems, layer, f, applied, failed ? `${failed} righe rifiutate (${firstErrors.join(' | ')})` : null);
   }
@@ -1302,20 +1465,22 @@ async function verificaRisultatoFinale({ strategy, dbType, targetDb, tracker, pr
     // il confronto rispetta collation e tipi senza materializzare tutte le
     // chiavi in memoria e senza confondere le scritture ripetute con righe
     // finali distinte.
-    const expectedCardinality = expected.expectedCardinality;
+    const expectedCardinality = expected.expectedCardinality + (expected.preserved || 0);
+    const expectedDistinct = expected.expectedDistinctIdentities == null ? null
+      : expected.expectedDistinctIdentities + (expected.preserved || 0);
     total += target.cardinality;
     expectedTotal += expectedCardinality;
-    collections.push({ collection, expected: expectedCardinality, ...target });
+    collections.push({ collection, expected: expectedCardinality, preserved: expected.preserved || 0, ...target });
     if (target.cardinality !== expectedCardinality) {
       problems.push(
         `${collection}: cardinalita finale ${target.cardinality}, attese ${expectedCardinality} righe/documenti distinti`
       );
     }
-    if (expected.identity && (target.distinctIdentities !== expected.expectedDistinctIdentities
+    if (expected.identity && (target.distinctIdentities !== expectedDistinct
         || target.cardinality !== target.distinctIdentities)) {
       problems.push(
         `${collection}: ${target.cardinality} righe/documenti ma ${target.distinctIdentities} identita distinte `
-        + `(attese ${expected.expectedDistinctIdentities})`
+        + `(attese ${expectedDistinct})`
       );
     }
     log.info(
@@ -1329,7 +1494,7 @@ async function verificaRisultatoFinale({ strategy, dbType, targetDb, tracker, pr
 
 /* --- Restore completo ----------------------------------------------------- */
 
-async function runRestore({ session, backupDir, targetDb, onlyCollections, drop, log, allowUnsafeSchema = false }) {
+async function runRestore({ session, backupDir, targetDb, onlyCollections, drop, log, allowUnsafeSchema = false, preserveViewIdentity = false }) {
   const { strategy, dbType } = session;
   const chain = resolveChain(backupDir);
   const first = chain[0].manifest;
@@ -1347,18 +1512,10 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
   // Deve precedere anche un eventuale --drop: un backup alterato o incompleto
   // non può provocare alcuna mutazione prima che TUTTA la catena sia valida.
   await preflightChain(chain, log, { allowUnsafeSchema });
-
-  // Le opzioni MongoDB servono alla creazione anche nel restore selettivo.
-  // Le view e gli oggetti SQL restano invece successivi al caricamento.
-  const mongoOptions = new Map();
-  if (dbType === 'mongodb') {
-    for (const layer of chain) {
-      for (const file of layer.manifest.files.filter((f) => f.kind === 'objects')) {
-        const objects = JSON.parse(fs.readFileSync(fileDelBackup(layer.dir, file.path, 'file di oggetti'), 'utf8'));
-        for (const item of objects.collectionOptions || []) mongoOptions.set(item.name, item.options);
-      }
-    }
-  }
+  const schemaSnapshot = risolviOggettiCatena(chain, { allowUnsafeSchema });
+  const routineReferences = onlyCollections && ['postgresql', 'postgres'].includes(dbType)
+    ? await require('../../db/pg-routine-selezione').riferimentiRoutineBackup(chain, onlyCollections) : [];
+  if (schemaSnapshot.nota) (log.warn || log.info).call(log, `  Oggetti di schema: ${schemaSnapshot.nota}`);
 
   if (onlyCollections) {
     const available = new Set(chain.flatMap((l) => l.manifest.files.filter((f) => f.kind === 'data').map((f) => f.collection)));
@@ -1367,27 +1524,104 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
     }
   }
 
+  const preserved = new Map();
+  if (!drop && typeof strategy.listCollections === 'function') {
+    let existing;
+    try { existing = await strategy.listCollections(db, { includeCounts: false }); }
+    catch (err) { if (err.errno === 1049 || err.code === '3F000') existing = []; else throw err; }
+    const names = new Set(existing.filter(item => item.type !== 'view').map(item => item.name));
+    for (const file of first.files.filter(item => item.kind === 'data' && item.identity
+      && names.has(item.collection) && (!onlyCollections || onlyCollections.includes(item.collection)))) {
+      const count = await require('./merge-identita').contaIdentitaPreservate({
+        strategy, dbType, targetDb: db, collection: file.collection, chain, file,
+        retarget: (value, source, destination) => riqualificaDdl(value, source, destination, 'postgresql'),
+      });
+      preserved.set(file.collection, count);
+    }
+  }
+
+  if (dbType === 'mongodb') {
+    // Nel merge gli indici vecchi non devono impedire il caricamento di righe
+    // ammesse dai vincoli finali. Si toccano soltanto nomi dichiarati nella
+    // catena; _id e gli indici estranei restano intatti.
+    for (const [name, indexNames] of Object.entries(schemaSnapshot.indexNames)) {
+      if (onlyCollections && !onlyCollections.includes(name)) continue;
+      for (const indexName of indexNames) {
+        try { await strategy.client.db(db).collection(name).dropIndex(indexName); }
+        catch (err) { if (![26, 27].includes(err.code) && !/ns not found|namespace.*not found|index not found/i.test(err.message)) throw err; }
+      }
+    }
+  } else if (typeof strategy.listCollections === 'function') {
+    // Solo oggetti dichiarati dalla catena e tabelle già presenti. Togliere
+    // i trigger prima dei dati impedisce che il merge trasformi nuovamente
+    // valori già salvati; indici e FK finali vengono ripristinati dopo i dati.
+    let existing;
+    try { existing = await strategy.listCollections(db, { includeCounts: false }); }
+    catch (err) { if (err.errno === 1049 || err.code === '3F000') existing = []; else throw err; }
+    const tables = new Set(existing.filter(item => item.type !== 'view').map(item => item.name));
+    const quota = dbType === 'mysql' ? myQid : pgQid;
+    for (const kind of ['triggers', 'foreignKeys', 'indexes']) {
+      for (const item of schemaSnapshot.managedSql[kind]) {
+        if (!tables.has(item.table) || (onlyCollections && !onlyCollections.includes(item.table))) continue;
+        let sql;
+        if (kind === 'triggers') sql = dbType === 'mysql'
+          ? `DROP TRIGGER IF EXISTS ${quota(db)}.${quota(item.name)}`
+          : `DROP TRIGGER IF EXISTS ${quota(item.name)} ON ${quota(db)}.${quota(item.table)}`;
+        else if (kind === 'foreignKeys') sql = dbType === 'mysql'
+          ? `ALTER TABLE ${quota(db)}.${quota(item.table)} DROP FOREIGN KEY ${quota(item.name)}`
+          : `ALTER TABLE ${quota(db)}.${quota(item.table)} DROP CONSTRAINT IF EXISTS ${quota(item.name)}`;
+        else sql = `DROP INDEX IF EXISTS ${quota(db)}.${quota(item.name)}`;
+        try { await strategy.collectionAggregate(db, null, { pipeline: sql }); }
+        catch (err) { if (dbType !== 'mysql' || err.errno !== 1091) throw err; }
+      }
+    }
+  }
+
+  // Le opzioni MongoDB servono alla creazione anche nel restore selettivo.
+  // Le view e gli oggetti SQL restano invece successivi al caricamento.
+  const mongoOptions = new Map();
+  if (dbType === 'mongodb') {
+    for (const item of schemaSnapshot.objects.collectionOptions || []) mongoOptions.set(item.name, item);
+  }
+
   // Righe/documenti che la catena dichiara di contenere per le collection
   // effettivamente incluse nel ripristino: è il metro di paragone del risultato.
   let totalWrites = 0;
   const problems = [];
   const tracker = new Map();
   const largeObjectMap = new Map();
+  const largeObjectReferences = new Map();
+  const appliedObjects = new Set();
   for (let i = 0; i < chain.length; i++) {
-    const args = { strategy, targetDb: db, layer: chain[i], isFirst: i === 0, onlyCollections, drop, log, problems, opts: { allowUnsafeSchema, largeObjectMap }, explicitTarget, tracker, mongoOptions };
+    const args = { strategy, targetDb: db, layer: chain[i], isFirst: i === 0, onlyCollections, drop, log, problems, opts: { allowUnsafeSchema, largeObjectMap, largeObjectReferences, schemaSnapshot, appliedObjects, routineReferences }, explicitTarget, tracker, mongoOptions };
     totalWrites += dbType === 'mysql'
       ? await restoreLayerMySql(args)
       : (dbType === 'postgresql' || dbType === 'postgres')
         ? await restoreLayerPostgreSql(args)
         : await restoreLayerMongo(args);
   }
+  for (const [name, count] of preserved) if (tracker.has(name)) tracker.get(name).preserved = count;
 
   // I validatori si applicano dopo i dati: la sorgente può contenere documenti
   // anteriori al validatore corrente. Vale anche per un restore selettivo.
   if (dbType === 'mongodb') {
-    for (const [name, options] of mongoOptions) {
+    for (const [name, metadata] of mongoOptions) {
       if (onlyCollections && !onlyCollections.includes(name)) continue;
-      await preparaCollectionMongo(strategy.client, db, name, options);
+      await preparaCollectionMongo(strategy.client, db, name, metadata.options, { metadata });
+    }
+    // Ogni elenco finale, anche vuoto, sostituisce quello precedente. Gli
+    // errori sono fatali: nessun restore riuscito può perdere un indice.
+    for (const [collectionName, indexes] of Object.entries(schemaSnapshot.indexes)) {
+      if (onlyCollections && !onlyCollections.includes(collectionName)) continue;
+      const collection = strategy.client.db(db).collection(collectionName);
+      for (const idx of indexes) {
+        if (idx.name === '_id_') continue;
+        const { key, name, v, ns, ...opts } = require('../../db/mongoSchemaBson').decodificaMetadati(idx);
+        try { await collection.createIndex(key, { name, ...opts }); }
+        catch (err) {
+          throw new Error(`Indice "${name}" su "${collectionName}" non ricreato: ${err.message}. Il ripristino è incompleto.`);
+        }
+      }
     }
   }
 
@@ -1396,18 +1630,28 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
   // non prima, per due motivi indipendenti: una FK verso una tabella non ancora
   // creata fallisce, e una FK già attiva impone alle righe un ordine di
   // caricamento che il backup non descrive. Un ripristino selettivo
-  // (onlyCollections) non li tocca: gli oggetti descrivono l'intero database.
+  // (onlyCollections) conserva soltanto gli ausiliari delle tabelle scelte.
+  // I file degli oggetti sono fotografie complete: applicare ogni layer
+  // ricreerebbe gli oggetti precedenti, inclusi quelli poi rimossi.
   const pg = dbType === 'postgresql' || dbType === 'postgres';
-  const oggetti = onlyCollections && !pg ? [] : chain
-    .map((l) => ({ layer: l, file: l.manifest.files.find((f) => f.kind === 'objects') }))
-    .filter((x) => x.file);
-  for (const { layer, file } of oggetti) {
+  if (!onlyCollections || pg || dbType === 'mysql') {
     try {
-      const testo = fs.readFileSync(fileDelBackup(layer.dir, file.path, 'file di oggetti'), 'utf8');
-      let schemaObjects = EJSON.parse(testo);
+      let schemaObjects = { ...schemaSnapshot.objects };
       if (pg) schemaObjects.types = [];
       if (onlyCollections) {
-        // Nel ripristino selettivo si aggiornano solo i contatori delle tabelle scelte.
+        // Il formato storico mescolava indici e FK: normalizzarlo prima del
+        // filtro permette di conservare entrambi per le sole tabelle scelte.
+        schemaObjects = normalizzaLayerBackup({
+          dbType, database: schemaSnapshot.db, schemas: [], objects: schemaObjects,
+        }, { allowUnsafeSchema }).objects;
+        const pertinente = sql => {
+          const table = require('../../db/artefatti').estraiBersaglio(sql).table.parts.at(-1);
+          return onlyCollections.includes(table.quoted || dbType === 'mysql' ? table.value : table.value.toLowerCase());
+        };
+        if (dbType === 'mysql') {
+          schemaObjects = { foreignKeys: (schemaObjects.foreignKeys || []).filter(pertinente),
+            triggers: (schemaObjects.triggers || []).filter(item => onlyCollections.includes(item.table)) };
+        } else {
         const owned = await strategy.pool.query(`SELECT s.relname AS name FROM pg_catalog.pg_class s
           JOIN pg_catalog.pg_namespace n ON n.oid=s.relnamespace
           JOIN pg_catalog.pg_depend d ON d.objid=s.oid AND d.deptype IN ('a','i')
@@ -1415,16 +1659,22 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
           WHERE s.relkind='S' AND n.nspname=$1 AND t.relname=ANY($2::text[])`, [db, onlyCollections]);
         const sequences = (schemaObjects.sequences || []).filter(s => onlyCollections.includes(s.ownerTable));
         const names = new Set([...owned.rows.map(s => s.name), ...sequences.map(s => s.name)]);
-        schemaObjects = { sequences, sequenceValues: (schemaObjects.sequenceValues || []).filter(s => names.has(s.name)) };
+        schemaObjects = {
+          sequences, sequenceValues: (schemaObjects.sequenceValues || []).filter(s => names.has(s.name)),
+          indexes: (schemaObjects.indexes || []).filter(pertinente),
+          foreignKeys: (schemaObjects.foreignKeys || []).filter(pertinente),
+          triggers: (schemaObjects.triggers || []).filter(item => onlyCollections.includes(item.table)),
+        };
+        }
       }
       await restoreSchemaObjects({
         strategy, targetDb: db, dbType, oggetti: schemaObjects,
         // Il database in cui il backup è stato PRESO: serve a riqualificare le
         // DDL che nominano lo schema di origine (view e trigger di MySQL).
-        dbOrigine: layer.manifest.db, problems, log, allowUnsafeSchema,
+        dbOrigine: schemaSnapshot.db, problems, log, allowUnsafeSchema, applied: appliedObjects, preserveViewIdentity,
       });
     } catch (err) {
-      problems.push(`oggetti di schema del layer ${layer.manifest.id}: ${err.message}`);
+      problems.push(`oggetti di schema del layer ${schemaSnapshot.layerId || first.id}: ${err.message}`);
     }
   }
 
@@ -1443,7 +1693,9 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
     totalWrites,
     collections: verified.collections,
     problems,
-    equivalenza: equivalenzaCatena(chain),
+    equivalenzaDati: equivalenzaCatena(chain),
+    equivalenza: equivalenzaConSchema(equivalenzaCatena(chain), schemaSnapshot),
+    coerenzaSchema: coerenzaOggetti(schemaSnapshot),
     ...(largeObjectMap.size ? { largeObjects: [...largeObjectMap.values()] } : {}),
   };
 

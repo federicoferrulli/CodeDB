@@ -21,13 +21,6 @@ const mongo = new MongoClient('mongodb://127.0.0.1:27039');
   server = await startTestServer({ port: 3182 });
   browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 980 } });
-  if (process.argv.includes('--mutant=copia')) await page.route('**/js/query-native.js', async route => {
-    const response = await route.fetch();
-    const source = await response.text();
-    const from = 'openDbTab(db, { query: { code, engine: target.state.dbType } });';
-    assert(source.includes(from), 'Mutazione UI non applicabile');
-    await route.fulfill({ response, body: source.replace(from, 'openDbTab(db);') });
-  });
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.addInitScript(version => localStorage.setItem('codedb:onboarding', JSON.stringify({ visto: true, versioneVista: version, traguardi: {}, checklistChiusa: true })), require('../package.json').version);
@@ -57,11 +50,16 @@ const mongo = new MongoClient('mongodb://127.0.0.1:27039');
   for (const type of ['postgresql', 'mysql']) {
     const sql = `CREATE TABLE destinazione_${type}(id INT)`;
     await page.locator('#query-editor-input').fill(sql);
+    await page.evaluate(async ({ type, db }) => {
+      (await import('/js/workspace.js')).saveWorkspaceInputs();
+      (await import('/js/tabs.js')).switchTab(type);
+      (await import('/js/colltabs.js')).openDbTab(db, { query: { code: '', engine: 'auto' } });
+    }, { type, db });
+    await page.locator('#query-editor-input').fill(sql);
     await page.locator('#query-target-btn').click();
-    await scegli('Apri una copia su SQL nativo', `Motore ${type} · ${type === 'mysql' ? 'MySQL' : 'PostgreSQL'}`);
-    await scegli('Database / schema di destinazione', db);
-    await page.locator('#query-native-open').click();
-    await page.waitForFunction(async type => (await import('/js/tabs.js')).activeTab()?.id === type, type);
+    assert.equal(await page.locator('[id^="query-native-"]').count(), 0);
+    await scegli('Motore di esecuzione', type === 'mysql' ? 'MySQL nativo' : 'PostgreSQL nativo');
+    await page.keyboard.press('Escape');
     assert.equal(await page.locator('#query-editor-input').inputValue(), sql);
     assert.equal(await page.locator('#query-target-engine').inputValue(), type);
     const snapshots = await page.evaluate(async type => {
@@ -89,10 +87,9 @@ const mongo = new MongoClient('mongodb://127.0.0.1:27039');
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#query-target-btn').click();
-  await scegli('Apri una copia su SQL nativo', 'Motore postgresql · PostgreSQL');
-  await scegli('Database / schema di destinazione', db);
+  await scegli('Motore di esecuzione', 'Cross-DB (Virtual JOIN)');
   await page.getByRole('listbox').waitFor({ state: 'hidden' });
-  assert(await page.locator('#query-native-open').isVisible());
+  assert.equal(await page.locator('[id^="query-native-"]').count(), 0);
   const rect = await page.locator('#query-target-menu').boundingBox();
   assert(rect.x >= 0 && rect.x + rect.width <= 391, 'Destinazione entro la finestra mobile');
   await page.screenshot({ path: 'test-reports/query-languages/native-mobile.png' });

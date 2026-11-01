@@ -6,8 +6,6 @@ const esclusioni = {
   'e2e-contenitori.js': 'Richiede Electron desktop ed emulatore Android dedicato con APK installabile.',
   'e2e-mobile-android.js': 'Richiede adb Windows, APK e emulatore Android dedicato emulator-5580.',
   'e2e-splash-android.js': 'Richiede adb Windows e emulatore Android dedicato emulator-5580.',
-  'e2e-scorciatoie.js': 'Richiede una sessione desktop Electron; il runner di base usa Chromium headless.',
-  'e2e-zoom.js': 'Richiede una sessione desktop Electron; il runner di base usa Chromium headless.',
   'e2e-release-desktop.cjs': 'Richiede un pacchetto Electron compilato per il sistema in prova.',
   'e2e-mongosh-electron.cjs': 'Richiede pacchetto Electron e ambiente grafico desktop.',
   'e2e-mongosh-runtime.js': 'Eseguito nel profilo native: usa il MongoDB dedicato sulla porta 27039.',

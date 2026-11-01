@@ -1,5 +1,6 @@
 'use strict';
 const { colonnaGenerata } = require('../../db/mysqlColonne');
+const { confinePostgres, confineMySql } = require('./confine-sql');
 
 /* ---------------------------------------------------------------------------
  * Motore di backup: dump in streaming di MongoDB, MySQL e PostgreSQL in una
@@ -18,10 +19,10 @@ const { colonnaGenerata } = require('../../db/mysqlColonne');
  *   incremental   — solo le modifiche dall'ULTIMO backup (di qualsiasi tipo).
  *   differential  — solo le modifiche dall'ultimo backup FULL.
  *
- * Le modifiche sono individuate da un campo data (--since-field, es.
- * updatedAt); senza campo MongoDB rilegge tutti i documenti,
- * MySQL e PostgreSQL cercano colonne canoniche
- * (updated_at, ...) e in mancanza eseguono il dump completo della tabella.
+ * Le modifiche automatiche si individuano confrontando il contenuto fedele
+ * di tutte le righe con la catena verificata. --since-field applica invece
+ * un filtro temporale esplicito, dichiarato come selezione incompleta.
+ * Senza identità stabile si salva una snapshot completa da sostituire.
  * Dalla versione 3 le cancellazioni sono tombstone d'identità calcolati
  * confrontando lo stato risolto della base con la snapshot corrente.
  * ------------------------------------------------------------------------- */
@@ -30,7 +31,7 @@ const fs = require('fs');
 const path = require('path');
 // Tutte le scritture EJSON del motore passano dal codec fedele (`db/codecFedele`):
 // canonico in scrittura, mai relaxed distruttivo. Vedi il modulo per il perché.
-const { stringifyRiga, parseRiga, serializeConservativo } = require('../../db/codecFedele');
+const { stringifyRiga } = require('../../db/codecFedele');
 const {
   createFileSink, readLines, fileDelBackup, safeName, makeBackupId, readCatalog, appendToCatalog, readManifest, formatBytes, backupPathKey,
 } = require('./util');
@@ -44,10 +45,10 @@ const { quotaSempre } = require('../../db/identificatori');
 const myQid = (name) => quotaSempre(name, 'mysql');
 const { pgCreateTable, pgAuxDdl, pgSchemaObjects, pgColonneDaSalvare } = require('../../db/pg-ddl');
 const {
-  MANIFEST_VERSION, leggiIdentitaMySql, leggiIdentitaPostgres, validaManifestIdentita, chiaveIdentita,
+  MANIFEST_VERSION, leggiIdentitaMySql, leggiIdentitaPostgres, validaManifestIdentita,
 } = require('./identity');
 const {
-  dichiarazioneCancellazioni, identitaDellaRiga, applicaTombstone,
+  dichiarazioneCancellazioni,
 } = require('./tombstones');
 
 const TOOL_VERSION = MANIFEST_VERSION;
@@ -164,117 +165,12 @@ function assertUniqueFilePaths(files) {
   }
 }
 
-async function statoIdentitaDellaCatena(backupDir, controllo) {
-  const chain = require('./restore').resolveChain(backupDir);
-  const stati = new Map();
-  for (const layer of chain) {
-    for (const file of layer.manifest.files.filter((f) => f.kind === 'data' || f.kind === 'tombstones')) {
-      if (!file.identity) continue;
-      if (!stati.has(file.collection)) stati.set(file.collection, new Map());
-      const stato = stati.get(file.collection);
-      for await (const line of readLines(fileDelBackup(layer.dir, file.path, 'layer identità'))) {
-        await controllo.avanza(file.collection, stato.size, 'identita');
-        const row = file.encoding === 'bson-base64' ? JSON.parse(line) : parseRiga(line);
-        const riga = ['mongo', 'mongodb'].includes(layer.manifest.dbType) && !file.encoding
-          ? { _id: require('../../db/mongoBson').encode({ _id: row._id })._id } : row;
-        if (file.kind === 'tombstones') applicaTombstone(stato, [riga], file.identity);
-        else stato.set(chiaveIdentita(riga, file.identity), identitaDellaRiga(riga, file.identity));
-      }
-    }
-  }
-  return stati;
-}
 
-async function identitaSqlNellaSnapshot(conn, mysql, db, file, controllo) {
-  const stato = new Map();
-  const add = row => stato.set(chiaveIdentita(row, file.identity), identitaDellaRiga(row, file.identity));
-  if (mysql) {
-    const meta = await mysqlColumnMeta(conn, db, file.collection, file.identity.columns);
-    const stream = conn.connection.query(`SELECT ${meta.select} FROM ${myQid(db)}.${myQid(file.collection)}`).stream();
-    const rimuovi = controllo.osservaStream(stream);
-    try { for await (const row of stream) {
-      add(parseRiga(stringifyRiga(require('../../db/mysql-ordinal').encode(row, meta.columnSchema))));
-      await controllo.avanza(file.collection, stato.size, 'identita');
-    } }
-    finally { rimuovi(); stream.destroy(); }
-  } else {
-    const meta = await pgColonneDaSalvare((s,p)=>conn.query(s,p), db, file.collection, file.identity.columns);
-    await conn.query(`DECLARE codedb_ids NO SCROLL CURSOR FOR SELECT ${meta.select} FROM ${pgQid(db)}.${pgQid(file.collection)}`);
-    try {
-      for (;;) { const page=await conn.query('FETCH FORWARD 1000 FROM codedb_ids'); for(const row of page.rows)add(parseRiga(stringifyRiga(require('../../db/pg-alias').encode(row,meta.columnSchema)))); await controllo.avanza(file.collection, stato.size, 'identita', true); if(!page.rows.length)break; }
-    } finally { if (!controllo.signal?.aborted) await conn.query('CLOSE codedb_ids'); }
-  }
-  return stato;
-}
-
-async function identitaCorrenti(strategy, db, file, controllo) {
-  const stato = new Map();
-  if (['mysql', 'postgresql'].includes(strategy.type)) {
-    const mysql = strategy.type === 'mysql';
-    const collegamento = await controllo.acquisisciSql(mysql ? strategy.pool.getConnection() : strategy.pool.connect(), mysql);
-    const { conn } = collegamento;
-    try {
-      if (!mysql) {
-        await conn.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-        await conn.query("SET LOCAL TimeZone='UTC'; SET LOCAL DateStyle='ISO,YMD'; SET LOCAL IntervalStyle='postgres'; SET LOCAL extra_float_digits=3; SET LOCAL search_path TO pg_catalog");
-      }
-      const result = await identitaSqlNellaSnapshot(conn, mysql, db, file, controllo);
-      if (!mysql) await conn.query('COMMIT');
-      return result;
-    } catch (e) { if (!mysql && !controllo.signal?.aborted) await conn.query('ROLLBACK').catch(()=>{}); throw e; }
-    finally { collegamento.libera(); }
-  }
-  if (file.encoding === 'bson-base64') {
-    const cursor = strategy.client.db(db).collection(file.collection).find({}, { raw: true, projection: { _id: 1 }, signal: controllo.signal }).batchSize(1000);
-    try {
-      for await (const raw of cursor) {
-        const row = require('../../db/mongoBson').encode(raw);
-        stato.set(chiaveIdentita(row, file.identity), identitaDellaRiga(row, file.identity));
-        await controllo.avanza(file.collection, stato.size, 'identita');
-      }
-    } finally { await cursor.close(); }
-    return stato;
-  }
-  let skip = 0;
-  let after = null;
-  // collectionExport calcola il totale solo sul primo blocco (costa una
-  // scansione dell'intera tabella/collection): va conservato da lì, non
-  // riletto da ogni pagina.
-  let total = null;
-  const limit = 1000;
-  for (;;) {
-    await controllo.avanza(file.collection, skip, 'identita', true);
-    const pagina = await strategy.collectionExport(db, file.collection, { format: 'json', skip, after, limit });
-    for (const line of pagina.lines || []) {
-      const riga = parseRiga(line);
-      stato.set(chiaveIdentita(riga, file.identity), identitaDellaRiga(riga, file.identity));
-    }
-    skip += Number(pagina.count) || 0;
-    if (pagina.nextAfter != null) after = pagina.nextAfter;
-    if (pagina.total != null) total = Number(pagina.total);
-    if (!pagina.count || pagina.count < limit || (total != null && skip >= total)) break;
-  }
-  return stato;
-}
-
-async function aggiungiTombstones({ strategy, db, base, groupDir, result, backupDir, compress, level, controllo }) {
+async function aggiungiTombstones({ base, result, backupDir, compress, level, controllo }) {
   if (!base) return;
-  const precedenti = await statoIdentitaDellaCatena(path.join(groupDir, base.id), controllo);
   for (const file of result.files.filter((f) => f.kind === 'data')) {
-    if (!file.identity) throw new Error(`Impossibile rappresentare le cancellazioni di "${file.collection}": identità stabile assente.`);
-    const correnti = result.identityStates?.get(file.collection) || await identitaCorrenti(strategy, db, file, controllo);
-    if (correnti.size !== file.sourceCardinality) {
-      throw new Error(
-        `La sorgente "${file.collection}" è cambiata durante il backup: `
-        + `${file.sourceCardinality} identità nella snapshot, ${correnti.size} alla verifica. Riprova.`
-      );
-    }
-    const rimossi = [];
-    let confrontate = 0;
-    for (const [chiave, identita] of precedenti.get(file.collection) || []) {
-      if (!correnti.has(chiave)) rimossi.push(identita);
-      await controllo.avanza(file.collection, ++confrontate, 'cancellazioni');
-    }
+    if (!file.identity) continue;
+    const rimossi = result.deletionStates.get(file.collection) || [];
     const rel = `deletions/${safeName(file.collection)}.ndjson${compress ? '.gz' : ''}`;
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let digest;
@@ -325,7 +221,7 @@ function confineIncrementale(since) {
   return new Date(new Date(since).getTime() - margineIncrementale());
 }
 
-async function dumpMongo({ strategy, db, collections, type, since, sinceField, backupDir, compress, level, log, controllo }) {
+async function dumpMongo({ strategy, db, collections, type, since, sinceField, previousStates, backupDir, compress, level, log, controllo }) {
   const client = strategy.client;
   const files = [];
   const notes = [];
@@ -338,7 +234,7 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
     return lettura;
   }));
   const {coerenza} = lettura;
-  const identityStates = new Map();
+  const deletionStates = new Map();
   notes.push(coerenza.avviso);
   try {
   for (const coll of collections) {
@@ -352,25 +248,36 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
       if (sinceField) {
         sinceColumn = sinceField;
         filter = { [sinceField]: { $gt: confineIncrementale(since) } };
-      } else {
-        mode = 'full';
-        notes.push(`"${coll}": senza un campo di modifica affidabile si rileggono tutti i documenti; il timestamp dell'ObjectId non rileva aggiornamenti né altri tipi di _id.`);
       }
+    }
+
+    const descriptor = { collection: coll, identity: { kind: 'mongodb-id', columns: ['_id'] }, encoding: require('../../db/mongoBson').ENCODING };
+    const delta = require('./content-state').creaDelta(previousStates.get(coll), descriptor, { incremental: !!since, explicit: !!sinceColumn });
+    let selected = null;
+    if (sinceColumn) {
+      selected = new Set();
+      const ids = collection.find(filter, { raw: true, projection: { _id: 1 }, ...lettura.options, signal: controllo.signal }).batchSize(1000);
+      try { for await (const raw of ids) selected.add(require('./content-state').chiaveRiga(require('../../db/mongoBson').encode(raw), descriptor)); }
+      finally { await ids.close(); }
     }
 
     const rel = `data/${safeName(coll)}.ndjson${compress ? '.gz' : ''}`;
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let count = 0;
+    let scanned = 0;
     const columns = new Set(['_id']);
-    const cursor = collection.find(filter, { raw: true, ...lettura.options, signal: controllo.signal }).batchSize(1000);
+    const cursor = collection.find({}, { raw: true, ...lettura.options, signal: controllo.signal }).batchSize(1000);
     let digest;
     try {
       for await (const doc of cursor) {
         const bson = require('../../db/mongoBson');
         for (const column of bson.inspect(Buffer.isBuffer(doc) ? doc : require('bson').serialize(doc)).columns) columns.add(column);
-        await sink.writeLine(JSON.stringify(bson.encode(doc)));
-        count += 1;
-        await controllo.avanza(coll, count);
+        const encoded = bson.encode(doc);
+        if (delta.considera(encoded, !selected || selected.has(require('./content-state').chiaveRiga(encoded, descriptor)))) {
+          await sink.writeLine(JSON.stringify(encoded));
+          count += 1;
+        }
+        await controllo.avanza(coll, ++scanned);
       }
       digest = await sink.close();
     } catch (err) {
@@ -381,31 +288,23 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
     const { bytes, sha256 } = digest;
     await controllo.avanza(coll, count, 'verifica', true);
     const sourceCardinality = await collection.countDocuments({}, { ...lettura.options, signal: controllo.signal });
-    if (since) {
-      const ids = new Map();
-      const idCursor = collection.find({}, {raw:true, projection:{_id:1}, ...lettura.options, signal: controllo.signal}).batchSize(1000);
-      try { for await (const raw of idCursor) {
-        const row = require('../../db/mongoBson').encode(raw), identity={kind:'mongodb-id',columns:['_id']};
-        ids.set(chiaveIdentita(row,identity),identitaDellaRiga(row,identity));
-        await controllo.avanza(coll, ids.size, 'identita');
-      }} finally { await idCursor.close(); }
-      identityStates.set(coll,ids);
-    }
+    const { tombstones, content, replayCardinality } = delta.conclude(sourceCardinality);
+    deletionStates.set(coll, tombstones);
     files.push({
       path: rel, collection: coll, kind: 'data', mode, sinceColumn, count, bytes, sha256,
       columns: [...columns], identity: { kind: 'mongodb-id', columns: ['_id'] },
       encoding: require('../../db/mongoBson').ENCODING,
-      sourceCardinality, sourceDistinctIdentities: sourceCardinality,
+      sourceCardinality, sourceDistinctIdentities: sourceCardinality, content, replayCardinality,
     });
     log.info(`  ${coll}: ${count} documenti → ${rel} (${formatBytes(bytes)})`);
 
-    // Gli indici servono solo al restore del layer full.
-    if (type === 'full') {
-      const indexes = await controllo.attendi(collection.indexes());
+    // Anche gli indici sono una fotografia completa, non modifiche additive.
+    {
+      const indexes = await controllo.attendi(collection.indexes({ promoteValues: false }));
       const relIdx = `indexes/${safeName(coll)}.json`;
       fs.mkdirSync(path.join(backupDir, 'indexes'), { recursive: true });
-      fs.writeFileSync(path.join(backupDir, relIdx), JSON.stringify(serializeConservativo(indexes), null, 2), 'utf8');
-      files.push({ path: relIdx, collection: coll, kind: 'indexes', ...fileDigest(path.join(backupDir, relIdx)) });
+      fs.writeFileSync(path.join(backupDir, relIdx), JSON.stringify(indexes.map(require('../../db/mongoSchemaBson').codificaMetadati), null, 2), 'utf8');
+      files.push({ path: relIdx, collection: coll, kind: 'indexes', mode: 'snapshot', ...fileDigest(path.join(backupDir, relIdx)) });
     }
   }
 
@@ -413,12 +312,12 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
   // collection. Le opzioni sono la parte che sorprende: un validatore, una
   // collection capped o una collation di default non stanno nei documenti né
   // negli indici, quindi un restore le perdeva tutte e il database ripristinato
-  // accettava scritture che l'originale rifiutava. Solo nel full: gli
-  // incrementali contengono modifiche, non la forma del database.
-  if (type === 'full') {
+  // accettava scritture che l'originale rifiutava. Ogni layer fotografa lo
+  // stato completo: anche un elenco vuoto dichiara la rimozione degli oggetti.
+  {
     const oggetti = { views: [], collectionOptions: [] };
     await controllo.avanza(null, 0, 'struttura', true);
-    const tutte = await client.db(db).listCollections({}, { signal: controllo.signal }).toArray();
+    const tutte = await client.db(db).listCollections({}, { signal: controllo.signal, promoteValues: false }).toArray();
     for (const info of tutte) {
       if (info.type === 'view') {
         oggetti.views.push({
@@ -437,19 +336,20 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
       delete opzioni.idIndex;
       if (Object.keys(opzioni).length) oggetti.collectionOptions.push({ name: info.name, options: opzioni });
     }
-    if (oggetti.views.length || oggetti.collectionOptions.length) {
+    {
       const relOgg = 'objects/schema.json';
       fs.mkdirSync(path.join(backupDir, 'objects'), { recursive: true });
       fs.writeFileSync(
         path.join(backupDir, relOgg),
-        JSON.stringify(serializeConservativo(oggetti), null, 2), 'utf8',
+        JSON.stringify(Object.fromEntries(Object.entries(oggetti).map(([field, entries]) =>
+          [field, entries.map(require('../../db/mongoSchemaBson').codificaMetadati)])), null, 2), 'utf8',
       );
-      files.push({ path: relOgg, collection: null, kind: 'objects', ...fileDigest(path.join(backupDir, relOgg)) });
+      files.push({ path: relOgg, collection: null, kind: 'objects', mode: 'snapshot', ...fileDigest(path.join(backupDir, relOgg)) });
       log.info(`  Oggetti di schema: ${oggetti.views.length} view, ${oggetti.collectionOptions.length} collection con opzioni`);
     }
   }
   const { avviso: _avviso, ...coerenzaManifest } = coerenza;
-  return { files, notes, coerenza: coerenzaManifest, identityStates };
+  return { files, notes, coerenza: coerenzaManifest, deletionStates };
   } finally { await lettura.close(); }
 }
 
@@ -463,11 +363,12 @@ async function mysqlSinceColumn(conn, db, table, sinceField) {
       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
     [db, table]
   );
-  const dateCols = new Set(
-    cols.filter((c) => ['timestamp', 'datetime', 'date'].includes(String(c.dtype).toLowerCase())).map((c) => c.name)
+  const dateCols = new Map(
+    cols.filter((c) => ['timestamp', 'datetime', 'date'].includes(String(c.dtype).toLowerCase()))
+      .map((c) => [c.name, { name: c.name, type: String(c.dtype).toLowerCase() }])
   );
-  if (sinceField) return dateCols.has(sinceField) ? sinceField : null;
-  return SINCE_COLUMN_CANDIDATES.find((c) => dateCols.has(c)) || null;
+  if (sinceField) return dateCols.get(sinceField) || null;
+  return dateCols.get(SINCE_COLUMN_CANDIDATES.find((c) => dateCols.has(c))) || null;
 }
 
 /**
@@ -586,7 +487,7 @@ function splitMySqlForeignKeys(createTable, tableName, atteseDalCatalogo = null)
   // Tolta l'ultima voce dell'elenco, la precedente resta con una virgola
   // sospesa: `CREATE TABLE (a INT,\n) ENGINE=...` non è sintassi valida.
   for (let i = tenute.length - 1; i >= 0; i--) {
-    if (/^\s*\)/.test(tenute[i])) continue;
+    if (/^\s*$/.test(tenute[i]) || /^\s*\)/.test(tenute[i])) continue;
     tenute[i] = tenute[i].replace(/,\s*$/, '');
     break;
   }
@@ -691,7 +592,7 @@ async function mysqlStableIdentity(conn, db, table, columns) {
   return (await leggiIdentitaMySql((sql, params) => conn.query(sql, params), db, table, columns))[0] || null;
 }
 
-async function dumpMySql({ strategy, db, collections, since, sinceField, backupDir, compress, level, log, controllo }) {
+async function dumpMySql({ strategy, db, collections, since, sinceField, previousStates, backupDir, compress, level, log, controllo }) {
   const mysql = require('mysql2');
   const pool = strategy.pool;
   const collegamento = await controllo.acquisisciSql(pool.getConnection(), true);
@@ -713,6 +614,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
     inTransaction = true;
 
     const chiaviEsterne = [];
+    const deletionStates = new Map();
     for (const table of collections) {
       await controllo.avanza(table, 0, 'struttura', true);
       // Definizione della tabella, per ricrearla al restore. Le chiavi esterne
@@ -740,18 +642,22 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
 
       let mode = 'full';
       let sinceColumn = null;
+      let sinceType = null;
       let where = '';
       const params = [];
-      if (since) {
-        sinceColumn = await mysqlSinceColumn(conn, db, table, sinceField);
-        if (sinceColumn) {
+      if (since && sinceField) {
+        const column = await mysqlSinceColumn(conn, db, table, sinceField);
+        if (column) {
+          sinceColumn = column.name;
+          sinceType = column.type;
           mode = 'incremental';
           // FROM_UNIXTIME confronta l'istante assoluto: passare una Date
           // farebbe serializzare a mysql2 l'ora locale del client, sbagliata
           // quando il server è in un altro fuso orario.
-          where = ` WHERE ${myQid(sinceColumn)} > FROM_UNIXTIME(?)`;
+          const boundary = confineMySql(sinceType, confineIncrementale(since));
+          where = ` WHERE ${myQid(sinceColumn)} ${boundary.operator} ${boundary.expression}`;
           // Millisecondi (non secondi interi): FROM_UNIXTIME accetta i decimali.
-          params.push(confineIncrementale(since).getTime() / 1000);
+          params.push(boundary.parameter);
         } else {
           notes.push(`"${table}": nessuna colonna data utilizzabile — inclusa per intero nel backup incrementale.`);
         }
@@ -760,6 +666,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       const rel = `data/${safeName(table)}.ndjson${compress ? '.gz' : ''}`;
       const sink = createFileSink(path.join(backupDir, rel), { compress, level });
       let count = 0;
+      let scanned = 0;
       // Le colonne GEOMETRY non possono essere lette con `SELECT *`: il driver
       // le consegna come oggetti `{x, y}` (o array di punti), una forma che
       // PERDE il tipo geometrico e il SRID e che MySQL rifiuta di reinserire
@@ -781,12 +688,13 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       const { geo: geoCols, select: selectList } = meta;
       if (!selectList) throw new Error(`La tabella "${table}" non ha colonne salvabili.`);
       const identity = await mysqlStableIdentity(conn, db, table, meta.columns);
-      if (since && !identity) {
-        throw new Error(
-          `La tabella "${table}" non ha un'identita stabile (PRIMARY KEY o UNIQUE interamente NOT NULL): `
-          + 'backup incrementale/differenziale rifiutato.'
-        );
-      }
+      if (since && identity && !sinceField) mode = 'incremental';
+      if (!identity) { mode = 'full'; sinceColumn = null; where = ''; params.length = 0; }
+      const descriptor = { collection: table, columns: meta.nomi, columnSchema: meta.columnSchema, identity };
+      const delta = require('./content-state').creaDelta(previousStates.get(table), descriptor, { incremental: mode !== 'full', explicit: !!sinceColumn });
+      let selectedAlias = '__codedb_delta_selected';
+      while (meta.nomi.includes(selectedAlias)) selectedAlias += '_';
+      const selection = where ? `, (${where.replace(/^ WHERE /, '')}) AS ${myQid(selectedAlias)}` : '';
       if (geoCols.size) {
         notes.push(`"${table}": ${geoCols.size} colonne geometriche salvate come WKB esadecimale.`);
       }
@@ -794,7 +702,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       // Streaming riga per riga sulla connessione non-promise: nessun
       // caricamento in memoria dell'intera tabella.
       const stream = conn.connection
-        .query({ sql: `SELECT ${selectList} FROM ${myQid(db)}.${myQid(table)}${where}`, values: params })
+        .query({ sql: `SELECT ${selectList}${selection} FROM ${myQid(db)}.${myQid(table)}`, values: params })
         .stream();
       const rimuovi = controllo.osservaStream(stream);
       let digest;
@@ -803,9 +711,14 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
           // HEX() restituisce già una stringa esadecimale: va nel file così
           // com'è, e il restore la riconosce dal tipo della colonna di
           // destinazione (vedi mysqlGeoTargetColumns).
-          await sink.writeLine(stringifyRiga(require('../../db/mysql-ordinal').encode(row, meta.columnSchema)));
-          count += 1;
-          await controllo.avanza(table, count);
+          const selected = !selection || !!Number(row[selectedAlias]);
+          if (selection) delete row[selectedAlias];
+          const encoded = require('../../db/mysql-ordinal').encode(row, meta.columnSchema);
+          if (delta.considera(encoded, selected)) {
+            await sink.writeLine(stringifyRiga(encoded));
+            count += 1;
+          }
+          await controllo.avanza(table, ++scanned);
         }
         digest = await sink.close();
       } catch (err) {
@@ -830,10 +743,13 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       );
       const sourceCardinality = Number(sourceCounts.cardinality);
       const sourceDistinctIdentities = identity ? Number(sourceCounts.distinctIdentities) : null;
+      const { tombstones, content, replayCardinality } = delta.conclude(sourceCardinality);
+      deletionStates.set(table, tombstones);
       files.push({
         path: rel, collection: table, kind: 'data', mode, sinceColumn, count, bytes, sha256, geoSrid,
+        ...(sinceType ? { sinceType, sinceTimezone: 'UTC' } : {}),
         columns: meta.nomi, columnSchema: meta.columnSchema, identity,
-        sourceCardinality, sourceDistinctIdentities,
+        sourceCardinality, sourceDistinctIdentities, content, replayCardinality,
         timezone: 'UTC',
         geometryEncoding: 'mysql-internal-hex',
         ordinalColumns: meta.columnSchema.filter(require('../../db/mysql-ordinal').isOrdinal).map(c=>c.name),
@@ -847,23 +763,21 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
     oggetti.foreignKeys = chiaviEsterne;
     const totale = oggetti.views.length + oggetti.routines.length
       + oggetti.triggers.length + oggetti.events.length + chiaviEsterne.length;
-    if (totale) {
+    {
       const relOgg = 'objects/schema.json';
       fs.mkdirSync(path.join(backupDir, 'objects'), { recursive: true });
       fs.writeFileSync(path.join(backupDir, relOgg), JSON.stringify(oggetti, null, 2), 'utf8');
-      files.push({ path: relOgg, collection: null, kind: 'objects', ...fileDigest(path.join(backupDir, relOgg)) });
+      files.push({ path: relOgg, collection: null, kind: 'objects', mode: 'snapshot', ...fileDigest(path.join(backupDir, relOgg)) });
       log.info(
         `  Oggetti di schema: ${oggetti.views.length} view, ${oggetti.routines.length} routine, `
         + `${oggetti.triggers.length} trigger, ${oggetti.events.length} eventi, ${chiaviEsterne.length} chiavi esterne`
       );
     }
 
-    const identityStates = new Map();
-    if (since) for (const file of files.filter(f=>f.kind==='data' && f.identity)) identityStates.set(file.collection, await identitaSqlNellaSnapshot(conn,true,db,file,controllo));
     await conn.query('COMMIT');
     inTransaction = false;
     return {
-      files, notes, identityStates,
+      files, notes, deletionStates,
       coerenza: {
         motore: 'mysql', snapshot: 'repeatable-read',
         transazione: 'consistent-snapshot, read-only',
@@ -937,13 +851,13 @@ async function pgSinceColumn(pool, table, sinceField, schema = null) {
           WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_name = $1`,
     schema ? [table, schema] : [table]
   );
-  const dateCols = new Set(
+  const dateCols = new Map(
     res.rows
       .filter((c) => ['timestamp without time zone', 'timestamp with time zone', 'date'].includes(String(c.dtype).toLowerCase()))
-      .map((c) => c.name)
+      .map((c) => [c.name, { name: c.name, type: String(c.dtype).toLowerCase() }])
   );
-  if (sinceField) return dateCols.has(sinceField) ? sinceField : null;
-  return SINCE_COLUMN_CANDIDATES.find((c) => dateCols.has(c)) || null;
+  if (sinceField) return dateCols.get(sinceField) || null;
+  return dateCols.get(SINCE_COLUMN_CANDIDATES.find((c) => dateCols.has(c))) || null;
 }
 
 // Metadati PostgreSQL letti dallo STESSO client della snapshot. Delegare alla
@@ -974,7 +888,7 @@ async function pgTableDdl(client, schema, table) {
   return ddl;
 }
 
-async function dumpPostgreSql({ strategy, db, collections, since, sinceField, backupDir, compress, level, log, controllo }) {
+async function dumpPostgreSql({ strategy, db, collections, since, sinceField, previousStates, backupDir, compress, level, log, controllo }) {
   const pool = strategy.pool;
   const files = [];
   const notes = [];
@@ -984,8 +898,9 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
   let inTransaction = false;
   // Indici e chiavi esterne di TUTTE le tabelle, raccolti qui e applicati dal
   // restore dopo tabelle e dati (terza fase).
-  const indiciEFk = [];
+  const indici = [], chiaviEsterne = [];
   const largeObjectIds = new Set();
+  const deletionStates = new Map();
 
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
@@ -1046,7 +961,8 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
     const aux = await pgAuxDdl(
       (sql, p) => client.query(sql, p), resolved.schema || schema, table, { qualificato: true },
     );
-    indiciEFk.push(...aux.indexes, ...aux.foreignKeys);
+    indici.push(...aux.indexes);
+    chiaviEsterne.push(...aux.foreignKeys);
 
     // Colonne da salvare e come leggerle: esclude le GENERATE (PostgreSQL
     // rifiuta un INSERT che le valorizzi) e legge `bytea` in esadecimale e i
@@ -1063,12 +979,15 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
 
     let mode = 'full';
     let sinceColumn = null;
-    let sinceParam = null;
-    if (since) {
-      sinceColumn = await pgSinceColumn(client, table, sinceField, resolved.schema);
-      if (sinceColumn) {
+    let sinceType = null;
+    let boundary = null;
+    if (since && sinceField) {
+      const column = await pgSinceColumn(client, table, sinceField, resolved.schema);
+      if (column) {
+        sinceColumn = column.name;
+        sinceType = column.type;
         mode = 'incremental';
-        sinceParam = confineIncrementale(since);
+        boundary = confinePostgres(sinceType, confineIncrementale(since));
       } else {
         notes.push(`"${table}": nessuna colonna data utilizzabile — inclusa per intero nel backup incrementale.`);
       }
@@ -1077,32 +996,37 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
     const identity = await pgStableIdentity(
       client, table, resolved.schema || schema, columnSchema,
     );
-    if (since && !identity) {
-      throw new Error(
-        `La tabella "${table}" non ha un'identita stabile (PRIMARY KEY o UNIQUE interamente NOT NULL): `
-        + 'backup incrementale/differenziale rifiutato.'
-      );
-    }
+    if (since && identity && !sinceField) mode = 'incremental';
+    if (!identity) { mode = 'full'; sinceColumn = null; boundary = null; }
+    const descriptor = { collection: table, columns: savedColumns, columnSchema, identity };
+    const delta = require('./content-state').creaDelta(previousStates.get(table), descriptor, { incremental: mode !== 'full', explicit: !!sinceColumn });
+    let selectedAlias = '__codedb_delta_selected';
+    while (savedColumns.includes(selectedAlias)) selectedAlias += '_';
     const rel = `data/${safeName(table)}.ndjson${compress ? '.gz' : ''}`;
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let count = 0;
+    let scanned = 0;
 
     let digest;
     try {
     // Il cursore mantiene i tipi e l'ordine del server: nessun alias testuale
     // nella paginazione, né ctid ripetuti fra partizioni della stessa tabella.
-    const where = sinceParam ? ` WHERE ${pgQid(sinceColumn)} > $1` : '';
-    await client.query(`DECLARE codedb_backup_rows NO SCROLL CURSOR FOR SELECT ${listaSelect} FROM ${qualified}${where}`,sinceParam?[sinceParam]:[]);
+    const selection = boundary ? `, (${pgQid(sinceColumn)} ${boundary.operator} ${boundary.expression}) AS ${pgQid(selectedAlias)}` : '';
+    await client.query(`DECLARE codedb_backup_rows NO SCROLL CURSOR FOR SELECT ${listaSelect}${selection} FROM ${qualified}`, boundary ? [boundary.parameter] : []);
     try {
       for (;;) {
         const res = await client.query(`FETCH FORWARD ${BATCH} FROM codedb_backup_rows`);
         if (!res.rows.length) break;
         for (const row of res.rows) {
+          const selected = !selection || row[selectedAlias] === true;
+          if (selection) delete row[selectedAlias];
           const encoded=require('../../db/pg-alias').encode(row,columnSchema);
           captureReferences(encoded);
-          await sink.writeLine(stringifyRiga(encoded));
-          count += 1;
-          await controllo.avanza(table, count);
+          if (delta.considera(encoded, selected)) {
+            await sink.writeLine(stringifyRiga(encoded));
+            count += 1;
+          }
+          await controllo.avanza(table, ++scanned);
         }
         if (res.rows.length < BATCH) break;
       }
@@ -1126,11 +1050,14 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
     );
     const sourceCardinality = Number(sourceCounts.rows[0].cardinality);
     const sourceDistinctIdentities = identity ? Number(sourceCounts.rows[0].distinctIdentities) : null;
+    const { tombstones, content, replayCardinality } = delta.conclude(sourceCardinality);
+    deletionStates.set(table, tombstones);
     files.push({
       path: rel, collection: table, kind: 'data', schema: resolved.schema || undefined,
       mode, sinceColumn, count, bytes, sha256,
+      ...(sinceType ? { sinceType, sinceTimezone: 'UTC' } : {}),
       columns: savedColumns, columnSchema, identity,
-      sourceCardinality, sourceDistinctIdentities,
+      sourceCardinality, sourceDistinctIdentities, content, replayCardinality,
       // Colonne salvate in esadecimale: il restore deve sapere quali
       // riconvertire con decode(?, 'hex').
       binarie: colonneBinarie.size ? [...colonneBinarie] : undefined,
@@ -1143,17 +1070,18 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
     // Senza, un backup PostgreSQL di uno schema con delle view lo ripristinava
     // senza, e i conteggi di riga tornavano lo stesso (CDB-A87).
     const oggetti = await pgSchemaObjects((sql, p) => client.query(sql, p), schema);
-    oggetti.foreignKeys = indiciEFk;
+    oggetti.indexes = indici;
+    oggetti.foreignKeys = chiaviEsterne;
     const totaleOggetti = oggetti.views.length + oggetti.routines.length
-      + oggetti.triggers.length + oggetti.sequences.length + indiciEFk.length + oggetti.types.length + oggetti.extensions.length + oggetti.collations.length;
-    if (totaleOggetti) {
+      + oggetti.triggers.length + oggetti.sequences.length + indici.length + chiaviEsterne.length + oggetti.types.length + oggetti.extensions.length + oggetti.collations.length;
+    {
       const relOgg = 'objects/schema.json';
       fs.mkdirSync(path.join(backupDir, 'objects'), { recursive: true });
       fs.writeFileSync(path.join(backupDir, relOgg), JSON.stringify(oggetti, null, 2), 'utf8');
-      files.push({ path: relOgg, collection: null, kind: 'objects', ...fileDigest(path.join(backupDir, relOgg)) });
+      files.push({ path: relOgg, collection: null, kind: 'objects', mode: 'snapshot', ...fileDigest(path.join(backupDir, relOgg)) });
       log.info(
         `  Oggetti di schema: ${oggetti.views.length} view, ${oggetti.routines.length} funzioni, `
-        + `${oggetti.triggers.length} trigger, ${oggetti.sequences.length} sequenze, ${indiciEFk.length} indici/vincoli`
+        + `${oggetti.triggers.length} trigger, ${oggetti.sequences.length} sequenze, ${indici.length} indici, ${chiaviEsterne.length} vincoli`
       );
     }
 
@@ -1165,12 +1093,10 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
         files.push({path:rel,collection:null,kind:'large-object',oid:object.oid,size:object.size,...await sink.close()});
       } catch(e) {await sink.abort(e);throw e;}
     }
-    const identityStates = new Map();
-    if (since) for (const file of files.filter(f=>f.kind==='data' && f.identity)) identityStates.set(file.collection, await identitaSqlNellaSnapshot(client,false,schema,file,controllo));
     await client.query('COMMIT');
     inTransaction = false;
     return {
-      files, notes, identityStates,
+      files, notes, deletionStates,
       coerenza: {
         motore: 'postgresql', snapshot: 'repeatable-read',
         transazione: 'read-only', lock: 'access-share',
@@ -1204,10 +1130,10 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
   const backupDir = path.join(groupDir, id);
   if (fs.existsSync(backupDir)) throw new Error(`La cartella di backup esiste già: ${backupDir}`);
 
-  // startedAt è catturato PRIMA di leggere i dati: il prossimo incrementale
-  // ripartirà da qui e non perderà le scritture avvenute durante il dump.
+  // Il filtro temporale esplicito usa l'inizio della lettura come confine;
+  // il delta automatico confronta invece il contenuto della snapshot.
   const startedAt = new Date().toISOString();
-  if (base) log.info(`Backup ${type} basato su ${base.id} (modifiche dal ${since}).`);
+  if (base) log.info(`Backup ${type} basato su ${base.id} (${sinceField ? `filtro ${sinceField} dal ${since}` : 'confronto completo del contenuto'}).`);
 
   // Solo collection/tabelle "vere". Due esclusioni, per due motivi diversi:
   //
@@ -1237,7 +1163,8 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
   fs.mkdirSync(backupDir, { recursive: true });
   let result;
   try {
-    const args = { strategy, db, collections, type, since, sinceField, backupDir, compress, level, log, controllo };
+    const previousStates = base ? await require('./content-state').caricaStatoCatena(path.join(groupDir, base.id), controllo) : new Map();
+    const args = { strategy, db, collections, type, since, sinceField, previousStates, backupDir, compress, level, log, controllo };
     result = dbType === 'mysql'
       ? await dumpMySql(args)
       : (dbType === 'postgresql' || dbType === 'postgres')
@@ -1269,6 +1196,10 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
     };
     validaManifestIdentita(manifest);
     fs.writeFileSync(path.join(backupDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+    // Il catalogo pubblica soltanto catene che il resolver può ripristinare.
+    // Un cambiamento incompatibile dello schema richiede già un nuovo full:
+    // rilevarlo qui evita di registrare un incrementale inutilizzabile.
+    require('./restore').resolveChain(backupDir);
     await appendToCatalog(groupDir, {
       id, type, baseId: manifest.baseId, db, dbType, startedAt, endedAt: manifest.endedAt, status: 'ok',
     });

@@ -37,7 +37,8 @@ function abortIf(signal) {
 
 function retargetSchemaObjects(objects, sourceDb, targetDb, dbType) {
   if (!objects) return objects;
-  const copy = JSON.parse(JSON.stringify(objects));
+  const copy = dbType === 'mongodb' ? require('./codecFedele').serializeConservativo(objects)
+    : JSON.parse(JSON.stringify(objects));
   for (const values of Object.values(copy)) {
     if (!Array.isArray(values)) continue;
     for (let i = 0; i < values.length; i++) {
@@ -52,13 +53,17 @@ function retargetSchemaObjects(objects, sourceDb, targetDb, dbType) {
 }
 
 function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot, log = quietLog, signal = null }) {
+  const primaryStrategy = strategy;
   const type = dbType === 'postgres' ? 'postgresql' : dbType;
   const session = { strategy, dbType: type };
   let activeSignal = signal;
   let schemaSqlVerificato = null;
   let largeObjectMap = new Map();
+  let promotionTx = null;
+  let pendingPhysicalDb = null;
+  let promotionRetainsStaging = false;
 
-  async function inventarioSql(db) {
+  async function inventarioSql(db, strategy = primaryStrategy) {
     const objects = canonicalSchemaInventory(await readSchemaObjects(strategy, type, db), { db });
     const tables = [];
     for (const c of (await strategy.listCollections(db)).filter(c => c.type !== 'view')) {
@@ -130,7 +135,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
       if (type === 'mongodb') {
         const metadata = (artifact.objects && artifact.objects.collectionOptions || [])
           .find((item) => item.name === collection.name);
-        await preparaCollectionMongo(strategy.client, db, collection.name, metadata && metadata.options || {}, { deferValidation: true });
+        await preparaCollectionMongo(strategy.client, db, collection.name, metadata && metadata.options || {}, { deferValidation: true, metadata });
         continue;
       }
       const present = (await strategy.listCollections(db)).some((c) => c.name === collection.name);
@@ -189,14 +194,8 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
           // ricrearlo come indice semplice perdeva TTL, indici parziali,
           // sparsi e collation, cioe' vincoli che la destinazione non aveva
           // piu' anche quando l'import si dichiarava riuscito.
-          await strategy.createIndex(db, collection.name, {
-            fields: JSON.stringify(index.key), unique: !!index.unique, name: index.name,
-            sparse: !!index.sparse,
-            expireAfterSeconds: index.expireAfterSeconds,
-            partialFilterExpression: index.partialFilterExpression,
-            collation: index.collation,
-            wildcardProjection: index.wildcardProjection,
-          });
+          const { key, v, ns, ...options } = require('./mongoSchemaBson').decodificaMetadati(index);
+          await strategy.client.db(db).collection(collection.name).createIndex(key, options);
         }
       }
     }
@@ -220,7 +219,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     }
   }
 
-  async function verifica(plan, db) {
+  async function verifica(plan, db, strategy = primaryStrategy) {
     const actual = (await strategy.listCollections(db)).filter((c) => c.type !== 'view');
     const actualNames = new Set(actual.map((c) => c.name));
     const expectedNames = new Set(plan.collections.map((c) => c.name));
@@ -244,7 +243,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     let schemaObjects = true;
     const objectMismatches = [];
     if (plan.artifact.origineFormato === 'sql' && schemaSqlVerificato) {
-      for (const difference of inventoryDifferences(schemaSqlVerificato, await inventarioSql(db))) {
+      for (const difference of inventoryDifferences(schemaSqlVerificato, await inventarioSql(db, strategy))) {
         objectMismatches.push(`${difference.field}: definizioni mancanti ${difference.missing.length}, inattese ${difference.extras.length}`);
       }
     } else if (type === 'mongodb') {
@@ -256,18 +255,30 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
         if (typeof strategy.indexList !== 'function') {
           throw new Error(`La strategia ${type} non espone indexList: gli indici non sono verificabili.`);
         }
-        const indexes = await strategy.indexList(db, collection.name);
+        const indexes = await strategy.indexList(db, collection.name, { schemaBson: true });
         const expected = collection.indexes.filter((idx) => idx.name !== '_id_').map(canonicalMongoIndex).sort();
         const actualIndexes = indexes.filter((idx) => idx.name !== '_id_').map(canonicalMongoIndex).sort();
         const differences = inventoryDifferences({ indexes: expected }, { indexes: actualIndexes }, { exact: plan.drop });
         if (differences.length) objectMismatches.push(`${collection.name}: indici divergenti`);
       }
     } else if (typeof strategy.tableAuxDdl === 'function') {
+      // L'export tabellare usa postDdl; i nuovi oggetti di backup possono
+      // dichiarare gli stessi ausiliari a livello schema. Si confrontano nello
+      // stesso inventario per tabella, una sola volta.
+      const pgAux = new Map();
+      if (type === 'postgresql') {
+        for (const sql of [...(plan.artifact.objects?.indexes || []), ...(plan.artifact.objects?.foreignKeys || [])]) {
+          const table = require('./artefatti').estraiBersaglio(sql).table.parts.at(-1);
+          const name = table.quoted ? table.value : table.value.toLowerCase();
+          if (!pgAux.has(name)) pgAux.set(name, []);
+          pgAux.get(name).push(sql);
+        }
+      }
       for (const collection of plan.artifact.collections) {
         const inlineForeignKeys = type === 'mysql' && collection.ddl
           ? splitMySqlForeignKeys(collection.ddl, collection.name).foreignKeys : [];
-        const expected = [...inlineForeignKeys, ...(collection.postDdl || [])]
-          .map((sql) => canonicalSqlForDb(riqualificaDdl(sql, plan.sourceDb, db, type), db)).sort();
+        const expected = [...new Set([...inlineForeignKeys, ...(collection.postDdl || []), ...(pgAux.get(collection.name) || [])]
+          .map((sql) => canonicalSqlForDb(riqualificaDdl(sql, plan.sourceDb, db, type), db)))].sort();
         // MySQL incorpora i vincoli in SHOW CREATE TABLE; tableAuxDdl e'
         // invece il percorso PostgreSQL per DDL separata.
         const aux = type === 'mysql'
@@ -283,6 +294,12 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
       const expectedObjects = canonicalSchemaInventory(
         retargetSchemaObjects(plan.artifact.objects, plan.sourceDb, db, type), { db }
       );
+      if (type === 'postgresql') {
+        // Già verificati con gli ausiliari della rispettiva tabella; il lettore
+        // pgSchemaObjects restituisce soltanto gli oggetti non tabellari.
+        expectedObjects.indexes = [];
+        expectedObjects.foreignKeys = [];
+      }
       const actualObjects = canonicalSchemaInventory(await readSchemaObjects(strategy, type, db), { db });
       for (const difference of inventoryDifferences(expectedObjects, actualObjects, { exact: plan.drop })) {
         objectMismatches.push(`${difference.field}: definizioni mancanti ${difference.missing.length}, inattese ${difference.extras.length}`);
@@ -370,34 +387,56 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     },
 
     async verify(plan, where, staging) {
-      return verifica(plan, where === 'staging' ? staging.db : plan.targetDb);
+      return verifica(plan, where === 'staging' ? staging.db : plan.targetDb,
+        where !== 'staging' && promotionTx?.state === 'aperta' ? promotionTx.strategy : strategy);
+    },
+    verificationStrategy() { return promotionTx?.state === 'aperta' ? promotionTx.strategy : strategy; },
+    async finalize(_plan, staging, recovery) {
+      if (!promotionTx) return;
+      await promotionTx.commit();
+      staging.retained = promotionRetainsStaging;
+      if (pendingPhysicalDb && recovery) recovery.physicalDb = pendingPhysicalDb;
     },
 
     async promote(plan, staging, recovery) {
       if (type === 'postgresql') {
-        const client = await strategy.pool.connect();
+        promotionTx = await require('./pg-restore-transaction').apriTransazioneRipristino(strategy);
+        const client = promotionTx.strategy.pool;
         const q = (name) => quotaSempre(name, 'postgresql');
         const old = nomeTecnico(plan.targetDb, 'recupero', 63);
         let renamedOld = false;
-        let commitAttempted = false;
         try {
-          await client.query('BEGIN');
           if (await exists(plan.targetDb)) {
+            const stagedBackup = await runBackup({ session, connName: `${connName}__staging`, db: staging.db,
+              type: 'full', onlyCollections: null, sinceField: null, destRoot: recoveryRoot, compress: true, level: 6, log });
+            if (!(await verifyBackupDir(stagedBackup.backupDir)).valid) throw new Error('Copia di promozione PostgreSQL non verificata.');
+            staging.backupDir = stagedBackup.backupDir;
+            const inplace = await require('./pg-promozione').promuoviTabelleCompatibili({ strategy: promotionTx.strategy,
+              targetDb: plan.targetDb, stagingDb: staging.db, backupDir: stagedBackup.backupDir, log });
+            if (inplace) {
+              promotionRetainsStaging = true;
+              staging.inPlacePromotion = true;
+              return;
+            }
+            const external = await client.query(`WITH owned(classid,objid) AS (
+              SELECT 'pg_class'::regclass::oid,c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1
+              UNION SELECT 'pg_type'::regclass::oid,t.oid FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1
+              UNION SELECT 'pg_proc'::regclass::oid,p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1
+            ) SELECT DISTINCT (pg_identify_object(d.classid,d.objid,d.objsubid)).schema AS schema
+              FROM pg_depend d JOIN owned o ON o.classid=d.refclassid AND o.objid=d.refobjid`, [plan.targetDb]);
+            if (external.rows.some(item => item.schema && item.schema !== plan.targetDb)) {
+              throw new Error('La nuova struttura è incompatibile con dipendenze esterne allo schema: la destinazione resta intatta.');
+            }
             await client.query(`ALTER SCHEMA ${q(plan.targetDb)} RENAME TO ${q(old)}`);
             renamedOld = true;
           }
           await client.query(`ALTER SCHEMA ${q(staging.db)} RENAME TO ${q(plan.targetDb)}`);
-          commitAttempted = true;
-          await client.query('COMMIT');
-          staging.retained = false;
-          if (renamedOld && recovery) recovery.physicalDb = old;
+          if (renamedOld) pendingPhysicalDb = old;
         } catch (err) {
           let rolledBack = false;
-          await client.query('ROLLBACK').then(() => { rolledBack = true; }).catch(() => {});
-          if (rolledBack && !commitAttempted) err.targetUnchanged = true;
+          await promotionTx.rollback().then(() => { rolledBack = true; }).catch(() => {});
+          if (rolledBack) err.targetUnchanged = true;
           throw err;
-        } finally {
-          client.release();
         }
         return;
       }
@@ -428,6 +467,11 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     },
 
     async restore(plan, recovery) {
+      if (promotionTx) {
+        await promotionTx.rollback();
+        pendingPhysicalDb = null;
+        return;
+      }
       if (type === 'postgresql' && recovery && recovery.physicalDb) {
         const client = await strategy.pool.connect();
         const q = (name) => quotaSempre(name, 'postgresql');
@@ -463,7 +507,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
       if (result.staging && result.staging.retained && await exists(result.staging.db)) {
         await strategy.dropDatabase(result.staging.db);
       }
-      if (type === 'postgresql' && result.status !== 'completato' && result.staging?.largeObjects?.length) {
+      if (type === 'postgresql' && (result.status !== 'completato' || result.staging?.inPlacePromotion) && result.staging?.largeObjects?.length) {
         await strategy.pool.query('SELECT lo_unlink(oid) FROM unnest($1::oid[]) AS oid', [result.staging.largeObjects]);
       }
       if (result.recovery && result.recovery.physicalDb && await exists(result.recovery.physicalDb)) {

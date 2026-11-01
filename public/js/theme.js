@@ -1,5 +1,5 @@
 import { chiediConferma } from './conferma.js';
-import { mountArcControls, closeNavigationSheet } from '../arc/ui.js';
+import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 /**
@@ -33,7 +33,7 @@ import { mountArcControls, closeNavigationSheet } from '../arc/ui.js';
  *     da file, cioè è un dato che arriva da fuori.
  */
 
-import { $, esc, toast, chiaveStorage, conCaricamento, refreshLucideIcons, scaricaFile } from './utils.js';
+import { $, esc, toast, chiaveStorage, conCaricamento, refreshLucideIcons, scaricaFile, notifica } from './utils.js';
 import {
   CAMPI, TEMI_BASE, eBase, scelteIniziali, derivaTokens, diagnostica,
   validaTema, cssDelTema, nomeFile, leggiHex, scriviHex, SOGLIA_TESTO,
@@ -72,7 +72,7 @@ function scriviTemi(temi) {
     localStorage.setItem(CHIAVE_TEMI, JSON.stringify(temi));
     return true;
   } catch {
-    toast('Spazio esaurito: il tema non è stato salvato.', true);
+    notifica('Spazio esaurito: il tema non è stato salvato.', { tipo: 'errore', titolo: "Temi" });
     return false;
   }
 }
@@ -218,7 +218,8 @@ export function initTheme() {
 function apriModale() {
   const m = $('#modal-theme');
   if (!m) return;
-  closeNavigationSheet(true);
+  // La modale si sovrappone al navigatore: mantenerne l'istanza conserva
+  // pannello, filtro, scorrimento e destinazione del focus alla chiusura.
   chiudiEditor();
   disegnaElenco();
   m.classList.remove('hidden');
@@ -393,18 +394,18 @@ function importaDaFile(input) {
   lettore.onload = () => {
     let grezzo;
     try { grezzo = JSON.parse(String(lettore.result)); } catch {
-      toast('Il file non è un JSON valido.', true);
+      notifica('Il file non è un JSON valido.', { tipo: 'errore', titolo: "Temi" });
       return;
     }
     const temi = temiSalvati();
     // Un id già preso non sovrascrive in silenzio il tema esistente.
     const proposto = String(grezzo && grezzo.id || 'importato');
     const v = validaTema({ ...grezzo, id: temi[proposto] || eBase(proposto) ? idLibero(proposto) : proposto });
-    if (!v.ok) { toast(`Tema non importabile — ${v.errore}`, true); return; }
+    if (!v.ok) { notifica(`Tema non importabile — ${v.errore}`, { tipo: 'errore', titolo: "Temi" }); return; }
     apriEditor(null, v.tema);
     toast('Tema caricato: controlla i colori e salva.');
   };
-  lettore.onerror = () => toast('Impossibile leggere il file.', true);
+  lettore.onerror = () => notifica('Impossibile leggere il file.', { tipo: 'errore', titolo: "Temi" });
   lettore.readAsText(file);
 }
 
@@ -630,7 +631,7 @@ function suClicEditor(e) {
     conCaricamento(btn, async () => {
       const nome = ($('#tema-nome').value || '').trim();
       const v = validaTema({ ...inModifica, nome: nome || inModifica.id });
-      if (!v.ok) { toast(v.errore, true); return; }
+      if (!v.ok) { notifica(v.errore, { tipo: 'inline', titolo: "Temi", target: "#theme-editor" }); return; }
 
       // Un tema illeggibile si può salvare — è una scelta dell'utente, non un
       // errore — ma non in silenzio: chi ha sbagliato un colore deve poter

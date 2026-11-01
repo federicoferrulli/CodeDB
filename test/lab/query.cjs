@@ -204,6 +204,33 @@ async function proveCrud() {
     assert.equal(binario(row.dati), document.dati.$binary.base64);
   });
   for (const type of ['mysql', 'postgresql']) {
+    await prova(`binario-volume-${type}`, 'Binari grandi, vuoti e NULL mantengono tipo, byte e budget del risultato', async () => {
+      await native(type, `CREATE TABLE volume_binario(id INT PRIMARY KEY,dati ${type === 'mysql' ? 'LONGBLOB' : 'BYTEA'})`);
+      const bytes = Buffer.alloc(512 * 1024, 0x80);
+      const valori = [bytes, Buffer.alloc(0), null];
+      for (let i = 0; i < valori.length; i++) await native(type,
+        type === 'mysql' ? 'INSERT INTO volume_binario VALUES(?,?)' : 'INSERT INTO volume_binario VALUES($1,$2)', [i, valori[i]]);
+      for (const risultato of [await query(type, 'SELECT id,dati FROM volume_binario ORDER BY id'),
+        await emit('collection:find', { tabId: type, db, coll: 'volume_binario', sort: '{"id":1}', limit: 10 })]) {
+        const rows = risultato.data || risultato.docs;
+        assert.equal(rows.length, 3, 'Il budget deve misurare il binario EJSON, non enumerare i byte');
+        assert.deepEqual(rows[0].dati, { $binary: { base64: bytes.toString('base64'), subType: '00' } });
+        assert.deepEqual(rows[1].dati, { $binary: { base64: '', subType: '00' } });
+        assert.equal(rows[2].dati, null);
+      }
+    });
+    await prova(`binario-identita-reale-${type}`, 'PK composta con binario e colonna _id reale mantiene rowIds riutilizzabili', async () => {
+      await native(type, `CREATE TABLE identita_binaria(k ${type === 'mysql' ? 'VARBINARY(16)' : 'BYTEA'},tenant INT,_id VARCHAR(20),n INT,PRIMARY KEY(k,tenant))`);
+      const bytes = Buffer.from([0, 255, 128]);
+      for (const tenant of [1, 2]) await native(type, type === 'mysql'
+        ? 'INSERT INTO identita_binaria VALUES(?,?,?,?)' : 'INSERT INTO identita_binaria VALUES($1,$2,$3,$4)', [bytes, tenant, 'reale', 10]);
+      const found = await emit('collection:find', { tabId: type, db, coll: 'identita_binaria', sort: '{"tenant":1}', limit: 10 });
+      assert.equal(found.docs[0]._id, 'reale');
+      assert.deepEqual(found.rowIds[0], { k: { $binary: { base64: bytes.toString('base64'), subType: '00' } }, tenant: 1 });
+      const updated = await emit('doc:update', { tabId: type, db, coll: 'identita_binaria', id: JSON.stringify(found.rowIds[0]), set: { n: 20 } });
+      assert.equal(updated.matched, 1);
+      assert.deepEqual(await native(type, 'SELECT tenant,n FROM identita_binaria ORDER BY tenant'), [{ tenant: 1, n: 20 }, { tenant: 2, n: 10 }]);
+    });
     await prova(`chiave-binaria-${type}`, 'Una PK binaria rimane utilizzabile per aggiornare esattamente la riga letta', async () => {
       await native(type, `CREATE TABLE chiavi_binarie(k ${type === 'mysql' ? 'VARBINARY(16)' : 'BYTEA'} PRIMARY KEY,n INT)`);
       const bytes = Buffer.from([0, 255, 128, 39, 92, 10]);
@@ -213,6 +240,21 @@ async function proveCrud() {
       assert.equal(result.matched, 1, 'La PK restituita deve identificare la riga originale');
       const after = await native(type, 'SELECT k,n FROM chiavi_binarie');
       assert.equal(after.length, 1); assert.equal(after[0].n, 20); assert.equal(binario(after[0].k), bytes.toString('base64'));
+      const trovato = await emit('collection:find', { tabId: type, db, coll: 'chiavi_binarie',
+        filtro: { condizioni: [{ campo: 'k', operatore: 'uguale', valore: row.k }] }, limit: 10 });
+      assert.equal(trovato.docs.length, 1, 'Il filtro strutturato conserva il parametro binario');
+      assert.equal(trovato.docs[0].n, 20);
+      await emit('doc:delete', { tabId: type, db, coll: 'chiavi_binarie', id: JSON.stringify(row._id) });
+      assert.deepEqual(await native(type, 'SELECT k,n FROM chiavi_binarie'), [], 'La PK binaria elimina la sola riga selezionata');
+    });
+    if (type === 'postgresql') await prova('binario-inserted-id-postgresql', 'La chiave BYTEA restituita da INSERT è riutilizzabile per UPDATE', async () => {
+      await native(type, 'CREATE TABLE inserita_binaria(k BYTEA PRIMARY KEY,n INT)');
+      const k = { $binary: { base64: Buffer.from([0, 255, 1]).toString('base64'), subType: '00' } };
+      const inserita = await emit('doc:insert', { tabId: type, db, coll: 'inserita_binaria', doc: JSON.stringify({ k, n: 10 }) });
+      assert.deepEqual(JSON.parse(inserita.insertedId), { k }, 'INSERT deve restituire la PK in EJSON');
+      const aggiornata = await emit('doc:update', { tabId: type, db, coll: 'inserita_binaria', id: inserita.insertedId, set: { n: 20 } });
+      assert.equal(aggiornata.matched, 1);
+      assert.equal((await native(type, 'SELECT n FROM inserita_binaria'))[0].n, 20);
     });
     await prova(`binario-roundtrip-${type}`, 'Riaprire e salvare una riga senza modifiche conserva tutti i byte SQL', async () => {
       const bytes = Buffer.from([0, 255, 128, 39, 92, 10]);
@@ -221,6 +263,22 @@ async function proveCrud() {
       await emit('doc:replace', { tabId: type, db, coll: 'tipi', id: JSON.stringify(row._id), doc: JSON.stringify(row) });
       const after = (await native(type, 'SELECT dati FROM tipi WHERE id=2'))[0].dati;
       assert.equal(binario(after), bytes.toString('base64'), `Byte dopo round-trip: ${Buffer.from(after).toString('hex')}`);
+    });
+    await prova(`binario-export-cursore-${type}`, 'Export CSV paginato su PK binaria attraversa tutte le righe senza perdite', async () => {
+      await native(type, `CREATE TABLE export_binario(k ${type === 'mysql' ? 'VARBINARY(16)' : 'BYTEA'} PRIMARY KEY,n INT)`);
+      const chiavi = [Buffer.from([0, 255]), Buffer.from([128, 0]), Buffer.from([255, 1])];
+      for (let i = 0; i < chiavi.length; i++) await native(type,
+        type === 'mysql' ? 'INSERT INTO export_binario VALUES(?,?)' : 'INSERT INTO export_binario VALUES($1,$2)', [chiavi[i], i]);
+      let after;
+      for (const bytes of chiavi) {
+        const pagina = await emit('collection:export', { tabId: type, db, coll: 'export_binario', format: 'csv', limit: 1, after });
+        assert.equal(pagina.lines.length, 1);
+        const cursore = JSON.parse(pagina.nextAfter);
+        assert.deepEqual(cursore, [{ $binary: { base64: bytes.toString('base64'), subType: '00' } }]);
+        after = pagina.nextAfter;
+      }
+      const ultima = await emit('collection:export', { tabId: type, db, coll: 'export_binario', format: 'csv', limit: 1, after });
+      assert.equal(ultima.lines.length, 0, 'Nessuna riga ripetuta oltre l’ultima chiave');
     });
     await prova(`crud-composito-${type}`, 'UPDATE con PK composta, BIGINT oltre 2^53 e identificatore con spazi modifica solo il bersaglio', async () => {
       const rows = (await emit('collection:find', { tabId: type, db, coll: 'Ordini Strani', filter: '', sort: '{"tenant":1}', limit: 10 })).docs;
@@ -258,6 +316,112 @@ async function proveCrud() {
     if (modo === 'update') await emit('doc:update', { tabId: 'postgresql', db, coll: name, id: JSON.stringify(row._id), set: next });
     else await emit('doc:replace', { tabId: 'postgresql', db, coll: name, id: JSON.stringify(row._id), doc: JSON.stringify(row) });
     assert.deepEqual(await native('postgresql', `SELECT numeri,testi FROM ${name}`), [next]);
+  });
+  for (const modo of ['insert', 'update', 'roundtrip', 'import']) await prova(`array-postgresql-estesi-${modo}`, `Array nativi, domini e JSON: ${modo} conserva tutti i valori tramite oracolo testuale`, async () => {
+    const name = `array_estesi_${modo}`;
+    await native('postgresql', `CREATE TYPE ${name}_umore AS ENUM ('caffè','日本語','a,b')`);
+    await native('postgresql', `CREATE DOMAIN ${name}_vettore AS INTEGER[]`);
+    await native('postgresql', `CREATE TABLE ${name}(id INT PRIMARY KEY,numeri INT[],testi TEXT[],matrice INT[][],vuoti TEXT[],binari BYTEA[],esatti NUMERIC(60,30)[],interi BIGINT[],logici BOOLEAN[],jsonv JSONB,jsona JSONB[],tempi TIMESTAMP(6)[],umori ${name}_umore[],dominio ${name}_vettore,domini ${name}_vettore[])`);
+    const decimal = '123456789012345678901234567890.123456789012345678901234567890';
+    const document = { numeri: [1, null, 3], testi: ['NULL', '', 'a,b', '"citazione"', '\\', '日本語'], matrice: [[1, null], [3, 4]], vuoti: [],
+      binari: [{ $binary: { base64: 'AP+A', subType: '00' } }, null, { $binary: { base64: '', subType: '00' } }],
+      esatti: [{ $numberDecimal: decimal }, null], interi: [{ $numberLong: '9007199254740993' }, null, { $numberLong: '-9223372036854775808' }],
+      logici: [true, false, null], jsonv: [1, { testo: 'caffè' }, null], jsona: [{ a: '日本語' }, [1, null, { deep: true }], null, 42, '"'],
+      tempi: ['2024-02-29 23:59:59.123456', null], umori: ['caffè', null, 'a,b'], dominio: [1, null, 9], domini: [[1, null], [2, 3]] };
+    const columns = Object.keys(document);
+    const nativi = { ...document, binari: [Buffer.from([0, 255, 128]), null, Buffer.alloc(0)], esatti: [decimal, null],
+      interi: ['9007199254740993', null, '-9223372036854775808'], jsonv: JSON.stringify(document.jsonv),
+      jsona: document.jsona.map(v => v === null ? null : JSON.stringify(v)), domini: ['{1,NULL}', '{2,3}'] };
+    const insert = `INSERT INTO ${name}(id,${columns.join(',')}) VALUES($1,${columns.map((_, i) => '$' + (i + 2)).join(',')})`;
+    await native('postgresql', insert, [0, ...Object.values(nativi)]);
+    await native('postgresql', `INSERT INTO ${name}(id) VALUES(2)`);
+    const snapshot = async id => (await native('postgresql', `SELECT ${columns.map(c => `${c}::text AS ${c}`).join(',')} FROM ${name} WHERE id=$1`, [id]))[0];
+    const expected = await snapshot(0);
+    const sentinel = await snapshot(2);
+    if (modo === 'insert') await emit('doc:insert', { tabId: 'postgresql', db, coll: name, doc: JSON.stringify({ id: 1, ...document }) });
+    if (modo === 'update') {
+      await native('postgresql', `INSERT INTO ${name}(id) VALUES(1)`);
+      await emit('doc:update', { tabId: 'postgresql', db, coll: name, id: '{"id":1}', set: document });
+    }
+    if (modo === 'roundtrip') {
+      await native('postgresql', insert, [1, ...Object.values(nativi)]);
+      const row = (await emit('collection:find', { tabId: 'postgresql', db, coll: name, filter: 'id=1', limit: 10 })).docs[0];
+      await emit('doc:replace', { tabId: 'postgresql', db, coll: name, id: JSON.stringify(row._id), doc: JSON.stringify(row) });
+    }
+    if (modo === 'import') {
+      const result = await emit('collection:import', { tabId: 'postgresql', db, coll: name, docs: [{ id: 1, ...document }] });
+      assert.equal(result.inserted, 1, JSON.stringify(result));
+      assert.deepEqual(result.errors, []);
+    }
+    assert.deepEqual(await snapshot(1), expected, '[PG-ARRAY-ESATTI] Tutti gli elementi coincidono con il driver indipendente');
+    assert.deepEqual(await snapshot(2), sentinel, 'La riga estranea non cambia');
+  });
+  for (const modo of ['insert', 'replace']) await prova(`array-postgresql-testo-esatto-${modo}`, `Numeri nel testo JSON di ${modo} conservano tutte le cifre negli array SQL e JSONB`, async () => {
+    const name = `array_testo_${modo}`;
+    await native('postgresql', `CREATE TABLE ${name}(id INT PRIMARY KEY,n NUMERIC[],j JSONB[])`);
+    const numero = '12345678901234567890.12345678901234567890';
+    await native('postgresql', `INSERT INTO ${name} VALUES(0,ARRAY[${numero}]::numeric[],ARRAY['{"n":${numero}}'::jsonb,'[9007199254740993]'::jsonb])`);
+    const doc = `{"id":1,"n":[${numero}],"j":[{"n":${numero}},[9007199254740993]]}`;
+    if (modo === 'insert') await emit('doc:insert', { tabId: 'postgresql', db, coll: name, doc });
+    else {
+      await native('postgresql', `INSERT INTO ${name}(id) VALUES(1)`);
+      await emit('doc:replace', { tabId: 'postgresql', db, coll: name, id: '{"id":1}', doc });
+    }
+    const rows = await native('postgresql', `SELECT n::text,j::text FROM ${name} ORDER BY id`);
+    assert.deepEqual(rows[1], rows[0], '[PG-ARRAY-TESTO] Il parsing del documento non deve arrotondare le cifre digitate');
+  });
+  await prova('array-postgresql-metadati', 'Il dominio numerico array conserva il tipo fino al selettore dell’editor', async () => {
+    await native('postgresql', 'CREATE DOMAIN "numeric" AS NUMERIC[]');
+    await native('postgresql', `CREATE TABLE array_metadati(id INT PRIMARY KEY,a "${db}"."numeric",n NUMERIC)`);
+    await native('postgresql', 'INSERT INTO array_metadati VALUES(1,ARRAY[9007199254740993.123456789],9007199254740993.123456789)');
+    const result = await emit('collection:find', { tabId: 'postgresql', db, coll: 'array_metadati', limit: 10 });
+    assert.equal(result.columnMeta.a.pgType?.kind, 'array', '[PG-ARRAY-METADATI] Il trasporto deve rendere riconoscibile il dominio array');
+    const codec = await import(require('node:url').pathToFileURL(path.resolve(__dirname, '../../public/js/valori-esatti.js')).href);
+    assert.equal(codec.richiedePrecisioneEsatta(result.columnMeta.a), false, 'Il dominio array usa l’editor strutturato');
+    assert.equal(codec.richiedePrecisioneEsatta(result.columnMeta.n), true, 'Il numero scalare mantiene l’editor esatto');
+    const before = await native('postgresql', 'SELECT a::text,n::text FROM array_metadati');
+    await emit('doc:replace', { tabId: 'postgresql', db, coll: 'array_metadati', id: JSON.stringify(result.docs[0]._id), doc: JSON.stringify(result.docs[0]) });
+    assert.deepEqual(await native('postgresql', 'SELECT a::text,n::text FROM array_metadati'), before);
+  });
+  await prova('array-postgresql-limiti', 'Lettura e reinserimento conservano lower bounds, dimensioni e microsecondi', async () => {
+    const name = 'array_limiti';
+    await native('postgresql', `CREATE TABLE ${name}(id INT PRIMARY KEY,a INT[],b INT[][],t TIMESTAMP(6)[])`);
+    await native('postgresql', `INSERT INTO ${name} VALUES(1,'[0:2]={1,NULL,3}','[2:3][4:5]={{1,2},{3,4}}',ARRAY['2024-02-29 23:59:59.123456'::timestamp])`);
+    const snapshot = async () => native('postgresql', `SELECT a::text,b::text,t::text FROM ${name}`);
+    const before = await snapshot();
+    const row = (await emit('collection:find', { tabId: 'postgresql', db, coll: name, limit: 10 })).docs[0];
+    await emit('doc:replace', { tabId: 'postgresql', db, coll: name, id: JSON.stringify(row._id), doc: JSON.stringify(row) });
+    assert.deepEqual(await snapshot(), before, '[PG-ARRAY-LIMITI] Gli indici e la precisione temporale non devono cambiare');
+  });
+  await prova('array-postgresql-export', 'Export CSV con PK array conserva precisione e cursori fra le pagine', async () => {
+    const name = 'array_export';
+    await native('postgresql', `CREATE TABLE ${name}(k NUMERIC[] PRIMARY KEY,n INT)`);
+    await native('postgresql', `INSERT INTO ${name} VALUES('{9007199254740993.123456789}',1),('{9007199254740994.123456789}',2),('{9007199254740995.123456789}',3)`);
+    const expected = await native('postgresql', `SELECT k::text FROM ${name} ORDER BY k`);
+    let after;
+    for (const row of expected) {
+      const page = await emit('collection:export', { tabId: 'postgresql', db, coll: name, format: 'csv', limit: 1, after });
+      assert.equal(page.lines.length, 1);
+      assert.deepEqual(JSON.parse(page.nextAfter), [row.k], '[PG-ARRAY-CURSORE] La chiave deve conservare tutte le cifre');
+      after = page.nextAfter;
+    }
+    const last = await emit('collection:export', { tabId: 'postgresql', db, coll: name, format: 'csv', limit: 1, after });
+    assert.equal(last.lines.length, 0);
+  });
+  for (const tipo of ['int[]', 'jsonb']) await prova(`array-postgresql-identita-${tipo}`, `Filtri, keyset e identità distinguono una colonna ${tipo} da JSON`, async () => {
+    const name = tipo === 'jsonb' ? 'identita_json' : 'identita_array';
+    await native('postgresql', `CREATE TABLE ${name}(k ${tipo} PRIMARY KEY,n INT)`);
+    for (const i of [1, 2, 3]) await native('postgresql', `INSERT INTO ${name} VALUES($1,$2)`, [tipo === 'jsonb' ? JSON.stringify([i]) : [i], i]);
+    const find = payload => emit('collection:find', { tabId: 'postgresql', db, coll: name, limit: 10, ...payload });
+    const equal = await find({ filtro: { condizioni: [{ campo: 'k', operatore: 'uguale', valore: [2] }] } });
+    assert.deepEqual(equal.docs.map(r => r.n), [2]);
+    const inside = await find({ filtro: { condizioni: [{ campo: 'k', operatore: 'dentro', valore: [[1], [3]] }] } });
+    assert.deepEqual(inside.docs.map(r => r.n).sort(), [1, 3]);
+    const page = await find({ limit: 1, keyset: { after: JSON.stringify({ k: [1] }) } });
+    assert.deepEqual(page.docs.map(r => r.n), [2]);
+    await emit('doc:update', { tabId: 'postgresql', db, coll: name, id: JSON.stringify({ k: [2] }), set: { n: 20 } });
+    await emit('doc:delete', { tabId: 'postgresql', db, coll: name, id: JSON.stringify({ k: [3] }) });
+    assert.deepEqual(await native('postgresql', `SELECT n FROM ${name} ORDER BY k`), [{ n: 1 }, { n: 20 }]);
   });
   for (const type of ['mysql', 'postgresql']) await prova(`sessioni-${type}`, 'Due schede isolate: transazione invisibile prima del commit e rollback alla disconnessione', async () => {
     const tabId = `${type}-seconda`;
@@ -412,21 +576,26 @@ async function pulisci() {
 }
 
 async function sensibilita() {
-  const prove = [['perdita-riga', 'differenziale-mongodb-righe'], ['update-saltato', 'crud-composito-mysql'], ['join-deduplicato', 'join-mysql-mongodb']];
+  const prove = [['perdita-riga', 'differenziale-mongodb-righe'], ['update-saltato', 'crud-composito-mysql'], ['join-deduplicato', 'join-mysql-mongodb'], ['array-cifre', 'array-postgresql-testo-esatto-insert']];
   const risultati = [];
   for (const [mutant, caso] of prove) {
     const baseline = esiti.find(e => e.id === caso);
     assert.equal(baseline?.ok, true, `Serve prima la baseline verde: ${caso}`);
-    let output = '';
+    const reportFile = path.join(reportDir, `query-${mutant}.json`);
+    fs.rmSync(reportFile, { force: true });
+    let output = ''; const rawOutput = [];
     const code = await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, [__filename], { cwd: path.resolve(__dirname, '../..'), env: { ...process.env, LAB_QUERY_MUTANT: mutant, LAB_QUERY_CASE: caso }, stdio: ['ignore', 'pipe', 'pipe'] });
       const timer = setTimeout(() => { child.kill(); reject(new Error(`Timeout verifica mutazione ${mutant}`)); }, 120000);
-      child.stdout.on('data', b => { output += b; }); child.stderr.on('data', b => { output += b; });
-      child.once('error', reject); child.once('exit', c => { clearTimeout(timer); resolve(c); });
-    });
-    const report = JSON.parse(fs.readFileSync(path.join(reportDir, `query-${mutant}.json`), 'utf8'));
+      child.stdout.on('data', b => { rawOutput.push(b); output += b; });
+      child.stderr.on('data', b => { rawOutput.push(b); output += b; });
+      child.once('error', error => { clearTimeout(timer); reject(error); });
+      child.once('close', c => { clearTimeout(timer); resolve(c); });
+    }).finally(() => fs.writeFileSync(path.join(reportDir, `query-${mutant}.log`), Buffer.concat(rawOutput)));
+    const report = JSON.parse(fs.readFileSync(reportFile, 'utf8'));
     assert.equal(code, 1, `La mutazione ${mutant} deve fallire\n${output}`);
-    assert(report.esiti.some(e => e.id === caso && !e.ok), `Il caso ${caso} deve rilevare il guasto`);
+    assert.deepEqual(report.esiti.filter(e => !e.ok).map(e => e.id), [caso], 'Solo il caso atteso deve rilevare il guasto');
+    assert.equal(report.erroreAvvio, undefined, 'Nessun errore estraneo di avvio');
     assert.equal(report.cleanupErrors.length, 0, 'La pulizia deve riuscire anche dopo il guasto');
     risultati.push({ mutant, caso, rilevata: true });
     console.log(`OK sensibilità: ${mutant} rilevata da ${caso}`);

@@ -110,12 +110,13 @@ function creaDeposito(code, opzioni) {
      */
     async aggiungi(voceIn) {
       if (chiuso) return null;
-      const { index, line, sql, res } = voceIn || {};
+      const { index, line, sql, res, error, queryError } = voceIn || {};
+      const errore = error ? { error, ...(queryError ? { queryError } : {}) } : {};
       const docs = (res && Array.isArray(res.docs)) ? res.docs : [];
       const columns = (res && res.columns) || null;
       if (voci.length >= maxRisultati) { scartati += 1; return null; }
 
-      const testo = JSON.stringify({ index, line, sql, columns, docs });
+      const testo = JSON.stringify({ index, line, sql, columns, docs, ...errore });
       const dimensione = Buffer.byteLength(testo, 'utf8');
       if (bytes + dimensione > maxBytes) { scartati += 1; return null; }
 
@@ -130,6 +131,7 @@ function creaDeposito(code, opzioni) {
         sql,
         rows: docs.length,
         columns,
+        ...errore,
         bytes: dimensione,
       };
       voci.push(Object.assign({ file }, voce));
@@ -142,6 +144,7 @@ function creaDeposito(code, opzioni) {
         id,
         schede: voci.map((v) => ({
           pos: v.pos, index: v.index, line: v.line, sql: v.sql, rows: v.rows, columns: v.columns,
+          ...(v.error ? { error: v.error } : {}),
         })),
         scartati,
       };

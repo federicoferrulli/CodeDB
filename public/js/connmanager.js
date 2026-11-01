@@ -1,7 +1,7 @@
 import { chiediConferma } from './conferma.js';
 'use strict';
 
-import { $, emit, toast, dbTypeIcon, esc, showContextMenu, refreshLucideIcons, migraChiave, aggiungiMenuNodo, lucideIconHtml as ICO } from './utils.js';
+import { $, emit, toast, dbTypeIcon, esc, showContextMenu, refreshLucideIcons, migraChiave, aggiungiMenuNodo, lucideIconHtml as ICO, notifica } from './utils.js';
 import { connectAndOpenTab, startEditConn, openConnModal } from './connection.js';
 import { tabs, switchTab, activeTab } from './tabs.js';
 import { saveWorkspaceInputs } from './workspace.js';
@@ -32,7 +32,7 @@ export function loadSavedConnections() {
     allConns = res.connections;
     renderConnTree();
     fillFolderDatalist();
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Connessioni salvate" }));
 }
 
 /** L'elenco delle connessioni salvate già in memoria (per la palette ⌘/Ctrl+P). */
@@ -44,24 +44,22 @@ function openConn(conn, nuova = false) {
   const esistenti = tabs.list.filter(t => t.connName === conn.name && t.state.connected);
   const aperta = esistenti.find(t => t.id === activeTab()?.id) || esistenti[0];
   if (!nuova && aperta) { saveWorkspaceInputs(); switchTab(aperta.id); return; }
-  toast(`Connessione a "${conn.name}"…`);
-  connectAndOpenTab({ saved: conn.name })
-    .then(() => toast(`Connesso a "${conn.name}"`))
-    .catch((err) => toast(err.message, true));
+  connectAndOpenTab({ saved: conn.name }).catch(() => {}); // Feedback gestito dal flusso di connessione.
 }
 
 function testConn(conn) {
   toast(`Test di "${conn.name}" in corso…`);
   emit('connections:test', { saved: conn.name })
     .then((res) => toast(`✓ "${conn.name}" raggiungibile (${res.databases} db)`))
-    .catch((err) => toast(`✗ "${conn.name}": ${err.message}`, true));
+    .catch((err) => notifica(err.message, { tipo: 'errore', titolo: `Test di “${conn.name}” non riuscito`,
+      actionLabel: 'Modifica connessione', onAction: () => startEditConn(conn.name) }));
 }
 
 async function deleteConn(conn) {
   if (!await chiediConferma(`Eliminare la connessione salvata "${conn.name}"?`)) return;
   emit('connections:delete', { name: conn.name })
     .then(() => loadSavedConnections())
-    .catch((err) => toast(err.message, true));
+    .catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Connessioni salvate" }));
 }
 
 function connMenu(e, conn) {
