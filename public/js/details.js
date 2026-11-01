@@ -1,7 +1,7 @@
 import { chiediConferma } from './conferma.js';
 import { state } from './state.js';
 import { mountArcControls, renderDataEmpty } from '../arc/ui.js';
-import { $, emit, fmtBytes, esc, toast, isForActiveTab, conCaricamento, isSqlType, captureContext, dbTypeIcon, refreshLucideIcons, openModal, closeModal, showError } from './utils.js';
+import { $, emit, fmtBytes, esc, toast, isForActiveTab, conCaricamento, isSqlType, captureContext, dbTypeIcon, refreshLucideIcons, openModal, closeModal, showError, notifica } from './utils.js';
 
 let indexCreateContext = null;
 let detailsRequest = 0;
@@ -165,7 +165,7 @@ export function initDetails() {
       // loadDetails() rilegge db/coll dal Proxy: ha senso solo se il tab che ha
       // eliminato l'indice è ancora quello mostrato.
       if (isForActiveTab(res)) loadDetails();
-    }).catch((err) => toast(err.message, true));
+    }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Indici" }));
   });
 
   $('#index-add-btn').addEventListener('click', () => {

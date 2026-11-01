@@ -3,7 +3,7 @@ import { chiediConferma } from './conferma.js';
 
 import { state } from './state.js';
 import { activeTab, primaDellaChiusura, allaChiusura } from './tabs.js';
-import { $, emitFireAndForget, showContextMenu, makeDraggable, reorderById, safeUUID, isSqlType, showQueryError, toast, lucideIconHtml, refreshLucideIcons } from './utils.js';
+import { $, emitFireAndForget, showContextMenu, makeDraggable, reorderById, safeUUID, isSqlType, showQueryError, toast, lucideIconHtml, refreshLucideIcons, notifica } from './utils.js';
 import { preparaTransizioneTab } from './tab-motion.js';
 import { preparaTransizioneAlbero } from './navigator-motion.js';
 import { exportImportMenuItems } from './exportimport.js';
@@ -20,7 +20,7 @@ import { chiudiPannelloFk } from './fk-vista.js';
 import { segnaTraguardo } from './onboarding-stato.js';
 
 primaDellaChiusura(async tab => {
-  if (tab.state.writesInFlight) { toast(`Salvataggio in corso su ${tab.label}: attendi l’esito prima di disconnettere.`, true); return false; }
+  if (tab.state.writesInFlight) { notifica(`Salvataggio in corso su ${tab.label}: attendi l’esito prima di disconnettere.`, { tipo: 'avviso', titolo: "Salvataggio in corso" }); return false; }
   const form = [...document.querySelectorAll('.overlay:not(.hidden)[data-unsaved]')].some(el => el.dataset.editTab === tab.id);
   return !(form || tab.state.editDrafts?.size || tab.state.collTabs.some(c => c.snapQuery?.dirty))
     || await chiediConferma(`Disconnettere ${tab.label}? Le modifiche e le query non salvate verranno scartate.`);

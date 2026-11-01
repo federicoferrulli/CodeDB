@@ -1,6 +1,6 @@
 import { socket } from './socket.js';
 import { activeTab, tabs, allaChiusura } from './tabs.js';
-import { emit, toast } from './utils.js';
+import { emit, toast, notifica } from './utils.js';
 
 const stati = new Map();
 const risultati = new Map();
@@ -37,7 +37,7 @@ export function renderMongosh() {
   reset.title = 'Chiude stream e sessioni e cancella le variabili di questo tab.';
   reset.onclick = async () => {
     try { await emit('mongosh:reset', { tabId: tab.id }); stati.delete(tab.id); risultati.delete(tab.id); renderMongosh(); }
-    catch (e) { toast(e.message, 'error'); }
+    catch (e) { notifica(e.message, { tipo: 'errore', titolo: "Shell MongoDB" }); }
   };
   el.append(reset);
   for (const f of streams.values()) {
@@ -46,7 +46,7 @@ export function renderMongosh() {
     row.append(head);
     if (!['chiuso', 'errore'].includes(f.status)) {
       const close = document.createElement('button'); close.type = 'button'; close.className = 'ghost btn-sm'; close.textContent = 'Chiudi stream';
-      close.onclick = () => emit('mongosh:closeStream', { tabId: tab.id, streamId: f.id }).catch(e => toast(e.message, 'error'));
+      close.onclick = () => emit('mongosh:closeStream', { tabId: tab.id, streamId: f.id }).catch(e => notifica(e.message, { tipo: 'errore', titolo: "Shell MongoDB" }));
       row.append(close);
     }
     const pre = document.createElement('pre'); pre.textContent = f.error || f.events.map(v => JSON.stringify(v, null, 2)).join('\n'); row.append(pre);
@@ -63,7 +63,7 @@ function domanda(msg) {
   const input = document.createElement('input'); input.type = msg.type === 'password' ? 'password' : 'text'; input.autocomplete = 'off'; label.append(input);
   const send = document.createElement('button'); send.textContent = 'Invia'; send.type = 'submit';
   form.append(label, send); dialog.append(form); document.body.append(dialog);
-  dialog.addEventListener('close', () => { void emit('mongosh:answer', { tabId: msg.tabId, promptId: msg.id, value: input.value }).catch(e => toast(e.message, 'error')); dialog.remove(); });
+  dialog.addEventListener('close', () => { void emit('mongosh:answer', { tabId: msg.tabId, promptId: msg.id, value: input.value }).catch(e => notifica(e.message, { tipo: 'errore', titolo: "Shell MongoDB" })); dialog.remove(); });
   dialog.showModal(); input.focus();
 }
 export function initMongosh() {

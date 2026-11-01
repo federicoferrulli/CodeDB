@@ -134,10 +134,10 @@ const { startTestServer } = require('./e2e-harness');
       };
     });
     await page.locator('#conn-import-file').setInputFiles({ name: 'errore.ini', mimeType: 'text/plain', buffer: Buffer.from('non letto') });
-    await page.waitForFunction(() => document.getElementById('toast-container').textContent.includes('Impossibile importare il file'));
+    await page.waitForFunction(() => document.getElementById('feedback-container').textContent.includes('Impossibile importare il file'));
     assert(!await page.evaluate(() => uploadFixture.sent.some(e => e.name === 'connections:import')));
     await page.locator('#diff-file-input').setInputFiles({ name: 'errore.json', mimeType: 'application/json', buffer: Buffer.from('{}') });
-    await page.waitForFunction(() => document.getElementById('toast-container').textContent.includes('Impossibile leggere il file selezionato'));
+    await page.waitForFunction(() => document.getElementById('feedback-container').textContent.includes('Impossibile leggere il file selezionato'));
     await page.evaluate(async () => {
       (await import('/js/workspace.js')).renderWorkspace();
       (await import('/js/colltabs.js')).openDbTab('origine');

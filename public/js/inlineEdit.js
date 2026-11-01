@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { documentoModificabile, identitaRiga } from './righe.js';
-import { $, emit, isPlainObject, valueType, displayValue, editValue, parseEdited, idOf, toast, openModal, closeModal, isForActiveTab, captureContext, marcaDatiSporchi, conCaricamento, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
+import { $, emit, isPlainObject, valueType, displayValue, editValue, parseEdited, idOf, toast, openModal, closeModal, isForActiveTab, captureContext, marcaDatiSporchi, conCaricamento, lucideIconHtml as ICO, refreshLucideIcons, notifica } from './utils.js';
 import { runQuery, renderGrid, relazioneDiCampo } from './grid.js';
 import { isGeometry, openGeoEditor } from './geomap.js';
 import { colonnaGeometrica, tipoGeoJsonDaMetadato } from './geojson.js';
@@ -170,7 +170,7 @@ export function salvaCampi(doc, set, ctx) {
     else if (isForActiveTab(res) && c.isStillActive()) runQuery({ auto: true }); // refresh post-scrittura
     else marcaDatiSporchi(c, c.db, c.coll);
   }).catch((err) => {
-    toast(err.message, true);
+    notifica(err.message, { tipo: 'errore', titolo: "Modifica del valore", hint: "Controlla il valore e lo stato della riga prima di salvare di nuovo." });
     if (typeof c.onSaveError === 'function') c.onSaveError(err);
     else if (isForActiveTab(err)) renderGrid({ preserveScroll: true });
   });
@@ -273,9 +273,9 @@ export function startEdit(td, doc, field, opts = {}) {
       input.reportValidity();
       return;
     }
-    finished = true;
-    chiudiPannelloFk();
     if (input.value === original) {
+      finished = true;
+      chiudiPannelloFk();
       ridisegna({ preserveScroll: true });
       return;
     }
@@ -283,10 +283,11 @@ export function startEdit(td, doc, field, opts = {}) {
     try {
       value = buildValue();
     } catch (err) {
-      toast(err.message, true);
-      ridisegna({ preserveScroll: true });
+      notifica(err.message, { tipo: 'inline', target: input, titolo: 'Valore non valido' });
       return;
     }
+    finished = true;
+    chiudiPannelloFk();
     salvaCampo(doc, field, value, ctx);
   };
 
@@ -367,7 +368,7 @@ export function mostraPannelloFk(editor, doc, field, relazione, opts = {}) {
           const set = setDaRelazione(relazione, riga);
           saveSet(set);
         } catch (err) {
-          toast(err.message, true);
+          notifica(err.message, { tipo: 'errore', titolo: "Modifica del valore", hint: "Controlla il valore e lo stato della riga prima di salvare di nuovo." });
           ridisegnaDopoErrore(ctx);
         }
         return;

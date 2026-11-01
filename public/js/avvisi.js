@@ -13,6 +13,7 @@
  */
 
 export function toast(msg, isError = false) {
+  if (isError) return notifica(msg);
   if (!document.querySelector('#toast-container')) return;
   // La durata segue la lunghezza: gli errori ora sono frasi con causa e rimedio
   // (db/errors.js) e in 3 secondi fissi non si leggevano — sparivano prima della
@@ -21,4 +22,24 @@ export function toast(msg, isError = false) {
   document.dispatchEvent(new CustomEvent('codedb:toast', {
     detail: { message: String(msg), type: isError ? 'error' : 'info', duration: durata, replace: true },
   }));
+}
+
+// Il chiamante sceglie il componente in base all'operazione, mai dal testo dell'errore.
+export function notifica(message, options = {}) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  const host = window.frameElement?.codedbPanel ? window.parent : window;
+  if (window.frameElement?.hidden) return;
+  const owner = host.document || document;
+  if (!owner.dispatchEvent) return;
+  owner.dispatchEvent(new CustomEvent('codedb:feedback', {
+    detail: { message: String(message), ...options, document: document },
+  }));
+}
+
+export function chiudiNotifica(id) {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  const host = window.frameElement?.codedbPanel ? window.parent : window;
+  const owner = host.document || document;
+  if (!owner.dispatchEvent) return;
+  owner.dispatchEvent(new CustomEvent('codedb:feedback-close', { detail: { id, document } }));
 }

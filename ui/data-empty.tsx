@@ -1,6 +1,8 @@
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
+import { useId } from 'react';
 import { ArrowRight, Search, Terminal, Table2, CircleAlert, Database } from 'lucide-react';
+import connectionLostArt from '../public/images/collegamento-interrotto.webp';
 import { EmptyState } from './components/arc/empty-state/empty-state';
 import { Button } from './components/arc/button/button';
 
@@ -15,6 +17,21 @@ type EmptyOptions = {
   secondaryAction?: { label: string; onAction: () => void };
 };
 const mounts = new Map<HTMLElement, { host: HTMLElement; root: Root }>();
+
+export function ConnectionLostArt() {
+  const id = useId().replaceAll(':', '');
+  // I ritagli conservano il disegno originale; il cavo si estende dal punto di attacco.
+  return <svg className="connection-lost-art" viewBox="0 0 960 400" width={960} height={400} aria-hidden="true">
+    <defs>
+      <clipPath id={`${id}-base`}><path clipRule="evenodd" d="M0 0H960V400H0Z M451 298H527V351H451Z M546 298H634V351H546Z" /></clipPath>
+      <clipPath id={`${id}-left`}><rect x="451" y="298" width="76" height="53" /></clipPath>
+      <clipPath id={`${id}-right`}><rect x="546" y="298" width="88" height="53" /></clipPath>
+    </defs>
+    <image className="connection-lost-base" href={connectionLostArt} width="960" height="400" clipPath={`url(#${id}-base)`} />
+    <g className="connection-cable connection-cable-left"><image href={connectionLostArt} width="960" height="400" clipPath={`url(#${id}-left)`} /></g>
+    <g className="connection-cable connection-cable-right"><image href={connectionLostArt} width="960" height="400" clipPath={`url(#${id}-right)`} /></g>
+  </svg>;
+}
 
 // La stessa tabella illustrata accompagna tutti gli stati vuoti; cambia solo il simbolo del contesto.
 export function DataEmptyArt({ kind = 'data' }: { kind?: EmptyKind }) {

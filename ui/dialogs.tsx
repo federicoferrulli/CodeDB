@@ -23,7 +23,7 @@ function Pannello({ panel, overlay }: { panel: HTMLElement; overlay: HTMLElement
   return <div ref={slot} className="arc-panel-slot" />;
 }
 
-const barriers = ['login-overlay', 'vault-overlay', 'conn-error-overlay'];
+const barriers = ['login-overlay', 'vault-overlay'];
 
 export function removeDialog(overlay: HTMLElement) {
   if (!overlay.dataset.arcDialog) { overlay.remove(); return; }
@@ -47,19 +47,21 @@ function Finestra({ open, panel, overlay, dismiss, restoreFocus, onExitComplete 
     return () => media.removeEventListener('change', update);
   }, []);
   useLayoutEffect(() => {
-    if (!open || overlay.id === 'palette-overlay') return;
+    if (!open) return;
     const container = overlay.querySelector<HTMLElement>('.arc-panel-slot');
     if (!container) return;
     // I popup appartengono al focus trap della finestra attiva. Vanno
     // restituiti all'inizio della chiusura: muovere un popover già riaperto
     // al termine dell'animazione lo chiuderebbe nuovamente nel browser.
-    const auxiliary = [...document.querySelectorAll<HTMLElement>('#fk-pannello, .ac-flottante, #context-menu')]
+    const selector = overlay.id === 'palette-overlay' ? '#feedback-container'
+      : '#fk-pannello, .ac-flottante, #context-menu, #feedback-container';
+    const auxiliary = [...document.querySelectorAll<HTMLElement>(selector)]
       .map(node => ({ node, parent: node.parentNode!, next: node.nextSibling }));
-    for (const { node } of auxiliary) container.append(node);
+    for (const { node } of auxiliary) (node.id === 'feedback-container' ? panel : container).append(node);
     return () => {
       for (const { node, parent, next } of auxiliary) {
         // Una finestra sovrapposta può aver già preso il popup in consegna.
-        if (node.parentNode !== container) continue;
+        if (node.parentNode !== (node.id === 'feedback-container' ? panel : container)) continue;
         const owner = parent instanceof Element ? parent.closest('.overlay, .palette-overlay') : null;
         const target = parent.isConnected && !owner?.classList.contains('hidden') ? parent : document.body;
         target.insertBefore(node, next?.parentNode === target ? next : null);

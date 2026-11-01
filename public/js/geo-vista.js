@@ -22,7 +22,7 @@
  * la libreria va caricata una volta sola.
  * ------------------------------------------------------------------------- */
 
-import { toast, lucideIconHtml, refreshLucideIcons, scaricaFile } from './utils.js';
+import { toast, lucideIconHtml, refreshLucideIcons, scaricaFile, notifica } from './utils.js';
 import { geometryLabel } from './geojson.js';
 import { caricaLeaflet, tileAttive, TILE_URL, TILE_ATTR } from './geo-leaflet.js';
 import {
@@ -414,7 +414,7 @@ export function creaVistaGeo(el = {}) {
       if (!tr || !stato) return;
       const indice = Number(tr.dataset.i);
       if (!stato.disegnate.some((x) => x.indice === indice)) {
-        toast('Questa geometria non è disegnata sulla mappa (proiettata o oltre il limite di disegno)', true);
+        notifica('Questa geometria non è disegnata sulla mappa (proiettata o oltre il limite di disegno)', { tipo: 'avviso', titolo: "Mappa" });
         return;
       }
       evidenzia(indice);
@@ -522,7 +522,7 @@ export function creaVistaGeo(el = {}) {
 
 export function copia(testo, messaggio) {
   if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(testo).then(() => toast(messaggio)).catch(() => toast('Copia non riuscita', true));
+    navigator.clipboard.writeText(testo).then(() => toast(messaggio)).catch(() => notifica('Copia non riuscita', { tipo: 'errore', titolo: "Mappa" }));
     return;
   }
   const ta = document.createElement('textarea');

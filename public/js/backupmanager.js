@@ -2,7 +2,7 @@ import { mountArcControls, closeNavigationSheet, renderDataEmpty } from '../arc/
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, esc, fmtBytes, iniziaCaricamento, captureContext, refreshLucideIcons, safeUUID, dbTypeIcon } from './utils.js';
+import { $, emit, toast, openModal, closeModal, esc, fmtBytes, iniziaCaricamento, captureContext, refreshLucideIcons, safeUUID, dbTypeIcon, notifica } from './utils.js';
 import { activeTab, tabs, onTabChange } from './tabs.js';
 import { preparaTransizioneTab } from './tab-motion.js';
 import { socket } from './socket.js';
@@ -43,7 +43,7 @@ export function initBackupManager() {
     try {
       const res = await emit('backup:cancel', { tabId: backup.tabId, operationId: backup.id });
       if (backupAttivo === backup && res.cancelled) $('#backup-status-msg').textContent = 'Annullamento del backup e pulizia dei file parziali…';
-    } catch (err) { toast(`Annullamento non riuscito: ${err.message}`, true); }
+    } catch (err) { notifica(`Annullamento non riuscito: ${err.message}`, { tipo: 'errore', titolo: "Backup e ripristino", hint: "Controlla il resoconto del backup o del ripristino prima di ripetere l’operazione." }); }
     finally { fine(); }
   });
   const btnOpen = $('#btn-backup-manager');
@@ -194,6 +194,7 @@ function chiudiProgresso(progresso, titolo, ok) {
   progresso.fineCaricamento?.(); progresso.fineCaricamento = null;
   progresso.head.textContent = titolo;
   progresso.section.classList.add(ok ? 'esito-ok' : 'esito-ko');
+  progresso.head.setAttribute('role', ok ? 'status' : 'alert');
   // Conservare gli esiti visibili evita di duplicarli se ACK, lettura stato
   // ed elenco arrivano in ordine diverso. Il limite resta di dieci conclusi.
   // Mantiene gli esiti recenti senza rimuovere mai un'attività ancora in corso.
@@ -252,7 +253,11 @@ function applicaStatoRipristino(progresso, operation) {
     if (operation.recoveryError) msg += `. Errore di recupero: ${operation.recoveryError}`;
   }
   chiudiProgresso(progresso, msg, ok);
-  toast(msg, !ok);
+  if (!ok) {
+    if (!progresso.section.getClientRects().length) notifica(msg, { tipo: 'errore', titolo: 'Ripristino da verificare',
+      hint: 'Controlla il resoconto prima di ripetere il ripristino.', actionLabel: 'Apri resoconto',
+      onAction: () => { openModal('#modal-backup-manager'); switchBackupTab('catalog'); } });
+  } else toast(msg);
   // Il tab originale può essere stato chiuso mentre il server lavorava.
   const tab = tabs.list.find(item => item.id === progresso.tabId);
   if (tab) {
@@ -454,13 +459,13 @@ async function executeBackup() {
   if (backupAttivo) return;
   const tab = activeTab();
   if (!tab || !tab.dbType) {
-    toast('Nessuna connessione attiva. Connettiti a un database.', true);
+    notifica('Nessuna connessione attiva. Connettiti a un database.', { tipo: 'inline', titolo: "Backup e ripristino", target: "#form-run-backup" });
     return;
   }
 
   const db = $('#backup-db').value;
   if (!db) {
-    toast('Seleziona un database su cui effettuare il backup.', true);
+    notifica('Seleziona un database su cui effettuare il backup.', { tipo: 'inline', titolo: "Backup e ripristino", target: "#backup-db" });
     return;
   }
 
@@ -515,11 +520,13 @@ async function executeBackup() {
       if (!$('#modal-backup-manager').classList.contains('hidden') && activeTab() === tab) switchBackupTab('catalog');
     }, 1200);
   } catch (err) {
-    toast(`Backup fallito: ${err.message}`, true);
     if (statusEl) {
       statusEl.classList.add('error');
       statusEl.textContent = `Errore: ${err.message}`;
+      statusEl.setAttribute('role', 'alert');
     }
+    if (!statusEl?.getClientRects().length) notifica(`Backup fallito: ${err.message}`, { tipo: 'errore', titolo: 'Backup non riuscito',
+      actionLabel: 'Apri resoconto', onAction: () => { openModal('#modal-backup-manager'); switchBackupTab('new'); } });
   } finally {
     backupAttivo = null;
     $('#btn-background-backup').classList.add('hidden');
@@ -943,7 +950,7 @@ async function promptRestoreBackup(group, backupId, origDb, bottone) {
   const origin = captureContext();
   const tab = origin.tab;
   if (!tab || !tab.dbType) {
-    toast('Connettiti prima a un database: il ripristino scrive sulla connessione attiva.', true);
+    notifica('Connettiti prima a un database: il ripristino scrive sulla connessione attiva.', { tipo: 'errore', titolo: "Backup e ripristino", hint: "Controlla il resoconto del backup o del ripristino prima di ripetere l’operazione." });
     return;
   }
   const conn = tab.label || tab.savedName || 'connessione attiva';
@@ -953,7 +960,7 @@ async function promptRestoreBackup(group, backupId, origDb, bottone) {
   if (catena.rotta) {
     // Il pulsante è già disabilitato, ma il ripristino può arrivare qui anche
     // da un catalogo diventato obsoleto tra il disegno e il clic.
-    toast(catena.motivo, true);
+    notifica(catena.motivo, { tipo: 'inline', titolo: "Backup e ripristino", target: "#section-backup-catalog" });
     return;
   }
 
@@ -1024,7 +1031,7 @@ function chiediRipristino({ backupId, conn, dbSuggerito, layer = 1, gruppoEstran
       if (!targetDb) {
         // Prima si ricadeva in silenzio sul database del backup: se il campo
         // viene svuotato, di solito è perché si sta ripensandoci.
-        toast('Indica il database di destinazione.', true);
+        notifica('Indica il database di destinazione.', { tipo: 'inline', titolo: "Backup e ripristino", target: "#restore-target-db" });
         input.focus();
         return;
       }
@@ -1047,7 +1054,7 @@ function chiediRipristino({ backupId, conn, dbSuggerito, layer = 1, gruppoEstran
 async function executeRestore(group, backupId, targetDb, drop, bottone, origin) {
   const tab = origin && origin.tab;
   if (!tab || !tabs.list.includes(tab) || !tab.dbType) {
-    toast('La connessione scelta per il ripristino non è più aperta. Riaprila e conferma di nuovo.', true);
+    notifica('La connessione scelta per il ripristino non è più aperta. Riaprila e conferma di nuovo.', { tipo: 'errore', titolo: "Backup e ripristino", hint: "Controlla il resoconto del backup o del ripristino prima di ripetere l’operazione." });
     return;
   }
 

@@ -6,7 +6,7 @@ import { isGeometry, geometryLabel } from './geojson.js';
 import { isPlainObject, ejsonKind, fmtBytes, safeUUID, jsonBreve, tronca } from './valori.js';
 // L'avviso passeggero vive in un modulo foglia: il trasporto ne ha bisogno e
 // non puo' importare questo file (vedi la nota sul trasporto piu' sotto).
-import { toast } from './avvisi.js';
+import { toast, notifica, chiudiNotifica } from './avvisi.js';
 import { limitiViewport } from './viewport.js';
 
 export const $ = (sel) => document.querySelector(sel);
@@ -16,7 +16,7 @@ export const $ = (sel) => document.querySelector(sel);
 // questi non è costretto a caricare l'intera applicazione (vedi la nota in
 // testa a valori.js).
 export { isPlainObject, ejsonKind, fmtBytes, safeUUID };
-export { toast };
+export { toast, notifica, chiudiNotifica };
 
 // Sul browser conferma l'avvio; su Android attende anche la scrittura del file.
 export async function scaricaFile(contenuto, nome) {
@@ -35,7 +35,7 @@ export async function scaricaFile(contenuto, nome) {
     link.click();
     return true;
   } catch (error) {
-    toast(`Download non riuscito: ${error.message}`, true);
+    notifica(`Download non riuscito: ${error.message}`, { tipo: 'errore', titolo: "Operazione non riuscita" });
     return false;
   } finally {
     link?.remove();
@@ -434,9 +434,9 @@ export function showContextMenu(x, y, items) {
         // si è manifestato `prompt()` mancante in Electron). Ora si vede.
         try {
           const r = item.action();
-          if (r && typeof r.catch === 'function') r.catch((err) => toast(err.message || String(err), true));
+          if (r && typeof r.catch === 'function') r.catch((err) => notifica(err.message || String(err), { tipo: 'errore', titolo: "Operazione non riuscita" }));
         } catch (err) {
-          toast(err.message || String(err), true);
+          notifica(err.message || String(err), { tipo: 'errore', titolo: "Operazione non riuscita" });
         }
       });
     }
@@ -869,6 +869,7 @@ export async function closeModal(elOrId, { saved = false } = {}) {
 
 /* ---------- Gestione Notifiche Toast ---------- */
 export function showToast(message, type = 'info', duration = 3500) {
+  if (type === 'error' || type === 'warning') return notifica(message, { tipo: type === 'warning' ? 'avviso' : 'errore' });
   if (!document.getElementById('toast-container')) return;
   document.dispatchEvent(new CustomEvent('codedb:toast', {
     detail: { message: String(message), type, duration },

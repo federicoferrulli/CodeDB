@@ -69,6 +69,8 @@ export default function Toast({ title, description, open = true, onOpenChange, d
   // The drag offset is owned here, so a release hands its velocity straight to the spring home or to the throw.
   const x = useMotionValue(0);
   const releaseVelocity = useRef(0);
+  const onOpenChangeRef = useRef(onOpenChange);
+  useLayoutEffect(() => { onOpenChangeRef.current = onOpenChange; }, [onOpenChange]);
 
   /** Closing tells the parent at once, while the exit plays out here, so a new toast can be raised mid-exit and simply turns back. */
   function dismiss(to: number) {
@@ -78,10 +80,11 @@ export default function Toast({ title, description, open = true, onOpenChange, d
   }
 
   useEffect(() => {
-    if (!visible || !onOpenChange || duration <= 0) return;
-    const timer = window.setTimeout(() => { setThrowX(0); setDismissed(true); onOpenChange(false); }, duration);
+    if (!visible || duration <= 0) return;
+    // Un nuovo callback del genitore non deve riavviare il conto alla rovescia.
+    const timer = window.setTimeout(() => { setThrowX(0); setDismissed(true); onOpenChangeRef.current?.(false); }, duration);
     return () => window.clearTimeout(timer);
-  }, [visible, onOpenChange, duration]);
+  }, [visible, duration]);
 
   function handleDragEnd(_: PointerEvent | MouseEvent | TouchEvent, info: PanInfo) {
     const direction = Math.sign(info.offset.x || info.velocity.x);

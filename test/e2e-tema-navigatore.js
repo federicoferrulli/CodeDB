@@ -169,7 +169,7 @@ async function run(mutant) {
   fs.mkdirSync(dir, { recursive: true });
   try {
     const built = await require('esbuild').build({ absWorkingDir: repo, entryPoints: ['ui/main.tsx'], outdir: path.join(dir, 'bundle-in-memoria'),
-      entryNames: 'ui', write: false, bundle: true, minify: true, format: 'esm', target: ['chrome120', 'firefox120', 'safari17'], jsx: 'automatic', logLevel: 'silent', legalComments: 'none' });
+      entryNames: 'ui', write: false, bundle: true, minify: true, format: 'esm', target: ['chrome120', 'firefox120', 'safari17'], jsx: 'automatic', loader: { '.webp': 'dataurl' }, logLevel: 'silent', legalComments: 'none' });
     bundle = Object.fromEntries(built.outputFiles.map(file => [path.basename(file.path), file.text])); report.bundleSha256 = hash(bundle['ui.js']);
     server = await startTestServer({ port: Number(process.env.LAB_TEMA_NAV_PORT || 39372) });
     browser = await chromium.launch(process.env.LAB_BROWSER_CHANNEL ? { channel: process.env.LAB_BROWSER_CHANNEL } : {});

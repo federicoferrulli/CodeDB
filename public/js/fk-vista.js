@@ -40,7 +40,7 @@
  * provato in Node: qui c'è solo il disegno e il dialogo col server.
  * ------------------------------------------------------------------------- */
 
-import { $, emit, esc, toast, chiaveStorage } from './utils.js';
+import { $, emit, esc, toast, chiaveStorage, notifica } from './utils.js';
 import { openCollTab } from './colltabs.js';
 import { onTabChange, switchTab, tabs } from './tabs.js';
 // La ricerca nell'elenco dei candidati è la stessa del filtro rapido della
@@ -807,7 +807,7 @@ export function initFkVista() {
     const tabOrigine = c.tabId ? tabs.list.find((t) => t.id === c.tabId) : null;
     chiudiPannelloFk();
     if (c.tabId && !tabOrigine) {
-      toast('Il tab da cui era stato aperto il pannello non è più disponibile.', true);
+      notifica('Il tab da cui era stato aperto il pannello non è più disponibile.', { tipo: 'avviso', titolo: "Relazioni" });
       return;
     }
     if (tabOrigine && tabs.activeId !== tabOrigine.id) switchTab(tabOrigine.id);

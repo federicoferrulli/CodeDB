@@ -1,12 +1,12 @@
 import { state } from './state.js';
 import { feedbackQuery } from './feedback.js';
-import { renderDataEmpty, showMobileError, clearMobileError, isMobileFeedback } from '../arc/ui.js';
+import { renderDataEmpty, showMobileError, clearMobileError } from '../arc/ui.js';
 import { configuraColonne } from './table-resize.js';
 import { activeTab } from './tabs.js';
 import { initNativeTargets, renderNativeTargets } from './query-native.js';
 import { initMongosh, renderMongosh, risultatoMongosh } from './query-mongosh.js';
 import { queryDocument, documentoVisibile } from './query-document.js';
-import { $, emit, displayValue, displayValueBreve, ejsonKind, initToolbarDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab, isSqlType, lucideIconHtml as ICO, refreshLucideIcons, scaricaFile } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, ejsonKind, initToolbarDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab, isSqlType, lucideIconHtml as ICO, refreshLucideIcons, scaricaFile, notifica } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 import { serializzaJsonStandard } from './export-json.js';
 import { trackPending, markPaused } from './pending-queries.js';
@@ -588,7 +588,7 @@ function initSqlChunking() {
       document.file = file;
       if (documentoVisibile(tab, collTabId)) activeSqlFile = file;
       await preview(file, 0);
-    } catch (err) { toast(`Impossibile aprire ${source.name}: ${err.message}`, true); }
+    } catch (err) { notifica(`Impossibile aprire ${source.name}: ${err.message}`, { tipo: 'errore', titolo: "Risultati query" }); }
   });
   $('#chunk-prev-btn')?.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index - 1));
   $('#chunk-next-btn')?.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index + 1));
@@ -845,33 +845,15 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
 function renderQueryError(message) {
   const box = $('#query-error-box');
   if (!box) return;
+  const mark = queryDocument()?.errorMark;
+  if (mark && mark.code !== $('#query-editor-input')?.value) message = null;
   box.classList.toggle('hidden', !message);
-  if (!message) return;
-  const mobile = isMobileFeedback();
-  box.dataset.errorInteractive = String(mobile);
-  if (!mobile) { box.textContent = message; return; }
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'query-error-summary';
-  button.setAttribute('aria-label', 'Mostra errore');
-  const text = document.createElement('span');
-  text.textContent = message;
-  const label = document.createElement('strong');
-  label.textContent = 'Mostra errore';
-  button.append(text, label);
-  button.addEventListener('click', () => {
-    mostraErroreQuery(currentErrorMark || { code: $('#query-editor-input')?.value, message });
-  });
-  box.replaceChildren(button);
+  if (!message) { clearMobileError('query'); return; }
+  box.dataset.errorInteractive = 'true';
+  if (box.textContent.includes(message) && box.querySelector('.feedback-local')) return;
+  showMobileError({ source: 'query', title: 'La query non è riuscita', message,
+    actionLabel: 'Modifica query', onAction: () => { setQuerySurface('editor'); $('#query-editor-input')?.focus(); } });
 }
-
-const viewportErrore = (window.frameElement?.codedbPanel ? window.parent : window).matchMedia('(max-width: 900px)');
-function aggiornaFormatoErrore() {
-  clearMobileError('query');
-  renderQueryError(currentMetrics[3]);
-}
-viewportErrore.addEventListener('change', aggiornaFormatoErrore);
-if (window.frameElement?.codedbPanel) window.addEventListener('pagehide', () => viewportErrore.removeEventListener('change', aggiornaFormatoErrore), { once: true });
 
 // Renderizza i risultati nella vista attiva
 function queryEmptyOptions() {
@@ -912,7 +894,7 @@ export function renderResults(data, colonneDichiarate) {
     // di caricamento non deve restare una promessa rifiutata in silenzio.
     renderQueryMap(currentResults).catch((err) => {
       console.error('[QueryTab] Errore nel rendering della mappa:', err);
-      toast(`Impossibile disegnare la mappa: ${err.message}`, true);
+      notifica(`Impossibile disegnare la mappa: ${err.message}`, { tipo: 'vista', titolo: "Risultati query", target: '#query-map-view' });
     });
   } else if (activeViewMode === 'chart') {
     // `renderChart` è asincrona solo al primo uso (carica ECharts da
@@ -920,7 +902,7 @@ export function renderResults(data, colonneDichiarate) {
     // caricamento non deve restare una promessa rifiutata in silenzio.
     renderChart(currentResults).catch((err) => {
       console.error('[QueryTab] Errore nel rendering del grafico:', err);
-      toast(`Impossibile disegnare il grafico: ${err.message}`, true);
+      notifica(`Impossibile disegnare il grafico: ${err.message}`, { tipo: 'vista', titolo: "Risultati query", target: '#query-chart-view' });
     });
     if (!currentResults.length) {
       $('#chart-empty')?.replaceChildren();
@@ -1667,7 +1649,7 @@ function renderSchemaTreeForDb(dbName, container, collections) {
         riapplicaFiltroSchema();
       }).catch((err) => {
         relazioniCaricate = false;
-        if (fieldsContainer.isConnected && isForActiveTab(err)) toast(err.message, true);
+        if (fieldsContainer.isConnected && isForActiveTab(err)) notifica(err.message, { tipo: 'errore', titolo: "Risultati query" });
       });
     });
 

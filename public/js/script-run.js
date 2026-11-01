@@ -16,7 +16,7 @@ import { feedbackQuery } from './feedback.js';
  * eseguite lo decide il server, che è l'unico a dividere il testo per davvero.
  */
 
-import { $, esc, toast, emit, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
+import { $, esc, toast, emit, lucideIconHtml as ICO, refreshLucideIcons, notifica } from './utils.js';
 import { socket } from './socket.js';
 import { activeTab } from './tabs.js';
 import { state } from './state.js';
@@ -28,7 +28,7 @@ import {
 import { renderResults, updateQueryMetrics, contestoErroreQuery, registraErroreQuery, mostraErroreQuery, applicaErroreQuery, mostraRisultatiQueryRiuscita } from './query-tab.js';
 import { refreshDbTree } from './dbtree.js';
 import { segnalaErroreQuery } from './query-editor.js';
-import { clearMobileError, isMobileFeedback } from '../arc/ui.js';
+import { clearMobileError } from '../arc/ui.js';
 import {
   unisciLog, righeDaMostrare, haRisultato,
   etichettaScheda, schedaAttiva, notaScartate,
@@ -120,7 +120,7 @@ export function runScript({ code, engine, db, coll, stopOnError = false, previou
     .then((res) => {
       const r = runs.get(runId);
       if (r && res && res.total) r.total = res.total;
-      if (!isMobileFeedback()) toast(`Script avviato: ${res.total} istruzioni`);
+      toast(`Script avviato: ${res.total} istruzioni`);
       if (documentoVisibile(tab, collTabId) && runVisibile === runId) aggiornaPannello({ status: 'running', cursor: 0, total: res.total, eseguiti: 0, falliti: 0 });
       return res;
     })
@@ -173,7 +173,7 @@ export function pauseScript(runId = runVisibile, force = false) {
       return res;
     })
     .catch((err) => {
-      toast(`Impossibile mettere in pausa: ${err.message}`, true);
+      notifica(`Impossibile mettere in pausa: ${err.message}`, { tipo: 'errore', titolo: "Esecuzione script" });
     });
 }
 
@@ -201,7 +201,7 @@ export function resumeScript(runId = runVisibile) {
       return res;
     })
     .catch((err) => {
-      toast(`Ripresa non riuscita: ${err.message}`, true);
+      notifica(`Ripresa non riuscita: ${err.message}`, { tipo: 'errore', titolo: "Esecuzione script" });
       throw err;
     });
 }
@@ -236,7 +236,7 @@ function onProgress(ev) {
   if (!ev || !ev.runId) return;
   const r = runs.get(ev.runId);
   if (!r) return; // run di un'altra scheda del browser o già dimenticato
-  if (ev.avviso) { toast(ev.avviso, true); return; }
+  if (ev.avviso) { notifica(ev.avviso, { tipo: 'avviso', titolo: "Esecuzione script" }); return; }
 
   const stato = ev.stato || {};
   const statoPrecedente = r.stato?.status;
@@ -349,9 +349,8 @@ function onProgress(ev) {
       righeMostrate != null ? righeMostrate : 0,
       falliti ? r.primoErrore?.error || `Script terminato con ${falliti} istruzioni fallite su ${stato.eseguiti}.` : null
     );
-    if (!falliti || !isMobileFeedback()) toast(falliti
-      ? `Script terminato: ${falliti} istruzioni fallite su ${stato.eseguiti}`
-      : `Script completato: ${stato.eseguiti} istruzioni`);
+    // L'errore resta nel riepilogo query e nel registro, senza un secondo messaggio globale.
+    if (!falliti) toast(`Script completato: ${stato.eseguiti} istruzioni`);
     if (!falliti && stato.status === 'done') mostraRisultatiQueryRiuscita();
   }
 }
@@ -548,7 +547,7 @@ function apriScheda(pos) {
       updateQueryMetrics('success', null, (res.docs || []).length);
     })
     .catch((err) => {
-      toast(`Impossibile aprire il risultato: ${err.message}`, true);
+      notifica(`Impossibile aprire il risultato: ${err.message}`, { tipo: 'errore', titolo: "Esecuzione script" });
     });
 }
 

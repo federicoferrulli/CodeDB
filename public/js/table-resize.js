@@ -1,5 +1,5 @@
 import { larghezzeColonne } from './table-cols.js';
-import { displayValueBreve, showContextMenu, chiediTesto, toast } from './utils.js';
+import { displayValueBreve, showContextMenu, chiediTesto } from './utils.js';
 import { rendiTrascinabile } from './maniglia.js';
 
 const osservatori = new WeakMap();
@@ -62,10 +62,11 @@ export function configuraColonne(table, { nomi, righe, larghezze, manuali = new 
         { label: `Colonna: ${nome}`, disabled: true },
         { label: 'Adatta al contenuto', action: adatta },
         { label: 'Imposta larghezza…', action: async () => {
-          const value = await chiediTesto({ titolo: 'Larghezza colonna', sottotitolo: nome, etichetta: 'Pixel (64–1600)', valore: Math.round(attuale()), ok: 'Applica' });
+          const value = await chiediTesto({ titolo: 'Larghezza colonna', sottotitolo: nome, etichetta: 'Pixel (64–1600)', valore: Math.round(attuale()), ok: 'Applica',
+            valida: testo => Number.isFinite(Number(testo)) && Number(testo) >= 64 && Number(testo) <= 1600
+              ? null : 'Inserisci una larghezza fra 64 e 1600 pixel.' });
           if (value === null) return;
           const n = Number(value);
-          if (!Number.isFinite(n) || n < 64 || n > 1600) { toast('Inserisci una larghezza fra 64 e 1600 pixel.', true); return; }
           scrivi(n);
         } },
         { label: 'Copia nome completo', action: () => navigator.clipboard.writeText(nome) },

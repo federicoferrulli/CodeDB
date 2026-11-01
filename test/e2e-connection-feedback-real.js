@@ -73,6 +73,7 @@ async function proxyLento(cfg) {
           if (!socket.connected) await new Promise(resolve => socket.once('connect', resolve));
           window.realFeedback = { responses: [], notices: [] };
           document.addEventListener('codedb:toast', event => window.realFeedback.notices.push(event.detail.message));
+          document.addEventListener('codedb:feedback', event => window.realFeedback.notices.push(event.detail.message));
           // Osserva gli ACK reali senza sostituirli o ritardarli.
           const emit = socket.emit.bind(socket);
           socket.emit = (event, ...args) => {
@@ -104,22 +105,13 @@ async function proxyLento(cfg) {
             assert(await page.evaluate(async () => (await import('/js/tabs.js')).activeTab().state.connected));
           } else {
             assert(response.error, 'Errore restituito dal driver reale');
-            if (mobile) {
-              const dialog = page.getByRole('dialog', { name: 'Connessione non riuscita' });
-              await dialog.waitFor();
-              await page.waitForFunction(() => !document.querySelector('.arc-navigation-sheet'));
-              assert(await dialog.isVisible(), 'L’errore reale sopravvive alla chiusura del drawer');
-              assert(await dialog.evaluate(el => el.contains(document.activeElement)));
-              assert(await dialog.getByText(response.error, { exact: true }).isVisible());
-              await page.screenshot({ path: `${dir}/${connection.name}-${mode}-errore.png` });
-              await dialog.getByRole('button', { name: 'Ho capito' }).click();
-              await dialog.waitFor({ state: 'detached' });
-              assert.deepEqual(await page.evaluate(() => window.realFeedback.notices), []);
-            } else {
-              await page.getByText(response.error, { exact: true }).waitFor();
-              assert((await page.evaluate(() => window.realFeedback.notices)).includes(response.error));
-              await page.screenshot({ path: `${dir}/${connection.name}-${mode}-errore.png` });
-            }
+            const notice = page.locator('#feedback-container .feedback-message');
+            await notice.waitFor();
+            assert(await notice.getByText(response.error, { exact: true }).isVisible());
+            assert.equal(await notice.getByRole('button', { name: 'Modifica connessione' }).count(), 1);
+            assert.equal(await page.locator('.illustrated-error-snackbar').count(), 0);
+            await page.screenshot({ path: `${dir}/${connection.name}-${mode}-errore.png` });
+            await notice.getByRole('button', { name: 'Chiudi messaggio' }).click();
           }
           checks.push(`${connection.name}: ${mode}, ${suffix}, progress ed esito reale verificati`);
           console.log(`OK: ${checks.at(-1)}`);

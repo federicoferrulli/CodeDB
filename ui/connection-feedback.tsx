@@ -1,6 +1,5 @@
-import { showMobileError } from './mobile-error';
 
-const pending = new Set<symbol>();
+const pending = new Map<symbol, string>();
 let progress: HTMLDivElement | undefined;
 
 // Su mobile segue la nav nel drawer; su desktop resta in cima alla finestra.
@@ -10,9 +9,9 @@ function positionProgress() {
   if (progress && host) host.append(progress);
 }
 
-export function startConnection(name: string) {
+export function startProgress(label: string) {
   const id = Symbol();
-  pending.add(id);
+  pending.set(id, label);
   if (!progress) {
     progress = document.createElement('div');
     progress.className = 'connection-progress';
@@ -20,15 +19,30 @@ export function startConnection(name: string) {
     positionProgress();
     window.addEventListener('resize', positionProgress);
   }
-  progress.setAttribute('aria-label', 'Connessione in corso');
-  return (error?: string) => {
-    if (!pending.delete(id)) return;
+  const updateLabel = () => progress?.setAttribute('aria-label', [...new Set(pending.values())].join(' · '));
+  updateLabel();
+  return () => {
+    if (!pending.delete(id)) return false;
     if (!pending.size) {
       progress?.remove(); progress = undefined;
       window.removeEventListener('resize', positionProgress);
+    } else updateLabel();
+    return true;
+  };
+}
+
+export function startConnection(name: string, onEdit?: () => void, inline = false) {
+  const finish = startProgress('Connessione in corso');
+  return (error?: string) => {
+    if (!finish()) return;
+    if (error) {
+      document.dispatchEvent(new CustomEvent('codedb:feedback', { detail: {
+        tipo: inline ? 'inline' : 'errore', target: '#connect-form',
+        titolo: `Connessione a “${name}” non riuscita`, message: error,
+        hint: 'Controlla host, porta e credenziali della connessione.',
+        actionLabel: 'Modifica connessione', onAction: inline ? undefined : onEdit,
+      } }));
+      return true;
     }
-    if (error) return showMobileError({ source: 'connection', title: 'Connessione non riuscita',
-      description: `Non è stato possibile aprire “${name}”.`, message: error,
-      hint: 'Controlla la connessione e i parametri, poi riprova.' });
   };
 }

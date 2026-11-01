@@ -28,6 +28,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const { parse } = require('@babel/parser');
 
 const JS = path.join(__dirname, '..', 'public', 'js');
 
@@ -45,29 +46,23 @@ const FILE = [
   'splitview.js', 'schema-ops.js', 'details.js', 'backupmanager.js',
 ];
 
-/**
- * Estrae il testo dell'oggetto payload passato a `emit('<evento>', { … })`,
- * bilanciando le graffe. Ritorna la lista delle occorrenze trovate nel file.
- */
-function payloadDiEmit(sorgente, evento) {
+// Il parser distingue le chiamate reali da commenti e stringhe contenenti emit().
+function payloadDiEmit(sorgente) {
   const out = [];
-  const apertura = `emit('${evento}'`;
-  let i = sorgente.indexOf(apertura);
-  while (i !== -1) {
-    const graffa = sorgente.indexOf('{', i);
-    // `emit('x', payload)` senza oggetto letterale: niente da ispezionare qui.
-    const virgola = sorgente.indexOf(',', i + apertura.length);
-    if (graffa !== -1 && virgola !== -1 && graffa < sorgente.indexOf(')', virgola) + 1) {
-      let livello = 0;
-      let j = graffa;
-      for (; j < sorgente.length; j++) {
-        if (sorgente[j] === '{') livello++;
-        else if (sorgente[j] === '}' && --livello === 0) break;
-      }
-      out.push({ testo: sorgente.slice(graffa, j + 1), indice: i });
+  const ast = parse(sorgente, { sourceType: 'module' });
+  function visita(node) {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'CallExpression' && node.callee.name === 'emit'
+      && EVENTI_SCRITTURA.includes(node.arguments[0]?.value) && node.arguments[1]?.type === 'ObjectExpression') {
+      const payload = node.arguments[1];
+      out.push({ evento: node.arguments[0].value, testo: sorgente.slice(payload.start, payload.end), indice: node.start });
     }
-    i = sorgente.indexOf(apertura, i + apertura.length);
+    for (const [key, value] of Object.entries(node)) {
+      if (['loc', 'comments', 'tokens'].includes(key)) continue;
+      if (Array.isArray(value)) value.forEach(visita); else if (value && typeof value === 'object') visita(value);
+    }
   }
+  visita(ast);
   return out;
 }
 
@@ -79,9 +74,9 @@ let controllati = 0;
 for (const nome of FILE) {
   const percorso = path.join(JS, nome);
   if (!fs.existsSync(percorso)) continue;
-  const sorgente = fs.readFileSync(percorso, 'utf8');
-  for (const evento of EVENTI_SCRITTURA) {
-    for (const { testo, indice } of payloadDiEmit(sorgente, evento)) {
+  let sorgente = fs.readFileSync(percorso, 'utf8');
+  if (process.argv.includes('--mutant') && nome === 'grid.js') sorgente = sorgente.replace(/(emit\('doc:delete', \{)\s*\.\.\.bersaglio,/, '$1 ...nonCongelato,');
+  for (const { evento, testo, indice } of payloadDiEmit(sorgente)) {
       controllati++;
       assert.ok(
         !/\bstate\.(db|coll)\b/.test(testo),
@@ -94,9 +89,9 @@ for (const nome of FILE) {
         `${nome}:${riga(sorgente, indice)} — emit('${evento}') non porta un tabId esplicito: ` +
         'la scrittura verrebbe indirizzata al tab attivo alla chiamata, non a quello d\'origine.',
       );
-    }
   }
 }
 
-assert.ok(controllati >= 18, `attese almeno 18 scritture da ispezionare, trovate ${controllati}`);
+// Anche il commit precedente contiene 17 payload letterali; il vecchio scanner contava un falso positivo.
+assert.ok(controllati >= 17, `attese almeno 17 scritture da ispezionare, trovate ${controllati}`);
 console.log(`  OK   Le ${controllati} scritture del frontend congelano il bersaglio (CDB-A18)`);

@@ -29,7 +29,7 @@
 import { socket } from './socket.js';
 import { state } from './state.js';
 import { tabs, activeTab } from './tabs.js';
-import { toast } from './avvisi.js';
+import { toast, notifica, chiudiNotifica } from './avvisi.js';
 import { preparaRighe } from './righe.js';
 
 // Richiesta con acknowledgment: inietta il tabId del tab attivo, catturato al
@@ -177,6 +177,7 @@ export function emit(event, payload, { timeoutMs = 0, bindTab = true, reconnect 
             if (tabChiuso()) { failTabChiuso(); return; }
             if (connRes && connRes.ok) {
               tab.state.connected = true;
+              chiudiNotifica(`database-${tab.id}`);
               toast(`Riconnessione al database riuscita per "${tab.label || 'Tab'}"`);
               send(event, withTab({ _reconnected: true }), (retryRes) => {
                 if (tabChiuso()) { failTabChiuso(); return; }
@@ -187,7 +188,9 @@ export function emit(event, payload, { timeoutMs = 0, bindTab = true, reconnect 
                 }
               });
             } else {
-              toast(`Impossibile riconnettersi al database: ${connRes ? connRes.error : 'Errore sconosciuto'}`, true);
+              notifica(`Impossibile riconnettersi al database: ${connRes ? connRes.error : 'Errore sconosciuto'}`, {
+                tipo: 'errore', id: `database-${tab.id}`, titolo: `Connessione a “${tab.label || 'database'}” interrotta`,
+                hint: 'Riapri la connessione dall’elenco Connessioni. Verifica l’esito dell’operazione prima di ripeterla.' });
               fail(res ? res.error : 'Connessione assente');
             }
           });

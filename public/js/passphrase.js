@@ -18,7 +18,7 @@
  *    passphrase nuova.
  */
 
-import { $, emit, toast, conCaricamento } from './utils.js';
+import { $, emit, toast, conCaricamento, notifica } from './utils.js';
 
 const MIN_LUNGHEZZA = 8;
 
@@ -48,7 +48,7 @@ function apriModale() {
   emit('vault:status', {})
     .then((res) => {
       if (res && res.locked) {
-        toast('Il vault è bloccato: sbloccalo con la passphrase attuale prima di cambiarla.', true);
+        notifica('Il vault è bloccato: sbloccalo con la passphrase attuale prima di cambiarla.', { tipo: 'errore', titolo: "Passphrase" });
         overlay.classList.add('hidden');
         return;
       }

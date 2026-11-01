@@ -22,7 +22,7 @@
  * l'editor funziona identico su sfondo neutro.
  * ------------------------------------------------------------------------- */
 
-import { $, toast, openModal, closeModal } from './utils.js';
+import { $, toast, openModal, closeModal, notifica } from './utils.js';
 import {
   isGeometry, geometryLabel, fmtCoord, posizioni, scriviPosizione, chiuso, fuoriDaLonLat,
   creaGeometriaIniziale,
@@ -393,7 +393,7 @@ function applicaModifica(operazione, { silenzioso = false } = {}) {
   const prima = stato.geo;
   const r = operazione(prima);
   if (r.errore) {
-    if (!silenzioso) toast(r.errore, true);
+    if (!silenzioso) notifica(r.errore, { tipo: 'inline', titolo: "Editor geometrie", target: "#geomap-json" });
     return false;
   }
   stato.storia.registra(prima);
@@ -453,7 +453,7 @@ function seleziona(percorso) {
 function annulla() {
   if (!stato || stato.readOnly) return;
   const precedente = stato.storia.annulla(stato.geo);
-  if (!precedente) { toast('Non c’è nulla da annullare.', true); return; }
+  if (!precedente) { notifica('Non c’è nulla da annullare.', { tipo: 'avviso', titolo: "Editor geometrie" }); return; }
   stato.geo = precedente;
   stato.selezione = null;
   stato.parteAttiva = Math.min(stato.parteAttiva || 0, Math.max(0, numeroParti(stato.geo) - 1));
@@ -465,7 +465,7 @@ function annulla() {
 function ripeti() {
   if (!stato || stato.readOnly) return;
   const successivo = stato.storia.ripeti(stato.geo);
-  if (!successivo) { toast('Non c’è nulla da rifare.', true); return; }
+  if (!successivo) { notifica('Non c’è nulla da rifare.', { tipo: 'avviso', titolo: "Editor geometrie" }); return; }
   stato.geo = successivo;
   stato.selezione = null;
   stato.parteAttiva = Math.min(stato.parteAttiva || 0, Math.max(0, numeroParti(stato.geo) - 1));
@@ -475,12 +475,12 @@ function ripeti() {
 }
 
 function eliminaVerticeSelezionato() {
-  if (!selezioneValida()) { toast('Seleziona prima un vertice sulla mappa.', true); return; }
+  if (!selezioneValida()) { notifica('Seleziona prima un vertice sulla mappa.', { tipo: 'avviso', titolo: "Editor geometrie" }); return; }
   applicaModifica((g) => eliminaVertice(g, stato.selezione));
 }
 
 function inserisciDopoSelezionato() {
-  if (!selezioneValida()) { toast('Seleziona il vertice dopo il quale inserirne uno nuovo.', true); return; }
+  if (!selezioneValida()) { notifica('Seleziona il vertice dopo il quale inserirne uno nuovo.', { tipo: 'avviso', titolo: "Editor geometrie" }); return; }
   applicaModifica((g) => {
     const r = inserisciVerticeDopo(g, stato.selezione);
     if (vistaMobile.matches && !r.errore) spostaAlMirino(r.geo, r.selezione);
@@ -836,7 +836,7 @@ export async function openGeoEditor({
   try {
     L = await caricaLeaflet();
   } catch (err) {
-    toast(err.message, true);
+    notifica(err.message, { tipo: 'errore', titolo: "Editor geometrie" });
     return;
   }
 
@@ -944,7 +944,7 @@ export function initGeoMap() {
     leggiTesto(); // eventuali modifiche a mano non ancora applicate (debounce compreso)
     if (!$('#geomap-error').classList.contains('hidden')) { mostraGeoJson(true); return; }
     if (!isGeometry(stato.geo)) {
-      toast('Geometria non valida.', true);
+      notifica('Geometria non valida.', { tipo: 'inline', titolo: "Editor geometrie", target: "#geomap-json" });
       return;
     }
     const problema = problemaGeometria(stato.geo);

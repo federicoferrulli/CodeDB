@@ -1,7 +1,7 @@
 import { chiediConferma } from './conferma.js';
 import { createArcInput, createArcButton, controlElement } from '../arc/ui.js';
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, isSqlType, isForActiveTab, chiediTesto, conCaricamento, captureContext, showError } from './utils.js';
+import { $, emit, toast, openModal, closeModal, isSqlType, isForActiveTab, chiediTesto, conCaricamento, captureContext, showError, notifica } from './utils.js';
 import { refreshDbTree, collWord, dbWord } from './dbtree.js';
 import { closeCollTabsWhere, updateCollTabs } from './colltabs.js';
 import { loadDetails } from './details.js';
@@ -93,10 +93,12 @@ export async function renameDb(name) {
     // coll-tab sul nuovo nome sarebbe una bugia: l'utente stava guardando
     // l'originale, che è ancora lì.
     const origineSparita = res.modo !== 'dump-restore' || res.origineEliminata === true;
-    toast(res.intervento || (origineSparita
+    const testoEsito = res.intervento || (origineSparita
       ? `${origin.wordCap} rinominato in "${newName}"`
       : `${origin.wordCap} copiato in "${newName}" (${res.documenti} documenti/righe verificati). `
-        + `"${name}" è ancora presente: eliminalo in una finestra senza scritture.`), !!res.intervento);
+        + `"${name}" è ancora presente: eliminalo in una finestra senza scritture.`);
+    if (res.intervento) notifica(testoEsito, { tipo: 'errore', titolo: "Operazione sullo schema", hint: "Aggiorna lo schema e verifica l’esito prima di ripetere la modifica." });
+    else toast(testoEsito);
     if (origineSparita) {
       st.expandedDbs.delete(name);
       // I coll-tab aperti sul vecchio nome seguono la rinomina.
@@ -117,7 +119,7 @@ export async function renameDb(name) {
       import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-rename
       import('./live.js').then(({ startWatch }) => startWatch());
     }
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Operazione sullo schema", hint: "Aggiorna lo schema e verifica l’esito prima di ripetere la modifica." }));
 }
 
 export async function dropDb(name) {
@@ -132,7 +134,7 @@ L'operazione non è reversibile.`)) return;
     res._state.expandedDbs.delete(name);
     closeCollTabsWhere((ct) => ct.db === name, res._state);
     aggiornaAlberoDopoDdl(res);
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Operazione sullo schema", hint: "Aggiorna lo schema e verifica l’esito prima di ripetere la modifica." }));
 }
 
 function addColRow(values = {}) {
@@ -233,7 +235,7 @@ export async function renameColl(dbName, collName) {
       import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-rename
       import('./live.js').then(({ startWatch }) => startWatch());
     }
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Operazione sullo schema", hint: "Aggiorna lo schema e verifica l’esito prima di ripetere la modifica." }));
 }
 
 export async function dropColl(dbName, collName) {
@@ -244,7 +246,7 @@ export async function dropColl(dbName, collName) {
     res._state.dbSchema = null;
     closeCollTabsWhere((ct) => ct.db === dbName && ct.coll === collName, res._state);
     aggiornaAlberoDopoDdl(res);
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Operazione sullo schema", hint: "Aggiorna lo schema e verifica l’esito prima di ripetere la modifica." }));
 }
 
 export function openColumnModal(field) {
@@ -381,7 +383,7 @@ export function initSchemaOps() {
         (res.modified != null ? ` (${res.modified} documenti aggiornati)` : ''));
       res._state.dbSchema = null;
       if (isForActiveTab(res)) loadDetails();
-    }).catch((err) => toast(err.message, true));
+    }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Operazione sullo schema", hint: "Aggiorna lo schema e verifica l’esito prima di ripetere la modifica." }));
   });
 
   $('#coledit-form').addEventListener('submit', async (event) => {

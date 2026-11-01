@@ -104,8 +104,7 @@ const version = require('../package.json').version;
     });
     const editor = page.locator('#query-editor-input');
     const marks = page.locator('#query-editor-code .query-error-mark');
-    const dialog = page.getByRole('dialog', { name: 'La query non è riuscita' });
-    const reopen = page.getByRole('button', { name: 'Mostra errore', exact: true });
+    const dialog = page.locator('#query-error-box .feedback-message');
     const message = 'La tabella indicata non esiste in questo database. Controlla il nome e riprova.';
     const start = async text => {
       await editor.fill(text);
@@ -135,39 +134,20 @@ const version = require('../package.json').version;
     await answer(initial, { ok: false, error: message, queryError: { start: sent.indexOf('inesistente'), end: sent.indexOf('inesistente') + 11 } });
     await assertMark('inesistente', initial.indexOf('inesistente'));
     await dialog.waitFor();
-    assert(await dialog.locator('.data-empty-art').isVisible());
     assert(await dialog.getByText(message, { exact: true }).isVisible());
-    const geometry = await dialog.evaluate(el => ({
-      dialog: el.getBoundingClientRect().toJSON(),
-      art: el.querySelector('.data-empty-art').getBoundingClientRect().toJSON(),
-      title: el.querySelector('.illustrated-error-copy h2').getBoundingClientRect().toJSON(),
-    }));
-    assert(Math.abs(geometry.dialog.x + geometry.dialog.width / 2 - 195) < 3, 'Snackbar centrata orizzontalmente');
-    assert(Math.abs(geometry.dialog.y + geometry.dialog.height / 2 - 422) < 3, 'Snackbar centrata verticalmente');
-    assert(geometry.art.width >= 200 && geometry.art.height >= 120, 'L’illustrazione è l’elemento principale');
-    assert(geometry.art.bottom <= geometry.title.top, 'Il testo compare sotto l’illustrazione');
-    assert(geometry.dialog.bottom <= 844 && geometry.dialog.y >= 0, 'Il dialog rimane nel viewport mobile');
-    assert.equal(await page.evaluate(async () => (await import('/js/query-document.js')).queryDocument().dirty), true, 'Un errore non salva né perde la bozza');
-    assert(!(await page.evaluate(() => window.qef.notices)).some(notice => notice.includes(message)), 'Nessun toast duplicato dell’errore');
+    assert.equal(await page.locator('.illustrated-error-snackbar').count(), 0, 'Nessun dialog per un errore query');
+    assert.equal(await page.evaluate(async () => (await import('/js/query-document.js')).queryDocument().dirty), true, 'L’errore conserva la bozza');
     await page.screenshot({ path: `${dir}/mobile-light.png` });
     await page.evaluate(async () => (await import('/js/theme.js')).applicaTema('dark'));
     await page.screenshot({ path: `${dir}/mobile-dark.png` });
-    await dialog.getByRole('button', { name: 'Ho capito' }).click();
-    await dialog.waitFor({ state: 'detached' });
-    assert((await page.locator('#query-error-box').boundingBox()).height <= 80, 'Il riepilogo mobile non occupa lo spazio di un secondo messaggio esteso');
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.waitForFunction(() => !document.querySelector('#query-error-box .query-error-summary'));
-    assert((await page.locator('#query-error-box').textContent()).includes(message), 'Passando a desktop resta il messaggio inline completo');
+    assert(await dialog.getByText(message, { exact: true }).isVisible(), 'Stesso errore inline su desktop');
     await page.setViewportSize({ width: 390, height: 844 });
-    await reopen.waitFor();
-    assert.equal(await dialog.count(), 0, 'Il cambio viewport non riapre un dialog già chiuso');
-    await reopen.click();
-    await dialog.waitFor();
     await dialog.getByRole('button', { name: 'Modifica query' }).click();
     await dialog.waitFor({ state: 'detached' });
-    assert(await editor.evaluate(el => el === document.activeElement), 'Modifica query riporta il fuoco all’editor');
+    assert(await editor.evaluate(el => el === document.activeElement), 'Modifica query riporta il focus all’editor');
     await assertMark('inesistente', initial.indexOf('inesistente'));
-    checks.push('Mobile: snackbar centrale, immagine dominante, messaggio sotto, temi chiaro/scuro, riapertura e ritorno all’editor');
+    checks.push('Errore inline mobile/desktop, temi chiaro/scuro, bozza conservata e ritorno all’editor');
 
     await editor.fill('SELECT 1');
     assert.equal(await marks.count(), 0, 'Una modifica invalida subito il segno precedente');
@@ -178,7 +158,7 @@ const version = require('../package.json').version;
     await answer('SELECT * FROM senza_posizione', { ok: false, error: 'Errore privo di posizione attendibile.' });
     await dialog.waitFor();
     assert.equal(await marks.count(), 0, 'Nessuna posizione inventata quando manca il dato del motore');
-    await dialog.getByRole('button', { name: 'Ho capito' }).click();
+    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
     checks.push('Modifiche e nuovo tentativo invalidano i segni; errori senza posizione restano leggibili senza sottolineature arbitrarie');
 
     // La risposta può contenere soltanto il messaggio parlante e il dettaglio
@@ -213,7 +193,7 @@ const version = require('../package.json').version;
     await page.waitForFunction(code => window.qef.queue.some(request => request.payload.code === code), selected);
     await answer(selected, { ok: false, error: message, queryError: { start: 14, end: 23 } });
     await assertMark('sbagliata', selection.lastIndexOf('sbagliata'));
-    assert.equal(await dialog.count(), 0, 'Desktop mantiene l’errore inline');
+    assert.equal(await dialog.count(), 1, 'Desktop mantiene l’errore inline');
     assert(await page.locator('#query-error-box').isVisible());
     assert((await page.locator('#query-error-box').textContent()).includes(message));
     await page.screenshot({ path: `${dir}/desktop-selection.png` });
@@ -250,10 +230,9 @@ const version = require('../package.json').version;
     });
     assert.equal(await editor.inputValue(), background);
     await assertMark('assente', 14);
-    assert.equal(await dialog.count(), 0, 'Ripristinare la scheda conserva il segno senza riaprire il dialog');
-    await reopen.click();
+    assert.equal(await dialog.count(), 1, 'Ripristinare la scheda conserva l’errore inline');
     await dialog.waitFor();
-    await dialog.getByRole('button', { name: 'Ho capito' }).click();
+    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
     checks.push('Errore in background isolato alla scheda d’origine; ripristino del segno e riapertura manuale del messaggio');
 
     // La posizione del push è nell’intero script inviato, non nella singola istruzione.
@@ -269,12 +248,12 @@ const version = require('../package.json').version;
     await assertMark('script_assente', script.indexOf('script_assente'));
     await dialog.waitFor();
     assert(await dialog.getByText(scriptError.error, { exact: true }).isVisible());
-    await dialog.getByRole('button', { name: 'Ho capito' }).click();
+    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
     await page.evaluate(({ runId, result }) => window.qef.push('script:progress', {
       runId, tipo: 'done', stato: { status: 'done', total: 2, cursor: 2, eseguiti: 2, falliti: 1, results: [result] },
     }), { runId: scriptRequest.runId, result: scriptError });
     await settled();
-    assert.equal(await dialog.count(), 0, 'La fine dello script non ripropone un errore già mostrato');
+    assert.equal(await dialog.count(), 1, 'La fine dello script conserva un solo riepilogo inline');
     await assertMark('script_assente', script.indexOf('script_assente'));
     checks.push('Script: push con offset globale, messaggio dell’istruzione fallita e nessun duplicato a fine esecuzione');
 
@@ -288,7 +267,7 @@ const version = require('../package.json').version;
     await dialog.waitFor();
     await assertMark('script_assente', script.indexOf('script_assente'));
     assert(await dialog.getByText(scriptError.error, { exact: true }).isVisible());
-    await dialog.getByRole('button', { name: 'Ho capito' }).click();
+    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
     checks.push('Script con eventi intermedi diradati: errore e posizione recuperati dal solo riepilogo finale');
 
     // La ripresa nasconde il vecchio segno durante l’esecuzione e lo ripristina al termine.
@@ -300,7 +279,7 @@ const version = require('../package.json').version;
     }), { runId: pausedRun, result: scriptError });
     await dialog.waitFor();
     await assertMark('script_assente', script.indexOf('script_assente'));
-    await dialog.getByRole('button', { name: 'Ho capito' }).click();
+    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
     await page.locator('#script-resume-btn').click();
     await settled();
     assert.equal(await marks.count(), 0, 'Durante la ripresa non resta un errore dell’esecuzione sospesa');
@@ -308,7 +287,7 @@ const version = require('../package.json').version;
       runId, tipo: 'done', stato: { status: 'done', total: 2, cursor: 2, eseguiti: 2, falliti: 1, results: [result] },
     }), { runId: pausedRun, result: scriptError });
     await assertMark('script_assente', script.indexOf('script_assente'));
-    assert.equal(await dialog.count(), 0, 'Il riepilogo dopo la ripresa non ripete il dialog già chiuso');
+    assert.equal(await dialog.count(), 1, 'Il riepilogo dopo la ripresa resta inline, senza dialog');
     checks.push('Pausa/ripresa script: segno azzerato durante il lavoro, ripristinato nel riepilogo senza snackbar duplicata');
 
     await page.setViewportSize({ width: 320, height: 480 });
@@ -317,23 +296,13 @@ const version = require('../package.json').version;
     await start('SELECT * FROM lunghissima');
     await answer('SELECT * FROM lunghissima', { ok: false, error: longMessage, queryError: { start: 14, end: 25 } });
     await dialog.waitFor();
-    const small = await dialog.evaluate(el => {
-      const copy = el.querySelector('.illustrated-error-copy');
-      return { rect: el.getBoundingClientRect().toJSON(), art: el.querySelector('.data-empty-art').getBoundingClientRect().toJSON(),
-        copy: copy.getBoundingClientRect().toJSON(), scrolls: copy.scrollHeight > copy.clientHeight,
-        actions: [...el.querySelectorAll('.illustrated-error-actions button')].map(button => {
-          const rect = button.getBoundingClientRect();
-          return { rect: rect.toJSON(), reachable: button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)) };
-        }) };
-    });
-    assert(small.rect.x >= 0 && small.rect.y >= 0 && small.rect.right <= 320 && small.rect.bottom <= 480, 'Dialog interamente nel viewport 320×480');
-    assert(small.art.bottom <= small.copy.top, 'Anche in poco spazio l’immagine precede l’errore');
-    assert(small.scrolls, 'Il messaggio lungo scorre nel proprio spazio');
-    assert(small.actions.every(action => action.reachable && action.rect.bottom <= 480), 'Azioni visibili e raggiungibili senza scorrere il messaggio');
-    assert((await dialog.textContent()).includes(longMessage), 'Il messaggio completo resta disponibile');
-    await page.screenshot({ path: `${dir}/mobile-small-long.png` });
-    await dialog.getByRole('button', { name: 'Ho capito' }).click();
-    checks.push('Viewport 320×480 e messaggio lungo: immagine sopra, testo scorrevole completo, dialog e azioni entro lo schermo');
+    const copy = dialog.locator('.feedback-copy > p').first();
+    assert.equal(await copy.textContent(), longMessage, 'Il messaggio lungo resta completo');
+    const bounds = await dialog.boundingBox();
+    assert(bounds.x >= 0 && bounds.x + bounds.width <= 320, 'L’errore inline non esce orizzontalmente');
+    assert(await copy.evaluate(el => el.scrollHeight > el.clientHeight), 'Il messaggio lungo ha uno scorrimento locale');
+    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
+    checks.push('Viewport 320×480: testo completo scorrevole e azioni locali');
 
     await page.setViewportSize({ width: 390, height: 844 });
     const surface = () => page.locator('.query-main-panel').getAttribute('data-surface');
@@ -357,7 +326,7 @@ const version = require('../package.json').version;
     await answer('SELECT * FROM errore_editor', { ok: false, error: 'La query non è valida.' });
     await dialog.waitFor();
     assert.equal(await surface(), 'editor', 'Un errore conserva la vista Editor');
-    await dialog.getByRole('button', { name: 'Ho capito' }).click();
+    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
     checks.push('Successo: Editor passa a Risultati anche senza righe; Entrambi, Risultati ed errori mantengono la vista');
 
     await start('SELECT 99');
@@ -394,7 +363,7 @@ const version = require('../package.json').version;
         await assertMark('assente', 14);
         assert.equal(await surface(), mode === 'results' ? 'editor' : mode, 'L’errore torna all’Editor solo dalla vista Risultati');
         assert(await editor.isVisible(), 'La parte sottolineata è visibile nell’editor');
-        if (await dialog.isVisible()) await dialog.getByRole('button', { name: 'Ho capito' }).click();
+        if (await dialog.isVisible()) await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
       }
     }
     checks.push('Errore mobile/desktop: ritorno Risultati→Editor con token sottolineato; Editor ed Entrambi mantengono la vista');

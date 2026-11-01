@@ -60,24 +60,6 @@
        COMPOSIZIONE: navigazione compatta a sinistra, codice e dati al centro; form leggibili nelle finestre.
        FORMA: ambiente operativo richiesto da Keus, senza card decorative o layout marketing.
        Direzione vincolata dal brief: nessun sorteggio di concept, seed o comp approvato separatamente. -->
-  <!-- ===================== Handshake rifiutato / server irraggiungibile =====================
-       Il server rifiuta l'handshake Socket.IO con un motivo esplicito (gate
-       sull'Origin, header Host su istanza in loopback), ma il browser non
-       aveva dove mostrarlo: la pagina restava aperta e muta, e l'unico indizio
-       era nella console. Non è un toast: finché la causa non è risolta non c'è
-       niente da fare nell'applicazione, quindi l'avviso resta. -->
-  <div id="conn-error-overlay" class="overlay hidden" role="alertdialog" aria-modal="true"
-    aria-labelledby="conn-error-title">
-    <div class="modal">
-      <h2 id="conn-error-title"><i data-lucide="plug-zap"></i> Collegamento al server CodeDB non riuscito</h2>
-      <p class="subtitle" id="conn-error-msg"></p>
-      <div id="conn-error-hint" class="subtitle hidden"></div>
-      <div class="modal-actions">
-        <button type="button" class="primary" id="conn-error-retry"><i data-lucide="refresh-cw"></i> Riprova</button>
-      </div>
-    </div>
-  </div>
-
   <!-- ===================== Accesso utente (solo con RBAC attivo) ===================== -->
   <div id="login-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="login-modal-title">
     <div class="modal">
@@ -1372,6 +1354,7 @@
                           </span>
                         </div>
                     </div>
+                    <div id="query-error-box" class="error hidden" data-error-interactive="true"></div>
                     <div id="query-surface-content" class="query-surface-content" role="tabpanel" aria-labelledby="query-show-both">
                     <!-- Sezione Superiore: Editor -->
                     <div id="query-editor-container" class="query-editor-container">
@@ -1456,8 +1439,6 @@
                           </div>
                         </div>
                       </div>
-
-                      <div id="query-error-box" class="error hidden"></div>
 
                       <!-- Resoconto dell'esecuzione di uno SCRIPT (più istruzioni):
                            avanzamento, controlli di pausa/ripresa e righe fallite.

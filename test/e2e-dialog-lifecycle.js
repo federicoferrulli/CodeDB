@@ -26,7 +26,7 @@ function sostituisci(source, from, to, label) {
 async function buildUi(mutant) {
   const result = await require('esbuild').build({ absWorkingDir: repo, entryPoints: ['ui/main.tsx'],
     outdir: path.join(reportDir, 'bundle-in-memoria'), entryNames: 'ui', write: false, bundle: true, minify: true,
-    format: 'esm', target: ['chrome120', 'firefox120', 'safari17'], jsx: 'automatic', legalComments: 'none', logLevel: 'silent',
+    format: 'esm', target: ['chrome120', 'firefox120', 'safari17'], jsx: 'automatic', loader: { '.webp': 'dataurl' }, legalComments: 'none', logLevel: 'silent',
     plugins: [{ name: 'barriera-uscita-fixture', setup(build) {
       build.onLoad({ filter: /(?:dialogs|bottom-sheet)\.tsx$/ }, async args => {
         let source = fs.readFileSync(args.path, 'utf8');

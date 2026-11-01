@@ -9,7 +9,7 @@ import { creaRuntimePane } from './pane-runtime.js';
 import { queryDocument, copiaQuery } from './query-document.js';
 import { leggiStatoFiltro } from './grid.js';
 import { snapshotQueryView } from './query-tab.js';
-import { $, emit, esc, isSqlType, dbTypeIcon, toast, safeUUID, refreshLucideIcons, showContextMenu, hideContextMenu, openModal, closeModal, chiediTesto, lucideIconHtml as ICO } from './utils.js';
+import { $, emit, esc, isSqlType, dbTypeIcon, toast, safeUUID, refreshLucideIcons, showContextMenu, hideContextMenu, openModal, closeModal, chiediTesto, lucideIconHtml as ICO, notifica } from './utils.js';
 import { contestoCorrente } from './coerenza-richieste.js';
 import {
   creaAlbero, inserisci, rimuovi, trascina, pareggia as pareggiaAlbero,
@@ -378,7 +378,7 @@ export async function riprendiQueryPane(item) {
   if (!splitDisponibile()) { toast('Riprendi questa query da desktop. Il codice resta disponibile nel registro.'); return; }
   const a = areaDiPane(item.paneId);
   const p = a?.panes.get(item.paneId);
-  if (!p) { toast('Il pannello di origine è stato chiuso. Il testo resta nel registro delle query.', true); return; }
+  if (!p) { notifica('Il pannello di origine è stato chiuso. Il testo resta nel registro delle query.', { tipo: 'avviso', titolo: "Pannelli affiancati" }); return; }
   const owner = tabs.list.find(t => t.state.collTabs.some(c => c.id === a.collTabId));
   const workspace = await import('./workspace.js');
   workspace.saveWorkspaceInputs();
@@ -891,7 +891,7 @@ function disposePane(p) {
 }
 
 async function confermaChiusuraPane(p) {
-  if (p?.runtime?.writing()) { toast('Salvataggio in corso: attendi l’esito prima di cambiare o chiudere il pannello.', true); return false; }
+  if (p?.runtime?.writing()) { notifica('Salvataggio in corso: attendi l’esito prima di cambiare o chiudere il pannello.', { tipo: 'avviso', titolo: "Pannelli affiancati" }); return false; }
   return !p || !((p.runtime ? p.runtime.dirty() : p.query?.dirty)) || await chiediConferma(`Chiudere ${p.db} / ${p.coll || 'Query'} e scartare il testo non salvato?`);
 }
 
@@ -1030,7 +1030,7 @@ export function scambiaConVicino(paneId, verso) {
   if (!a) return;
   const altro = vicinoDi(a.layout, paneId, verso);
   if (!altro) {
-    toast(verso === 'prev' ? 'Nessun pannello prima di questo' : 'Nessun pannello dopo questo', true);
+    notifica(verso === 'prev' ? 'Nessun pannello prima di questo' : 'Nessun pannello dopo questo', { tipo: 'avviso', titolo: "Pannelli affiancati" });
     return;
   }
   a.layout = scambia(a.layout, paneId, altro);
@@ -1044,7 +1044,7 @@ export function ruotaOrientamento(paneId) {
   if (!a) return;
   const cont = contenitoreDi(a.layout, paneId);
   if (!cont) {
-    toast('Questo pannello non è affiancato ad altri', true);
+    notifica('Questo pannello non è affiancato ad altri', { tipo: 'avviso', titolo: "Pannelli affiancati" });
     return;
   }
   a.layout = ruotaAlbero(a.layout, paneId);
@@ -1096,7 +1096,7 @@ export function notificaCambioLarghezza() {
 export async function closeSplitView({ riapri = false, collTabId = null } = {}) {
   const a = collTabId ? aree.get(collTabId) : areaAttiva();
   if (!a) return;
-  if ([...a.panes.values()].some(p => p.runtime?.writing())) { toast('Salvataggio in corso: attendi l’esito prima di chiudere l’area.', true); return; }
+  if ([...a.panes.values()].some(p => p.runtime?.writing())) { notifica('Salvataggio in corso: attendi l’esito prima di chiudere l’area.', { tipo: 'avviso', titolo: "Pannelli affiancati" }); return; }
   if ([...a.panes.values()].some(p => (p.runtime ? p.runtime.dirty() : p.query?.dirty))
       && !await chiediConferma('Chiudere l’area e scartare il testo non salvato dei suoi pannelli?')) return;
   for (const p of a.panes.values()) disposePane(p);
@@ -1675,7 +1675,7 @@ function comparePaneSchemas() {
   // due riquadri scelti a caso.
   const panes = a ? elencoPane(a.layout).map((id) => a.panes.get(id)).filter(Boolean) : [];
   if (panes.length < 2) {
-    toast('Apri almeno due pannelli per confrontarne gli schemi.', true);
+    notifica('Apri almeno due pannelli per confrontarne gli schemi.', { tipo: 'avviso', titolo: "Pannelli affiancati" });
     return;
   }
 

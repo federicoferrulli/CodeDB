@@ -32,6 +32,7 @@ const { startTestServer } = require('./e2e-harness');
       Object.assign(t.state, { connected: true, dbType: 'postgresql' }); tabs.activeId = t.id;
       const f = window.importFixture = { operation: null, sent: [], notices: [], pending: null };
       document.addEventListener('codedb:toast', e => f.notices.push(e.detail.message));
+      document.addEventListener('codedb:feedback', event => f.notices.push(event.detail.message));
       const fake = { connected: true, on() {}, off() {}, timeout() { return { emit: (n, p, cb) => fake.emit(n, p, r => cb(null, r)) }; }, emit(name, p, cb) {
         f.sent.push({ name, ...p });
         let reply = { ok: true, databases: [], collections: [] };

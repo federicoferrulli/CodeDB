@@ -20,10 +20,11 @@ function frontend(extra = {}) {
   const context = vm.createContext({
     console, Blob, URL, setTimeout, clearTimeout, crypto: require('crypto').webcrypto,
     $: (id) => {
-      if (!nodes.has(id)) nodes.set(id, { value: '', style: {}, classList: { add() {}, remove() {} }, innerHTML: '' });
+      if (!nodes.has(id)) nodes.set(id, { value: '', style: {}, classList: { add() {}, remove() {} }, innerHTML: '',
+        attributes: {}, setAttribute(key, value) { this.attributes[key] = value; }, getClientRects: () => [] });
       return nodes.get(id);
     },
-    toast: (message) => notices.push(message), esc: (v) => String(v), showError() {},
+    toast: (message) => notices.push(message), notifica: (message) => notices.push(message), esc: (v) => String(v), showError() {},
     // Qui si prova il protocollo d'importazione in VM; il renderer Arc è
     // verificato nel browser dalle suite e2e-arc.
     mountArcControls() {},
@@ -331,6 +332,7 @@ const cases = [
     await vm.runInContext('runImport()', context);
     assert.match(nodes.get('#import-report').innerHTML, /con esito incerto/i,
       'il report deve distinguere esito incerto da rifiuto certo');
+    assert.strictEqual(nodes.get('#import-report').attributes.role, 'alert', 'L’esito incerto deve essere annunciato');
   }],
 ];
 

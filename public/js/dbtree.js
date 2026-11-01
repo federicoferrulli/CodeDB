@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, showContextMenu, toast, isSqlType, refreshLucideIcons, isForActiveTab, aggiungiMenuNodo } from './utils.js';
+import { $, emit, showContextMenu, toast, isSqlType, refreshLucideIcons, isForActiveTab, aggiungiMenuNodo, notifica } from './utils.js';
 import { setView } from './main.js'; // or grid.js
 import { selectCollection } from './grid.js';
 import { openCreateColl, openCreateDb, renameDb, dropDb, renameColl, dropColl } from './schema-ops.js';
@@ -279,7 +279,7 @@ export function renderCollectionsList(dbName, container, collections) {
 
 export function loadCollections(dbName, container) {
   container.innerHTML = '<li class="node-label loading">caricamento…</li>';
-  emit('db:collections', { db: dbName }).then((res) => {
+  return emit('db:collections', { db: dbName }).then((res) => {
     // La sidebar è un DOM unico: se l'utente ha cambiato tab mentre la richiesta
     // era in volo, `container` appartiene ormai all'albero di un'altra
     // connessione e riempirlo mostrerebbe tabelle che non esistono lì.
@@ -288,18 +288,30 @@ export function loadCollections(dbName, container) {
   }).catch((err) => {
     if (!isForActiveTab(err)) return;
     container.innerHTML = '';
-    toast(err.message, true);
+    notifica(err.message, { tipo: 'vista', titolo: 'Esplorazione database', target: container,
+      onAction: () => ricaricaAlbero(err._tab?.id) });
   });
 }
 
-export function refreshDbTree() {
-  return emit('db:list', {}).then((res) => {
+function ricaricaAlbero(tabId) {
+  if (!tabs.list.some(tab => tab.id === tabId)) {
+    return Promise.reject(new Error('La connessione di origine è stata chiusa. Riaprila dall’elenco delle connessioni.'));
+  }
+  return emit('db:list', { tabId }).then((res) => {
     // Elenco di un tab non più in primo piano: aggiorna solo la sua cache, che
     // verrà usata al ritorno; ridipingere sostituirebbe l'albero di un'altra
     // connessione con i database di questa.
     if (!isForActiveTab(res)) { res._state.databases = res.databases; return; }
     renderDbTree(res.databases);
-  }).catch((err) => { if (isForActiveTab(err)) toast(err.message, true); });
+  });
+}
+
+export function refreshDbTree() {
+  const tabId = activeTab()?.id;
+  return ricaricaAlbero(tabId).catch((err) => {
+    if (isForActiveTab(err)) notifica(err.message, { tipo: 'vista', titolo: 'Esplorazione database', target: '#db-tree',
+      onAction: () => ricaricaAlbero(tabId) });
+  });
 }
 
 export function initDbTree() {
@@ -331,7 +343,7 @@ export function initDbTree() {
       emit('db:search', { tabId: originTab.id, query: q }).then((res) => {
         if (!isForActiveTab(res)) return; // risultati di un'altra connessione
         renderDbTree(res.databases, { query: q });
-      }).catch((err) => { if (isForActiveTab(err)) toast(err.message, true); });
+      }).catch((err) => { if (isForActiveTab(err)) notifica(err.message, { tipo: 'vista', titolo: 'Esplorazione database', target: '#db-tree', actionLabel: 'Ricarica elenco', onAction: () => ricaricaAlbero(originTab.id) }); });
     }, 300);
   });
 }

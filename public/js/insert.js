@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, esc, toast, openModal, closeModal, isSqlType, showError, conCaricamento, captureContext, marcaDatiSporchi, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
+import { $, emit, esc, toast, openModal, closeModal, isSqlType, showError, conCaricamento, captureContext, marcaDatiSporchi, lucideIconHtml as ICO, refreshLucideIcons, notifica } from './utils.js';
 import { openGeoEditor } from './geomap.js';
 import { tipoGeoJsonDaTipoColonna, colonnaGeometrica } from './geojson.js';
 import { runQuery } from './grid.js';
@@ -384,7 +384,7 @@ function apriPannelloPerRiga(row, apertura) {
         // vengono dalla stessa riga scelta, mai da due scelte diverse.
         assegnazione = setDaRelazione(relazione, rigaScelta);
       } catch (err) {
-        toast(err.message, true);
+        notifica(err.message, { tipo: 'inline', titolo: "Inserimento", target: "#insert-form" });
         return;
       }
       // Si valida TUTTO prima di toccare qualunque controllo: un bersaglio
@@ -393,7 +393,7 @@ function apriPannelloPerRiga(row, apertura) {
       for (const [campo, valore] of Object.entries(assegnazione)) {
         const destino = rigaPerCampo(campo);
         if (!destino || destino.auto || !document.contains(destino.input) || (destino.input.disabled && destino.mode !== 'null')) {
-          toast(`Campo "${campo}" non disponibile: nessuna colonna è stata modificata.`, true);
+          notifica(`Campo "${campo}" non disponibile: nessuna colonna è stata modificata.`, { tipo: 'inline', titolo: "Inserimento", target: "#insert-form" });
           return;
         }
         obiettivi.push([destino, valore]);
@@ -605,7 +605,6 @@ export function openInsertDocForContext(ctx = null) {
     // serve per la comodità dei campi precompilati, non per scrivere: si dice
     // cosa è successo e si apre la via manuale (nomi di campo digitabili, e la
     // scheda JSON resta sempre disponibile).
-    toast(`Schema non disponibile: ${err.message}`, true);
     showError('#insert-error',
       'Non è stato possibile leggere le colonne di questa tabella: '
       + `${err.message}. Puoi comunque inserire i valori a mano, aggiungendo i campi `
@@ -707,7 +706,7 @@ export function initInsert() {
         marcaDatiSporchi(ctx, db, coll);
       }
     }).catch((err) => {
-      if (apertura !== insertAperture) { toast(err.message, true); return; }
+      if (apertura !== insertAperture) { notifica(err.message, { tipo: 'errore', titolo: "Inserimento" }); return; }
       const errorEl = $('#insert-error');
       errorEl.textContent = err.message;
       errorEl.classList.remove('hidden');

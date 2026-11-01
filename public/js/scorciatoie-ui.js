@@ -16,7 +16,7 @@ import {
   CATALOGO, CHIAVE_PREFS, CHIAVE_LOCALE,
   normalizzaCombo, etichettaCombo, mappaEffettiva, impostaMappaAttiva,
 } from './scorciatoie.js';
-import { $, emit, esc, toast, refreshLucideIcons } from './utils.js';
+import { $, emit, esc, toast, refreshLucideIcons, notifica } from './utils.js';
 import { removeDialog } from '../arc/ui.js';
 
 /** Le personalizzazioni correnti SOLO come testi ("Ctrl+K"), non forme normalizzate. */
@@ -176,7 +176,7 @@ export function apriPannelloScorciatoie() {
     chiudi();
     salvaScorciatoie(personali).then((esito) => {
       if (esito.errori.length) {
-        toast('Attenzione: ' + esito.errori[0], true);
+        notifica('Attenzione: ' + esito.errori[0], { tipo: 'errore', titolo: "Scorciatoie" });
       } else {
         toast('Scorciatoie salvate.'); // la destinazione (tenant o browser) è un dettaglio interno
       }

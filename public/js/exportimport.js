@@ -3,7 +3,7 @@ import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, showError, esc, isSqlType, captureContext, iniziaCaricamento, marcaDatiSporchi, scaricaFile } from './utils.js';
+import { $, emit, toast, openModal, closeModal, showError, esc, isSqlType, captureContext, iniziaCaricamento, marcaDatiSporchi, scaricaFile, notifica } from './utils.js';
 import { collWord, refreshDbTree } from './dbtree.js';
 import { tabs } from './tabs.js';
 import { socket } from './socket.js';
@@ -111,7 +111,7 @@ export async function exportCollection(db, coll, format, { csvMode = 'sicura' } 
   // Anche l'export va ancorato al tab d'origine: senza, cambiare connessione a
   // metà scaricamento farebbe arrivare i blocchi successivi da un'altra
   // connessione e il file prodotto conterrebbe dati di due database diversi.
-  if (exportWizard) { toast('Un export ? gi? aperto o in corso.', true); return; }
+  if (exportWizard) { notifica('Un export è già aperto o in corso.', { tipo: 'avviso', titolo: "Importazione ed esportazione" }); return; }
   const origin = captureContext();
   const { tabId } = origin;
   const dbType = origin.st.dbType;
@@ -134,7 +134,7 @@ export async function exportCollection(db, coll, format, { csvMode = 'sicura' } 
       if (res.count < CHUNK || skip >= total) break;
     }
   } catch (err) {
-    toast(`Esportazione fallita: ${err.message}`, true);
+    notifica(`Esportazione fallita: ${err.message}`, { tipo: 'errore', titolo: "Importazione ed esportazione", hint: "Controlla il resoconto e i dati di destinazione prima di ripetere un’importazione." });
     return;
   }
 
@@ -208,7 +208,7 @@ function setImportProgress(pct, label) {
 
 export function openImportModal(db, coll) {
   if (importing) {
-    toast('Attendi il completamento dell’import già in corso.', true);
+    notifica('Attendi il completamento dell’import già in corso.', { tipo: 'avviso', titolo: "Importazione ed esportazione" });
     return;
   }
   annullaLetturaImport();
@@ -328,13 +328,16 @@ async function runImport() {
   report.innerHTML = html;
   mountArcControls(report);
   report.classList.remove('hidden');
-  toast(
-    uncertain ? 'Import interrotto: alcune righe hanno un esito da verificare'
+  report.setAttribute('role', aborted || failed || uncertain ? 'alert' : 'status');
+  const testoEsito = uncertain ? 'Import interrotto: alcune righe hanno un esito da verificare'
       : aborted ? 'Import interrotto: connessione di destinazione chiusa'
       : failed ? `Import completato con ${failed} errori`
-        : `Importati ${inserted} ${word} in "${coll}"`,
-    aborted || !!failed || !!uncertain
-  );
+        : `Importati ${inserted} ${word} in "${coll}"`;
+  if (aborted || failed || uncertain) {
+    if (!report.getClientRects().length) notifica(testoEsito, { tipo: 'errore', titolo: 'Importazione da verificare',
+      hint: 'Controlla il resoconto e i dati di destinazione prima di ripetere l’importazione.',
+      actionLabel: 'Apri resoconto', onAction: () => openModal('#import-overlay') });
+  } else toast(testoEsito);
 
   // La griglia richiede lo stesso coll-tab; per la sidebar basta che sia ancora
   // attivo il tab di connessione, perché l'albero è condiviso da tutti i coll-tab.
@@ -659,12 +662,12 @@ async function pianoExportCorrente() {
  * parlasse direttamente col socket poteva chiedere `mysql` o `pg_catalog`.
  */
 export async function exportDatabase(db, selectedCollection = null) {
-  if (exportWizard?.inCorso) { toast('Un export è già in corso.', true); return; }
+  if (exportWizard?.inCorso) { notifica('Un export è già in corso.', { tipo: 'avviso', titolo: "Importazione ed esportazione" }); return; }
   const origin = captureContext();
   const { tabId } = origin;
   const dbType = origin.st.dbType;
   if (isSystemDb(db, dbType)) {
-    toast(`"${db}" è un database di sistema: contiene metadati del server, non è esportabile.`, true);
+    notifica(`"${db}" è un database di sistema: contiene metadati del server, non è esportabile.`, { tipo: 'avviso', titolo: "Importazione ed esportazione" });
     return;
   }
   let risposta;
@@ -674,7 +677,7 @@ export async function exportDatabase(db, selectedCollection = null) {
     risposta = await emit('database:export:plan', { tabId, db, modalita: 'struttura-e-dati' });
   } catch (err) {
     if (exportWizard === wizard) exportWizard = null;
-    toast(`Esportazione fallita: ${err.message}`, true);
+    notifica(`Esportazione fallita: ${err.message}`, { tipo: 'errore', titolo: "Importazione ed esportazione", hint: "Controlla il resoconto e i dati di destinazione prima di ripetere un’importazione." });
     return;
   }
   if (exportWizard !== wizard) return;
@@ -724,7 +727,7 @@ async function eseguiExportDatabase(plan, wizard) {
     if (!await scaricaFile(operation.url, operation.filename)) return;
     toast(`Export verificato: ${operation.collections} tabelle/collection, ${operation.rows} righe/documenti. Download avviato.`);
   } catch (err) {
-    toast(`Esportazione fallita: ${err.message}`, true);
+    notifica(`Esportazione fallita: ${err.message}`, { tipo: 'errore', titolo: "Importazione ed esportazione", hint: "Controlla il resoconto e i dati di destinazione prima di ripetere un’importazione." });
   }
 }
 
@@ -758,7 +761,7 @@ function setDbImportProgress(pct, label) {
 
 export function openDbImportModal(recupera = true) {
   if (dbImporting) {
-    toast('Attendi il completamento dell’import del database già in corso.', true);
+    notifica('Attendi il completamento dell’import del database già in corso.', { tipo: 'avviso', titolo: "Importazione ed esportazione" });
     return;
   }
   const origin = captureContext();
@@ -997,7 +1000,13 @@ function renderDbImportState(operation) {
   if (!terminal) return;
   if (!nuovoEsito) return;
   const ok = description.ok;
-  toast(description.label, !ok);
+  const testoEsito = description.label;
+  report.setAttribute('role', ok ? 'status' : 'alert');
+  if (!ok) {
+    if (!report.getClientRects().length) notifica(testoEsito, { tipo: 'errore', titolo: 'Importazione del database da verificare',
+      hint: 'Controlla il resoconto e i dati di destinazione prima di ripetere l’importazione.',
+      actionLabel: 'Apri resoconto', onAction: () => openModal('#dbimport-overlay') });
+  } else toast(testoEsito);
   if (ok && dbImportContext) {
     dbImportContext.st.schemaDirty = true;
     if (!dbImportContext.tabId || tabs.activeId === dbImportContext.tabId) {

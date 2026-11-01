@@ -1,6 +1,7 @@
+import { initCollegamento } from './collegamento.js';
 import { socket } from './socket.js';
 import { tabs, activeTab, createTab, closeAllTabs } from './tabs.js';
-import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc, dbTypeIcon, lucideIconHtml as ICO, refreshLucideIcons, chiediTesto, scaricaFile } from './utils.js';
+import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc, dbTypeIcon, lucideIconHtml as ICO, refreshLucideIcons, chiediTesto, scaricaFile, notifica } from './utils.js';
 import { loadSavedConnections, elencoConnessioni } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
@@ -320,7 +321,9 @@ export function connectAndOpenTab(cfg) {
   const tabId = reuse ? reuse.id : safeUUID();
   saveWorkspaceInputs(); // snapshot del tab che (forse) si lascia
   const request = { ...cfg, tabId };
-  const feedbackConnection = startConnection(cfg.saved || cfg.saveAs || cfg.host || 'database');
+  const saved = cfg.saved;
+  const feedbackConnection = startConnection(saved || cfg.saveAs || cfg.host || 'database',
+    () => saved ? startEditConn(saved) : openConnModal(), !saved);
   if (!feedbackConnection && cfg.saved) toast(`Connessione a "${cfg.saved}"…`);
   return conImprontaSsh(request, () => new Promise((resolve, reject) => {
     socket.emit('mongo:connect', request, res => res.ok ? resolve(res)
@@ -356,8 +359,8 @@ export function connectAndOpenTab(cfg) {
   }).catch(err => {
     if (feedbackConnection) {
       err.connectionFeedback = feedbackConnection(err.message);
-      if (!err.connectionFeedback && cfg.saved) toast(err.message, true);
-    } else if (cfg.saved) toast(err.message, true);
+      if (!err.connectionFeedback && cfg.saved) notifica(err.message, { tipo: 'errore', titolo: "Connessioni" });
+    } else if (cfg.saved) notifica(err.message, { tipo: 'errore', titolo: "Connessioni" });
     throw err;
   }).finally(() => {
     feedbackConnection?.();
@@ -414,7 +417,7 @@ export function startEditConn(name) {
     $('#connect-error').classList.add('hidden');
     $('#connect-test-msg').classList.add('hidden');
     $('#connect-overlay').classList.remove('hidden');
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Connessioni" }));
 }
 
 function clearSshKey() {
@@ -596,7 +599,7 @@ export function initConnection() {
         ? await chiediTesto({ titolo: 'Importa connessioni cifrate', sottotitolo: 'Inserisci la passphrase scelta quando hai esportato questo file.', etichetta: 'Passphrase', password: true, ok: 'Importa' })
         : '';
       if (conPassphrase && !passphrase) {
-        toast('Import annullato: senza la passphrase i segreti non sono leggibili.', true);
+        notifica('Import annullato: senza la passphrase i segreti non sono leggibili.', { tipo: 'avviso', titolo: "Connessioni" });
         return null;
       }
       return emit('connections:import', { ini, passphrase }).then((res) => {
@@ -605,8 +608,8 @@ export function initConnection() {
         if (res.overwritten) parts.push(`${res.overwritten} sovrascritte`);
         toast(`Connessioni: ${parts.join(', ')}`);
         loadSavedConnections();
-      }).catch((err) => toast(err.message, true));
-    }), 'Importo…').catch(err => toast(`Impossibile importare il file: ${err.message}`, true));
+      }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Connessioni" }));
+    }), 'Importo…').catch(err => notifica(`Impossibile importare il file: ${err.message}`, { tipo: 'errore', titolo: "Connessioni" }));
   });
 
   // Nessun pulsante "Disconnetti": chiudere la connessione significa chiudere
@@ -643,104 +646,5 @@ export function initConnection() {
     }
   });
 
-  socket.on('disconnect', () => {
-    if (tabs.list.some((t) => t.state.connected)) {
-      toast('Connessione al server persa, riconnessione…', true);
-    }
-  });
-
-  initConnErrorOverlay();
-}
-
-/* ---------------------------------------------------------------------------
- * Handshake rifiutato o server irraggiungibile
- *
- * Il server ha già un motivo esplicito per ogni rifiuto (gate sull'Origin,
- * header Host su istanza in loopback) e lo manda al client come `connect_error`,
- * ma nessuno lo mostrava: l'unico gestore era quello di `auth.js`, limitato a
- * `auth_required`. Il risultato, in beta, sarebbe stato il peggior errore
- * possibile — una pagina aperta che non fa nulla, senza dire perché.
- *
- * Non è un toast: finché la causa non è risolta non c'è niente da fare
- * nell'applicazione, quindi l'avviso resta finché il collegamento non riesce.
- * ------------------------------------------------------------------------- */
-function initConnErrorOverlay() {
-  const overlay = $('#conn-error-overlay');
-  if (!overlay) return;
-  const msgEl = $('#conn-error-msg');
-  const hintEl = $('#conn-error-hint');
-  const retryBtn = $('#conn-error-retry');
-
-  // Errori di trasporto: il server non risponde affatto. Sono gli unici per cui
-  // ha senso ritentare da soli, e capitano di continuo durante un riavvio del
-  // server — mostrarli subito trasformerebbe un riavvio di due secondi in un
-  // avviso a schermo intero. Si attende qualche tentativo prima di allarmare.
-  const TRASPORTO = /websocket error|xhr poll error|transport error|transport close|timeout/i;
-  const TENTATIVI_PRIMA_DI_ALLARMARE = 3;
-  let tentativiTrasporto = 0;
-
-  function mostra(testo, suggerimento) {
-    msgEl.textContent = testo;
-    hintEl.textContent = suggerimento || '';
-    hintEl.classList.toggle('hidden', !suggerimento);
-    overlay.classList.remove('hidden');
-    if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
-  }
-
-  function nascondi() {
-    overlay.classList.add('hidden');
-    tentativiTrasporto = 0;
-  }
-
-  // Chiede al server perché l'handshake non passa. Ritorna il motivo del
-  // rifiuto, oppure null se il server non risponde (allora è davvero
-  // irraggiungibile) o se non ha nulla da obiettare.
-  async function diagnostica() {
-    try {
-      const res = await fetch('handshake-check', { cache: 'no-store' });
-      const dati = await res.json().catch(() => null);
-      if (dati && dati.ok === false && dati.reason) return dati.reason;
-      return null;
-    } catch {
-      return null; // server irraggiungibile: lo dice il messaggio di ripiego
-    }
-  }
-
-  socket.on('connect', nascondi);
-
-  socket.on('connect_error', (err) => {
-    const motivo = (err && err.message) || 'motivo sconosciuto';
-    // Il login ha il suo percorso (auth.js): qui non c'entra nulla.
-    if (motivo === 'auth_required') return;
-
-    if (TRASPORTO.test(motivo)) {
-      tentativiTrasporto++;
-      if (tentativiTrasporto < TENTATIVI_PRIMA_DI_ALLARMARE) return;
-      // "xhr poll error" è ambiguo: è quello che si vede sia quando il server è
-      // spento sia quando ha RIFIUTATO l'handshake (il motivo del rifiuto non
-      // viaggia sul canale Socket.IO). Lo si chiede al server, che risponde
-      // sulla stessa origine della pagina: se risponde, il problema non è la
-      // raggiungibilità ed è lui a dire quale sia.
-      diagnostica().then((rifiuto) => {
-        if (rifiuto) mostra(`Il server ha rifiutato il collegamento: ${rifiuto}`);
-        else mostra(
-          'Il server CodeDB non risponde. Il tentativo di riconnessione continua automaticamente.',
-          'Se hai avviato CodeDB da un launcher o dal terminale, controlla che il processo sia ancora attivo (su Windows: CodeDB.cmd stop e poi riavvia).'
-        );
-      });
-      return;
-    }
-
-    // Rifiuto con messaggio esplicito (middleware Socket.IO): si mostra così.
-    mostra(`Il server ha rifiutato il collegamento: ${motivo}`);
-  });
-
-  if (retryBtn) {
-    retryBtn.addEventListener('click', () => {
-      nascondi();
-      // `connect()` su un socket che sta già ritentando è innocuo: forza solo
-      // il tentativo immediato invece di attendere il backoff.
-      try { socket.connect(); } catch { /* il gestore di connect_error riaprirà l'avviso */ }
-    });
-  }
+  initCollegamento(socket, () => tabs.list.some(tab => tab.state.connected));
 }

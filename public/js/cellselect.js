@@ -4,7 +4,7 @@ import { feedbackAptico, annunciaFeedback } from './feedback.js';
 
 import { state } from './state.js';
 import { campoScrivibile } from './righe.js';
-import { $, emit, displayValue, toast, showContextMenu, showError, idOf, parseEdited, valueType, isPlainObject, isSqlType, captureContext, eseguiAOndate, marcaDatiSporchi, refreshLucideIcons, scaricaFile } from './utils.js';
+import { $, emit, displayValue, toast, showContextMenu, showError, idOf, parseEdited, valueType, isPlainObject, isSqlType, captureContext, eseguiAOndate, marcaDatiSporchi, refreshLucideIcons, scaricaFile, notifica } from './utils.js';
 import { mountArcControls, createArcCheckbox, controlElement } from '../arc/ui.js';
 import { runQuery, ensureRowRendered, deleteDoc, deleteDocs } from './grid.js';
 import { openEditDoc } from './inlineEdit.js';
@@ -321,7 +321,7 @@ function statsTsv(st, perCol) {
 // Pannello 📊 con il riepilogo della selezione (costruito al volo come la
 // modale di duplicazione: non esiste nel DOM finché non serve).
 async function showCellStats(A) {
-  if (!A.stato().cells.size) { toast('Seleziona prima delle celle', true); return; }
+  if (!A.stato().cells.size) { notifica('Seleziona prima delle celle', { tipo: 'avviso', titolo: "Operazione sulle celle" }); return; }
   const valori = valoriSelezionati(A);
   // Qui non c'è nessun tetto: su una selezione enorme i due calcoli finiscono
   // sul Web Worker (vedi calcoli.js) e la finestra resta viva nel frattempo.
@@ -366,7 +366,7 @@ async function showCellStats(A) {
       if (!td) return;
       const grezzo = (e.ctrlKey || e.metaKey) && td.dataset.grezzo;
       const testo = grezzo || td.dataset.copia;
-      if (testo === '' || testo === '—') { toast('Nessun valore da copiare', true); return; }
+      if (testo === '' || testo === '—') { notifica('Nessun valore da copiare', { tipo: 'avviso', titolo: "Operazione sulle celle" }); return; }
       copyText(testo, `Copiato: ${testo}`);
     });
   }
@@ -450,14 +450,14 @@ function titoloSelezione(A) {
 }
 
 function mostraMappaSelezione(A) {
-  if (!A.stato().cells.size) { toast('Seleziona prima delle celle', true); return; }
+  if (!A.stato().cells.size) { notifica('Seleziona prima delle celle', { tipo: 'avviso', titolo: "Operazione sulle celle" }); return; }
   apriMappaSelezione({ voci: vociSelezionate(A), titolo: titoloSelezione(A) });
 }
 
 // --- Grafico della selezione ------------------------------------------------
 
 function mostraGraficoSelezione(A) {
-  if (!A.stato().cells.size) { toast('Seleziona prima delle celle', true); return; }
+  if (!A.stato().cells.size) { notifica('Seleziona prima delle celle', { tipo: 'avviso', titolo: "Operazione sulle celle" }); return; }
   apriGraficoSelezione({ voci: vociSelezionate(A), titolo: titoloSelezione(A) });
 }
 
@@ -598,7 +598,7 @@ function messaggioEsito(testa, note) {
  * dal MAX gia' presente, e due duplicati in parallelo lo leggerebbero uguale.
  */
 function duplicaRighe(A, docs, conChiavi) {
-  if (!docs.length) { toast('Nessuna riga selezionata', true); return; }
+  if (!docs.length) { notifica('Nessuna riga selezionata', { tipo: 'avviso', titolo: "Operazione sulle celle" }); return; }
   const origin = A.contesto();
   const { tabId, st } = origin;
   const bersaglio = { tabId, db: st.db, coll: st.coll };
@@ -628,7 +628,7 @@ function duplicaRighe(A, docs, conChiavi) {
     const testa = fatte
       ? `Duplicate ${fatte} di ${docs.length}, poi errore: ${friendlyInsertError(err.message)}`
       : friendlyInsertError(err.message);
-    toast(testa, true);
+    notifica(testa, { tipo: 'errore', titolo: "Operazione sulle celle", hint: "Controlla le righe aggiornate prima di ripetere una scrittura." });
   }).then(() => {
     if (!fatte) return;
     // runQuery rilegge dagli input del workspace: solo se il tab e' ancora quello.
@@ -773,7 +773,7 @@ function copyToClipboard(A, text) {
 function copyText(text, messaggio) {
   const done = () => toast(messaggio);
   if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).then(done).catch(() => toast('Copia non riuscita', true));
+    navigator.clipboard.writeText(text).then(done).catch(() => notifica('Copia non riuscita', { tipo: 'errore', titolo: "Operazione sulle celle", hint: "Controlla le righe aggiornate prima di ripetere una scrittura." }));
   } else {
     // Fallback per contesti senza API clipboard (es. http non-localhost).
     const ta = document.createElement('textarea');
@@ -891,14 +891,14 @@ async function pasteIntoGrid(A, text) {
   // essere un'altra ragione. Chi non ne ha, restituisce null.
   const vietato = A.motivoNoScrittura();
   if (vietato) {
-    toast(vietato, true);
+    notifica(vietato, { tipo: 'avviso', titolo: "Operazione sulle celle" });
     return;
   }
   const s = A.stato();
   const { rows: selRows, cols: selCols } = selectionGrid(A);
   const start = selRows.length ? { r: selRows[0], c: selCols[0] } : s.focus;
   if (!start) {
-    toast('Seleziona prima la cella di partenza', true);
+    notifica('Seleziona prima la cella di partenza', { tipo: 'avviso', titolo: "Operazione sulle celle" });
     return;
   }
 
@@ -932,12 +932,12 @@ async function pasteIntoGrid(A, text) {
     if (any) updates.push({ id: idOf(doc), set });
     });
   } catch (err) {
-    toast(`Incolla annullato prima di ogni scrittura. ${err.message}`, true);
+    notifica(`Incolla annullato prima di ogni scrittura. ${err.message}`, { tipo: 'errore', titolo: "Operazione sulle celle", hint: "Controlla le righe aggiornate prima di ripetere una scrittura." });
     return;
   }
 
   if (!updates.length) {
-    toast('Nessuna cella aggiornabile a partire da qui', true);
+    notifica('Nessuna cella aggiornabile a partire da qui', { tipo: 'avviso', titolo: "Operazione sulle celle" });
     return;
   }
   const docWord = isSqlType(A.bersaglio().dbType) ? 'righe' : 'documenti';
@@ -967,7 +967,7 @@ async function pasteIntoGrid(A, text) {
     emit('doc:update', { ...bersaglio, id: u.id, set: u.set })
   ).then((results) => {
     const failed = results.filter((r) => r.status === 'rejected');
-    if (failed.length) toast(`${results.length - failed.length} aggiornati, ${failed.length} falliti: ${failed[0].reason.message}`, true);
+    if (failed.length) notifica(`${results.length - failed.length} aggiornati, ${failed.length} falliti: ${failed[0].reason.message}`, { tipo: 'errore', titolo: "Operazione sulle celle", hint: "Controlla le righe aggiornate prima di ripetere una scrittura." });
     else toast(`${cellsCount} celle incollate in ${updates.length} ${docWord}`);
     if (!origin.isStillActive()) {
       marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
@@ -1092,7 +1092,7 @@ export function creaSelezioneCelle(aggancio) {
       }).catch((err) => {
         // Un calcolo fallito non deve restare una promessa rifiutata e basta:
         // l'utente ha cliccato e si aspetta una risposta, anche se è un errore.
-        toast(`Statistiche non calcolabili: ${err.message}`, true);
+        notifica(`Statistiche non calcolabili: ${err.message}`, { tipo: 'errore', titolo: "Operazione sulle celle", hint: "Controlla le righe aggiornate prima di ripetere una scrittura." });
       });
     });
   }
@@ -1459,8 +1459,8 @@ export function creaSelezioneCelle(aggancio) {
       {
         label: 'Incolla (Ctrl+V)',
         action: () => navigator.clipboard?.readText
-          ? navigator.clipboard.readText().then((t) => pasteIntoGrid(A, t)).catch(() => toast('Appunti non accessibili: usa Ctrl+V', true))
-          : toast('Appunti non accessibili: usa Ctrl+V', true),
+          ? navigator.clipboard.readText().then((t) => pasteIntoGrid(A, t)).catch(() => notifica('Appunti non accessibili: usa Ctrl+V', { tipo: 'avviso', titolo: "Operazione sulle celle" }))
+          : notifica('Appunti non accessibili: usa Ctrl+V', { tipo: 'avviso', titolo: "Operazione sulle celle" }),
       },
       '---',
       { label: 'Esporta selezione in CSV…', action: () => downloadFile(`${A.bersaglio().coll || 'selezione'}.csv`, buildCsv(A, true), 'text/csv') },

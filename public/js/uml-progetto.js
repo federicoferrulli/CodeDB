@@ -1,5 +1,5 @@
 import { mountArcControls } from '../arc/ui.js';
-import { $, esc, emit, showToast, chiediTesto } from './utils.js';
+import { $, esc, emit, showToast, chiediTesto, notifica } from './utils.js';
 import { leggiOperazioni, tabelleProgettate, metadatiProgettati } from './uml-progetto-modello.js';
 import { invalidaSchemaIntellisense } from './autocomplete.js';
 import { closeCollTabsWhere, updateCollTabs } from './colltabs.js';
@@ -276,7 +276,7 @@ export function creaProgettista({ contesto, documento, tabelle, modifica, aggior
     if (op) compila(op, index >= 0 ? index : '').catch((err) => avviso(err.message)); else aggiornaForm();
   }
   function chiudi() {
-    if (busy) { showToast('Attendi l’esito dell’operazione in corso.', 'warning'); return; }
+    if (busy) { notifica('Attendi l’esito dell’operazione in corso.', { tipo: 'avviso', titolo: "Diagramma UML" }); return; }
     generation++; el.classList.add('hidden'); $('#uml-progetta-btn').setAttribute('aria-expanded', 'false');
   }
   function sincronizza() {
