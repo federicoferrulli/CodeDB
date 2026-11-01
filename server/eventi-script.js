@@ -144,10 +144,29 @@ function createModule({ lock, query, audit, dependencies, errori }) {
         // arrivano dal CONTESTO DEL SERVER, non dal payload: le operazioni di
         // scrittura lasciano un segno sul registro e la voce di audit di chiusura
         // legge quel segno per dire il vero sulla categoria (CDB-69).
-        const esito = await query.executeQueryCode(session, payloadEsecuzione(
-          { code: stmt.sql, engine: ctx.engine, db: ctx.db, coll: ctx.coll },
-          { opHandle, run, sessions: socketContext.sessions }
-        ));
+        let esito;
+        try {
+          esito = await query.executeQueryCode(session, payloadEsecuzione(
+            { code: stmt.sql, engine: ctx.engine, db: ctx.db, coll: ctx.coll },
+            { opHandle, run, sessions: socketContext.sessions }
+          ));
+        } catch (err) {
+          // Anche un errore appartiene a una scheda, senza cancellare i result set riusciti.
+          // L’annullamento volontario resta invece nel registro dell’esecuzione.
+          if (!opHandle.interrotto) {
+            const risultato = { index, line: stmt.line, sql: stmt.sql, docs: [], columns: [],
+              error: err.message || String(err),
+              ...(err.queryError ? { queryError: { ...err.queryError,
+                start: err.queryError.start + (stmt.start || 0), end: err.queryError.end + (stmt.start || 0) } } : {}),
+            };
+            holder.last = risultato;
+            if (run.deposito) {
+              try { await run.deposito.aggiungi(risultato); }
+              catch (storageError) { console.error('[script] impossibile conservare l’errore:', storageError.message); }
+            }
+          }
+          throw err;
+        }
         // Il bersaglio può cambiare in corsa (`USE altro_db`): le istruzioni
         // successive devono seguirlo, come farebbe un client SQL.
         if (esito.res && esito.res.activeDb) ctx.db = esito.res.activeDb;

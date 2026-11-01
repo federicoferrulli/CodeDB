@@ -12,10 +12,11 @@ const { startTestServer } = require('./e2e-harness');
     const { build } = require('esbuild');
     const result = await build({ entryPoints: ['ui/main.tsx'], bundle: true, minify: true, write: false, outdir: 'public/arc', format: 'esm', jsx: 'automatic', loader: { '.webp': 'dataurl' },
       plugins: [{ name: 'regressione-timer', setup(builder) {
-        builder.onLoad({ filter: /notifiche\.tsx$/ }, args => {
+        builder.onLoad({ filter: /(?:notifiche|copia-errore)\.tsx$/ }, args => {
+          const timer = process.argv.includes('--mutant-copy-timer');
+          if (!args.path.endsWith(timer ? 'copia-errore.tsx' : 'notifiche.tsx')) return;
           const source = fs.readFileSync(args.path, 'utf8');
           const copy = process.argv.includes('--mutant-copy');
-          const timer = process.argv.includes('--mutant-copy-timer');
           const original = timer ? 'setCopied(false), 1000' : copy ? '[f.titolo, f.message, f.hint]' : "if (f.tipo !== 'avviso' || paused) return;";
           assert(source.includes(original), 'Il mutante deve alterare il codice verificato');
           return { contents: source.replace(original, timer ? 'setCopied(false), 10000' : copy ? '[f.titolo, "Messaggio troncato", f.hint]' : 'if (paused) return;'), loader: 'tsx' };

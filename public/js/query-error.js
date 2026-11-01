@@ -54,10 +54,19 @@ export function intervalloErroreQuery(err, code, dbms) {
   if (dbms === 'mongodb') {
     // I parser citano il token effettivamente trovato; ripetizioni e messaggi
     // privi di token non sono sufficienti per scegliere un punto nell'editor.
-    const invalid = /(?:, trovato|Token inatteso a fine (?:query|comando):|Carattere non riconosciuto nella query SQL:)\s*"([^"]+)"/.exec(message)?.[1]
-      || /\bunknown (?:top level )?operator:\s*(\$[\w]+)/i.exec(message)?.[1];
-    if (invalid) {
-      const matches = tokens.filter(t => !['commento', 'hint', 'spazio', 'stringa'].includes(t.tipo) && t.testo === invalid);
+    const parserToken = /(?:, trovato|Token inatteso a fine (?:query|comando):|Carattere non riconosciuto nella query SQL:)\s*"([\s\S]*)"\.?(?:\s*\))?$/.exec(message);
+    const invalid = parserToken?.[1] ?? /\bunknown (?:top level )?operator:\s*(\$[\w]+)/i.exec(message)?.[1];
+    if (invalid !== undefined) {
+      const matches = tokens.filter(t => {
+        if (['commento', 'hint', 'spazio'].includes(t.tipo) || t.tipo === 'stringa' && !parserToken) return false;
+        let value = t.testo;
+        const quote = value[0];
+        // Il traduttore cita il valore decodificato, ma si sottolinea il token completo con i suoi apici.
+        if (parserToken && t.chiuso && ['stringa', 'identificatore'].includes(t.tipo) && ["'", '"', '`'].includes(quote)) {
+          value = value.slice(1, -1).replace(new RegExp(`${quote}${quote}|\\\\([\\s\\S])`, 'g'), (_match, escaped) => escaped ?? quote);
+        }
+        return value === invalid;
+      });
       return matches.length === 1 ? { start: matches[0].inizio, end: matches[0].fine } : null;
     }
   }

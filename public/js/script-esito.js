@@ -84,7 +84,7 @@ export function etichettaScheda(scheda, maxTesto = 32) {
   return {
     riga: s.line != null ? `riga ${s.line}` : '',
     testo: tagliato || '(istruzione)',
-    righe: `${s.rows != null ? s.rows : 0} ${s.rows === 1 ? 'riga' : 'righe'}`,
+    righe: s.error ? 'Errore' : `${s.rows != null ? s.rows : 0} ${s.rows === 1 ? 'riga' : 'righe'}`,
   };
 }
 

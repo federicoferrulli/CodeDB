@@ -8347,6 +8347,11 @@ td.editing.fk-cella :is(input, [data-arc-component="select"]) { flex: 1 1 auto; 
   opacity: 0.75;
 }
 
+.script-result-tab.errore .tab-righe {
+  color: var(--danger);
+  opacity: 1;
+}
+
 /* Quante schede NON sono state conservate: si dice, non si tace. */
 .script-results-nota {
   color: var(--fg-dim);

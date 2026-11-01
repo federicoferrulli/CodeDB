@@ -25,12 +25,11 @@ import { countStatements } from './sql-split.js';
 import {
   trackPending, updateScriptProgress, removePending,
 } from './pending-queries.js';
-import { renderResults, updateQueryMetrics, contestoErroreQuery, registraErroreQuery, mostraErroreQuery, applicaErroreQuery, mostraRisultatiQueryRiuscita } from './query-tab.js';
+import { renderResults, updateQueryMetrics, contestoErroreQuery, registraErroreQuery, applicaErroreQuery, mostraRisultatiQueryRiuscita } from './query-tab.js';
 import { refreshDbTree } from './dbtree.js';
 import { segnalaErroreQuery } from './query-editor.js';
-import { clearMobileError } from '../arc/ui.js';
 import {
-  unisciLog, righeDaMostrare, haRisultato,
+  unisciLog,
   etichettaScheda, schedaAttiva, notaScartate,
 } from './script-esito.js';
 
@@ -98,7 +97,6 @@ export function runScript({ code, engine, db, coll, stopOnError = false, previou
   });
   if (documentoVisibile(tab, collTabId)) {
     segnalaErroreQuery(null);
-    clearMobileError('query');
     runVisibile = runId;
     mostraPannello();
     aggiornaPannello({ status: 'running', cursor: 0, total: totalePrevisto, eseguiti: 0, falliti: 0 });
@@ -262,12 +260,15 @@ function onProgress(ev) {
   if ((ev.tipo === 'done' || ev.tipo === 'paused' || stato.status === 'aborted') && r.attesa) r.attesa.resolve(stato);
   if (stato.status === 'aborted' && r.documento.scriptRunId === ev.runId) r.documento.metrics = ['cancelled'];
   if ((ev.tipo === 'done' || ev.tipo === 'paused') && r.documento.scriptRunId === ev.runId) {
-    const risultato = haRisultato(ev.ultimoRisultato) ? ev.ultimoRisultato : { docs: [], columns: [] };
-    r.documento.results = risultato.docs;
-    r.documento.columns = risultato.columns;
-    r.documento.metrics = [ev.tipo === 'paused' ? 'paused' : stato.falliti ? 'error' : 'success',
+    const risultato = ev.ultimoRisultato || (stato.falliti ? r.primoErrore : null) || {};
+    const docs = risultato.docs || [];
+    if (risultato.error) registraErroreQuery(r.documento,
+      { message: risultato.error, queryError: risultato.queryError, line: risultato.line }, r.sorgenteErrore);
+    r.documento.results = docs;
+    r.documento.columns = risultato.columns || [];
+    r.documento.metrics = [risultato.error ? 'error' : ev.tipo === 'paused' ? 'paused' : 'success',
       stato.endedAt && stato.startedAt ? stato.endedAt - stato.startedAt : null,
-      risultato.docs.length, stato.falliti ? r.primoErrore?.error || `Script terminato con ${stato.falliti} istruzioni fallite.` : null];
+      docs.length, risultato.error || null];
     if (ev.risultati) {
       r.risultati = ev.risultati;
       r.schedaAperta = schedaAttiva(ev.risultati.schede, ev.ultimoRisultato);
@@ -285,7 +286,7 @@ function onProgress(ev) {
   if (runVisibile !== ev.runId || r.documento.scriptRunId !== ev.runId || !documentoVisibile(r.tab, r.collTabId)) return;
   if (r.primoErrore && !r.erroreMostrato) {
     r.erroreMostrato = true;
-    mostraErroreQuery(r.documento.errorMark);
+    applicaErroreQuery(r.documento.errorMark);
   }
 
   aggiornaPannello(stato);
@@ -297,7 +298,7 @@ function onProgress(ev) {
   if (stato.status !== statoPrecedente && (ev.tipo === 'done' || ev.tipo === 'paused' || stato.status === 'aborted')) {
     feedbackQuery(stato.status === 'aborted' ? 'cancelled' : ev.tipo === 'paused' ? 'paused' : stato.falliti ? 'error' : 'success');
   }
-  if (ev.tipo === 'paused') updateQueryMetrics(...r.documento.metrics);
+  if (ev.tipo === 'paused' || ev.tipo === 'done') updateQueryMetrics(...r.documento.metrics);
   if (ev.tipo === 'paused' || ev.tipo === 'done') applicaErroreQuery(r.documento.errorMark);
   if (stato.status === 'aborted') {
     renderResults(r.documento.results || [], r.documento.columns || []);
@@ -305,19 +306,9 @@ function onProgress(ev) {
   }
 
   // Righe MOSTRATE nella griglia: sono quelle che il contatore deve dire.
-  let righeMostrate = null;
   if (ev.tipo === 'done' || ev.tipo === 'paused') {
-    // L'ultimo result set prodotto è ciò che l'utente si aspetta di vedere.
-    // Un result set VUOTO si disegna (tabella vuota); "niente da disegnare"
-    // svuota la griglia invece di lasciarci il risultato dell'esecuzione
-    // precedente, che sembrerebbe la risposta a questo script.
-    // Le colonne viaggiano accanto alle righe: un result set vuoto le ha
-    // comunque, ed e' l'unica cosa che lo distingue da «nessuna query».
-    renderResults(
-      haRisultato(ev.ultimoRisultato) ? ev.ultimoRisultato.docs : [],
-      haRisultato(ev.ultimoRisultato) ? ev.ultimoRisultato.columns : [],
-    );
-    righeMostrate = righeDaMostrare(ev.ultimoRisultato);
+    // L’ultima query mostra il proprio esito: righe (anche zero) oppure errore.
+    renderResults(r.documento.results, r.documento.columns);
 
     // Risultati per istruzione: arriva l'ELENCO, non le righe. Le righe di una
     // scheda si chiedono quando l'utente la apre (vedi apriScheda).
@@ -338,18 +329,7 @@ function onProgress(ev) {
     // una struttura che non esiste più.
     refreshDbTree();
     const falliti = stato.falliti || 0;
-    // Il contatore è etichettato «record»: passargli le ISTRUZIONI eseguite
-    // faceva leggere «2 record» sopra una griglia che ne mostrava una — e il
-    // numero di istruzioni è già scritto due righe sotto, nel pannello. Qui va
-    // ciò che la griglia contiene davvero; se nessuna istruzione ha prodotto un
-    // result set la griglia è vuota, e il contatore dice zero.
-    updateQueryMetrics(
-      falliti ? 'error' : 'success',
-      stato.endedAt && stato.startedAt ? stato.endedAt - stato.startedAt : null,
-      righeMostrate != null ? righeMostrate : 0,
-      falliti ? r.primoErrore?.error || `Script terminato con ${falliti} istruzioni fallite su ${stato.eseguiti}.` : null
-    );
-    // L'errore resta nel riepilogo query e nel registro, senza un secondo messaggio globale.
+    // Il riepilogo conta tutti gli errori; la griglia mostra solo la scheda selezionata.
     if (!falliti) toast(`Script completato: ${stato.eseguiti} istruzioni`);
     if (!falliti && stato.status === 'done') mostraRisultatiQueryRiuscita();
   }
@@ -511,8 +491,9 @@ function disegnaSchede() {
   barra.innerHTML = schede.map((sc) => {
     const et = etichettaScheda(sc);
     const attiva = r.schedaAperta === sc.pos ? ' attiva' : '';
+    const errore = sc.error ? ' errore' : '';
     return `
-      <button type="button" role="tab" class="script-result-tab${attiva}" data-pos="${sc.pos}"
+      <button type="button" role="tab" class="script-result-tab${attiva}${errore}" data-pos="${sc.pos}"
               aria-selected="${r.schedaAperta === sc.pos ? 'true' : 'false'}"
               title="${esc(sc.sql || '')}">
         <span class="tab-riga">${esc(et.riga)}</span>
@@ -535,18 +516,26 @@ function apriScheda(pos) {
   const runId = runVisibile;
   const r = runs.get(runId);
   if (!r) return;
+  const richiesta = r.richiestaScheda = (r.richiestaScheda || 0) + 1;
+  const corrente = () => runVisibile === runId && r.richiestaScheda === richiesta
+    && r.documento.scriptRunId === runId && documentoVisibile(r.tab, r.collTabId);
   emit('script:result', { runId, pos, tabId: r.tabId })
     .then((res) => {
       // Nel frattempo l'utente può aver cambiato run o scheda: la risposta di
       // una richiesta sorpassata non deve sovrascrivere ciò che sta guardando.
-      if (runVisibile !== runId || !documentoVisibile(r.tab, r.collTabId)) return;
+      if (!corrente()) return;
       r.schedaAperta = pos;
-      Object.assign(r.documento, { results: res.docs || [], columns: res.columns || [], metrics: ['success', null, (res.docs || []).length] });
+      if (res.error) registraErroreQuery(r.documento,
+        { message: res.error, queryError: res.queryError, line: res.line }, r.sorgenteErrore);
+      Object.assign(r.documento, { results: res.docs || [], columns: res.columns || [],
+        metrics: [res.error ? 'error' : 'success', null, (res.docs || []).length, res.error || null] });
       disegnaSchede();
+      applicaErroreQuery(r.documento.errorMark);
+      updateQueryMetrics(...r.documento.metrics);
       renderResults(res.docs || [], res.columns || []);
-      updateQueryMetrics('success', null, (res.docs || []).length);
     })
     .catch((err) => {
+      if (!corrente()) return;
       notifica(`Impossibile aprire il risultato: ${err.message}`, { tipo: 'errore', titolo: "Esecuzione script" });
     });
 }

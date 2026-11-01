@@ -245,6 +245,10 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--control-on); }
 .feedback-copy-action { display: flex; align-items: center; gap: var(--space-sm); margin-top: var(--space-sm); }
 .feedback-copy-action > button { min-width: 0; white-space: normal; }
 .feedback-copy-action .feedback-copy-icon { flex: none; width: 44px; padding-inline: 0; }
+.data-empty-actions .feedback-copy-icon { flex: none; width: 44px; padding-inline: 0; }
+.data-empty-actions:has(.feedback-copy-icon) > button { min-height: 44px; }
+.feedback-copy-action:has(.copy-error-status) { flex-wrap: wrap; }
+.copy-error-status { flex-basis: 100%; font-size: var(--text-xs); color: var(--text-secondary); }
 .feedback-copy > span.feedback-hint { display: block; margin: 0; font-size: var(--text-xs); }
 .feedback-copy .feedback-hint { margin-top: var(--space-sm); color: var(--text-secondary); }
 .feedback-details { margin-top: var(--space-xs); }
@@ -296,7 +300,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--control-on); }
 :is(.modal, .palette) #feedback-container {
   position: static; flex: none; width: 100%; max-height: none; overflow: visible;
 }
-#query-error-box .feedback-copy > p { max-height: min(24dvh, 200px); overflow-y: auto; }
 .arc-settings { width: 100%; }
 .arc-settings > button { width: 100%; justify-content: flex-start; }
 /* I menu in portal devono stare anche sopra i dialoghi, mai dietro una mappa. */

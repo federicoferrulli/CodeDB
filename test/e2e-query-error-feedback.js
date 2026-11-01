@@ -19,15 +19,29 @@ const version = require('../package.json').version;
   page.setDefaultTimeout(15000);
   const errors = [];
   const checks = [];
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   page.on('pageerror', error => errors.push(error.message));
   fs.mkdirSync(dir, { recursive: true });
   try {
+    if (process.argv.includes('--mutant=posizione-messaggio')) await page.route(`${server.url}/`, async route => {
+      const response = await route.fetch(), source = await response.text();
+      const box = '<div id="query-error-box" class="hidden" role="alert" aria-atomic="true"></div>';
+      const surface = '<div id="query-surface-content"';
+      assert(source.includes(box) && source.includes(surface), 'Il mutante deve ripristinare il messaggio sopra l’editor');
+      await route.fulfill({ response, body: source.replace(box, '').replace(surface, `${box}\n${surface}`) });
+    });
     if (mutantErrorSurface) await page.route('**/js/query-tab.js', async route => {
       const response = await route.fetch();
       const source = await response.text();
-      const original = "if (mark && mark.code === $('#query-editor-input')?.value && $('.query-main-panel')?.dataset.surface === 'results') {";
-      assert(source.includes(original), 'Il mutante deve disattivare il ritorno all’Editor');
-      await route.fulfill({ response, body: source.replace(original, 'if (false) {') });
+      const original = "if ($('.query-main-panel')?.dataset.surface === 'results') setQuerySurface('editor');";
+      assert(source.includes(original), 'Il mutante deve forzare la vista Editor anche da Entrambi');
+      await route.fulfill({ response, body: source.replace(original, "setQuerySurface('editor');") });
+    });
+    if (process.argv.includes('--mutant=ridondanza')) await page.route('**/js/query-tab.js', async route => {
+      const response = await route.fetch(), source = await response.text();
+      const original = "statusBadge.classList.toggle('hidden', status === 'error');";
+      assert(source.includes(original), 'Il mutante deve ripristinare il badge Errore duplicato');
+      await route.fulfill({ response, body: source.replace(original, "statusBadge.classList.toggle('hidden', false);") });
     });
     if (mutantSurface) await page.route('**/js/query-tab.js', async route => {
       const response = await route.fetch();
@@ -61,7 +75,7 @@ const version = require('../package.json').version;
       const { createTab, tabs } = await import('/js/tabs.js');
       const { impostaSocket } = await import('/js/socket.js');
       const callbacks = new Map();
-      window.qef = { queue: [], sent: [], notices: [], tabs };
+      window.qef = { queue: [], sent: [], notices: [], tabs, resultRequests: [] };
       document.addEventListener('codedb:toast', event => window.qef.notices.push(event.detail.message));
       const fields = [{ name: 'id', types: ['integer'], presence: 100 }];
       const collections = ['prima', 'seconda'].map(name => ({ name, fields, indexes: [] }));
@@ -72,6 +86,10 @@ const version = require('../package.json').version;
         timeout() { return { emit(name, payload, ack) { fake.emit(name, payload, result => ack(null, result)); } }; },
         emit(name, payload, ack) {
           window.qef.sent.push({ name, payload });
+          if (name === 'script:result') {
+            window.qef.resultRequests.push({ payload, ack });
+            return;
+          }
           if (name === 'query:execute' || name === 'script:execute') {
             window.qef.queue.push({ name, payload, ack });
             return;
@@ -104,7 +122,7 @@ const version = require('../package.json').version;
     });
     const editor = page.locator('#query-editor-input');
     const marks = page.locator('#query-editor-code .query-error-mark');
-    const dialog = page.locator('#query-error-box .feedback-message');
+    const dialog = page.locator('#query-error-box .data-empty');
     const message = 'La tabella indicata non esiste in questo database. Controlla il nome e riprova.';
     const start = async text => {
       await editor.fill(text);
@@ -129,11 +147,60 @@ const version = require('../package.json').version;
     };
 
     const initial = '  \n SELECT * FROM inesistente;  \n';
+    await page.evaluate(async () => {
+      const tab = (await import('/js/tabs.js')).activeTab();
+      tab.dbType = tab.state.dbType = 'mongodb';
+      tab.label = tab.state.connLabel = 'MongoDB di prova';
+      (await import('/js/tabbar.js')).renderTabBar();
+      (await import('/js/workspace.js')).renderWorkspace();
+      document.getElementById('query-target-engine').value = 'auto';
+    });
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(async width => (await import('/js/theme.js')).applicaTema(width > 900 ? 'dark' : 'light'), width);
+      const sql = 'SELECT * FROM "sadkmaskmd"';
+      await start(sql);
+      await answer(sql, { ok: false, error: 'Traduzione SQL→MongoDB non riuscita: Atteso un identificatore, trovato "sadkmaskmd".' });
+      await assertMark('"sadkmaskmd"', sql.indexOf('"sadkmaskmd"'));
+      assert(await page.locator('#query-results-container #query-error-box').count(), 'Il messaggio specifico deve stare nel pannello risultati');
+      assert.equal(await page.locator('#query-status-badge').isVisible(), false, 'Il badge Errore non deve duplicare il messaggio');
+      assert.equal(await page.locator('#query-count-metric').isVisible(), false, 'Zero record non descrive una query fallita');
+      const underline = await marks.first().evaluate(el => {
+        const probe = document.createElement('span'); probe.style.color = 'var(--danger)'; el.append(probe);
+        const expected = getComputedStyle(probe).color; probe.remove();
+        return { expected, actual: getComputedStyle(el).textDecorationColor, style: getComputedStyle(el).textDecorationStyle };
+      });
+      assert.equal(underline.actual, underline.expected, 'La sottolineatura usa il rosso di errore del tema');
+      assert.equal(underline.style, 'wavy');
+      assert.equal(await page.locator('#query-results-body').getByText('La query non è riuscita', { exact: true }).count(), 1, 'Un solo riepilogo di errore');
+      assert.equal(await page.locator('#query-error-box .feedback-message').count(), 0, 'Nessun banner di notifica nei risultati');
+      const controls = await dialog.getByRole('button', { name: 'Vai all’editor query' }).boundingBox();
+      const body = await page.locator('#query-results-body').boundingBox();
+      assert(controls.y >= body.y && controls.y + controls.height <= body.y + body.height + 1, 'Il pulsante deve restare visibile anche nei risultati bassi');
+      await page.screenshot({ path: `${dir}/sql-mongo-${width}.png` });
+      const copyError = dialog.getByRole('button', { name: 'Copia errore', exact: true });
+      assert.equal((await copyError.textContent()).trim(), '', 'Copia errore deve mostrare solo l’icona');
+      await copyError.locator('.lucide-copy').waitFor();
+      await copyError.click();
+      await copyError.locator('span:not([aria-hidden="true"]) > .lucide-check').waitFor();
+      assert.match(await page.evaluate(() => navigator.clipboard.readText()), /sadkmaskmd/);
+      await copyError.locator('span:not([aria-hidden="true"]) > .lucide-copy').waitFor({ timeout: 3000 });
+      assert.equal(await page.locator('#toast-container').getByText('Errore copiato.', { exact: true }).count(), 0, 'La spunta sostituisce il toast di conferma');
+    }
+    checks.push('SQL→MongoDB: token fra apici sottolineato, unico errore nei risultati e copia, su desktop e mobile');
+    await page.evaluate(async () => {
+      const tab = (await import('/js/tabs.js')).activeTab();
+      tab.dbType = tab.state.dbType = 'postgresql';
+      tab.label = tab.state.connLabel = 'PostgreSQL di prova';
+      (await import('/js/tabbar.js')).renderTabBar();
+      (await import('/js/workspace.js')).renderWorkspace();
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
     await start(initial);
     const sent = initial.trim();
     await answer(initial, { ok: false, error: message, queryError: { start: sent.indexOf('inesistente'), end: sent.indexOf('inesistente') + 11 } });
     await assertMark('inesistente', initial.indexOf('inesistente'));
-    await dialog.waitFor();
+    await dialog.waitFor({ state: 'attached' });
     assert(await dialog.getByText(message, { exact: true }).isVisible());
     assert.equal(await page.locator('.illustrated-error-snackbar').count(), 0, 'Nessun dialog per un errore query');
     assert.equal(await page.evaluate(async () => (await import('/js/query-document.js')).queryDocument().dirty), true, 'L’errore conserva la bozza');
@@ -143,8 +210,8 @@ const version = require('../package.json').version;
     await page.setViewportSize({ width: 1440, height: 900 });
     assert(await dialog.getByText(message, { exact: true }).isVisible(), 'Stesso errore inline su desktop');
     await page.setViewportSize({ width: 390, height: 844 });
-    await dialog.getByRole('button', { name: 'Modifica query' }).click();
-    await dialog.waitFor({ state: 'detached' });
+    await dialog.getByRole('button', { name: 'Vai all’editor query' }).click();
+    assert.equal(await page.locator('.query-main-panel').getAttribute('data-surface'), 'both', 'Il pulsante conserva Entrambi');
     assert(await editor.evaluate(el => el === document.activeElement), 'Modifica query riporta il focus all’editor');
     await assertMark('inesistente', initial.indexOf('inesistente'));
     checks.push('Errore inline mobile/desktop, temi chiaro/scuro, bozza conservata e ritorno all’editor');
@@ -156,9 +223,8 @@ const version = require('../package.json').version;
     assert.equal(await marks.count(), 0, 'Riscrivere il testo non riesuma il vecchio errore');
     await start('SELECT * FROM senza_posizione');
     await answer('SELECT * FROM senza_posizione', { ok: false, error: 'Errore privo di posizione attendibile.' });
-    await dialog.waitFor();
+    await dialog.waitFor({ state: 'attached' });
     assert.equal(await marks.count(), 0, 'Nessuna posizione inventata quando manca il dato del motore');
-    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
     checks.push('Modifiche e nuovo tentativo invalidano i segni; errori senza posizione restano leggibili senza sottolineature arbitrarie');
 
     // La risposta può contenere soltanto il messaggio parlante e il dettaglio
@@ -166,9 +232,8 @@ const version = require('../package.json').version;
     await start('SELECT * FROM sndasjkdn;');
     await answer('SELECT * FROM sndasjkdn;', { ok: false,
       error: 'La tabella indicata non esiste in questo database. Cosa fare: controlla il nome. (dettaglio tecnico: relation "sndasjkdn" does not exist)' });
-    await dialog.waitFor();
-    await dialog.getByRole('button', { name: 'Modifica query' }).click();
-    await dialog.waitFor({ state: 'detached' });
+    await dialog.waitFor({ state: 'attached' });
+    await dialog.getByRole('button', { name: 'Vai all’editor query' }).click();
     await assertMark('sndasjkdn', 14);
     await page.screenshot({ path: `${dir}/mobile-editor-error.png` });
     checks.push('Errore reale di tabella inesistente senza metadati: nome sottolineato anche nella vista solo editor');
@@ -231,8 +296,7 @@ const version = require('../package.json').version;
     assert.equal(await editor.inputValue(), background);
     await assertMark('assente', 14);
     assert.equal(await dialog.count(), 1, 'Ripristinare la scheda conserva l’errore inline');
-    await dialog.waitFor();
-    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
+    await dialog.waitFor({ state: 'attached' });
     checks.push('Errore in background isolato alla scheda d’origine; ripristino del segno e riapertura manuale del messaggio');
 
     // La posizione del push è nell’intero script inviato, non nella singola istruzione.
@@ -246,16 +310,99 @@ const version = require('../package.json').version;
       stato: { status: 'running', total: 2, cursor: 2, eseguiti: 2, falliti: 1 },
     }), { runId: scriptRequest.runId, result: scriptError });
     await assertMark('script_assente', script.indexOf('script_assente'));
-    await dialog.waitFor();
-    assert(await dialog.getByText(scriptError.error, { exact: true }).isVisible());
-    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
+    assert.equal(await dialog.count(), 0, 'Durante lo script l’errore resta nel log e nell’editor');
     await page.evaluate(({ runId, result }) => window.qef.push('script:progress', {
       runId, tipo: 'done', stato: { status: 'done', total: 2, cursor: 2, eseguiti: 2, falliti: 1, results: [result] },
+      ultimoRisultato: { ...result, docs: [], columns: [] },
+      risultati: { schede: [{ pos: 0, index: 0, line: 1, sql: 'SELECT 1', rows: 1 },
+        { pos: 1, index: 1, line: 2, sql: 'SELECT * FROM script_assente', error: result.error }] },
     }), { runId: scriptRequest.runId, result: scriptError });
     await settled();
-    assert.equal(await dialog.count(), 1, 'La fine dello script conserva un solo riepilogo inline');
+    const resultTabs = page.locator('#script-results-tabs [role="tab"]');
+    assert.equal(await resultTabs.count(), 2, 'La query fallita ha una scheda accanto a quella riuscita');
+    assert.equal(await resultTabs.nth(1).getAttribute('aria-selected'), 'true');
+    assert(await resultTabs.nth(1).getByText('Errore', { exact: true }).isVisible());
+    assert.equal(await dialog.count(), 1);
+    assert.equal(await page.locator('#query-results-body').getAttribute('data-query-error'), 'empty');
+    const answerResult = (pos, result) => page.evaluate(({ pos, result }) => {
+      const index = window.qef.resultRequests.findIndex(r => r.payload.pos === pos);
+      if (index < 0) throw new Error(`Richiesta scheda ${pos} mancante`);
+      window.qef.resultRequests.splice(index, 1)[0].ack({ ok: true, ...result });
+    }, { pos, result });
+    await resultTabs.nth(0).click();
+    await answerResult(0, { index: 0, docs: [{ id: 7 }], columns: ['id'] });
+    await settled();
+    assert.equal(await dialog.count(), 0, 'L’errore non invade la scheda riuscita');
+    assert.equal(await page.locator('#query-result-table tbody').getByText('7', { exact: true }).count(), 1);
+    assert(await page.locator('#query-count-metric').isVisible());
+    await page.evaluate(async () => {
+      const query = await import('/js/query-tab.js');
+      query.updateQueryMetrics('success', 5, 1);
+      query.setResultsViewMode('json');
+    });
+    assert.equal(await dialog.count(), 0, 'Un risultato riuscito non riesuma il vecchio messaggio cambiando formato');
     await assertMark('script_assente', script.indexOf('script_assente'));
-    checks.push('Script: push con offset globale, messaggio dell’istruzione fallita e nessun duplicato a fine esecuzione');
+    await resultTabs.nth(1).click();
+    await answerResult(1, { ...scriptError, ok: true, docs: [], columns: [] });
+    await settled();
+    assert.equal(await dialog.count(), 1, 'La scheda fallita ripristina il proprio errore');
+    assert.equal(await page.locator('#query-results-body').getAttribute('data-query-error'), 'empty');
+    await assertMark('script_assente', script.indexOf('script_assente'));
+    // Due clic ravvicinati: la risposta più vecchia arriva per ultima.
+    await resultTabs.nth(1).click();
+    await resultTabs.nth(0).click();
+    await answerResult(0, { index: 0, docs: [{ id: 7 }], columns: ['id'] });
+    await answerResult(1, { ...scriptError, ok: true, docs: [], columns: [] });
+    await settled();
+    assert.equal(await resultTabs.nth(0).getAttribute('aria-selected'), 'true', 'Vince l’ultima scheda richiesta');
+    assert.equal(await dialog.count(), 0, 'Una risposta tardiva non sostituisce i dati con un errore');
+    checks.push('Script misto: schede separate, errore isolato, sottolineatura e risposte fuori ordine');
+
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const ultimaFallita of [false, true]) {
+        const mixedCode = `SELECT * FROM prima_assente;\nSELECT * FROM ${ultimaFallita ? 'seconda_assente' : 'valida'};`;
+        await start(mixedCode);
+        const runId = await page.evaluate(() => window.qef.queue.find(r => r.name === 'script:execute').payload.runId);
+        await answer(mixedCode, { ok: true, runId, total: 2 });
+        const failures = ['prima_assente', ...(ultimaFallita ? ['seconda_assente'] : [])].map((nome, index) => ({
+          index, line: index + 1, ok: false, sql: `SELECT * FROM ${nome}`,
+          error: `La tabella ${nome} non esiste.`, queryError: { start: mixedCode.indexOf(nome), end: mixedCode.indexOf(nome) + nome.length },
+        }));
+        const ultimo = ultimaFallita ? { ...failures[1], docs: [], columns: [] }
+          : { index: 1, docs: [], columns: ['id'] };
+        await page.evaluate(({ runId, failures, ultimo }) => window.qef.push('script:progress', {
+          runId, tipo: 'done', stato: { status: 'done', total: 2, cursor: 2, eseguiti: 2,
+            falliti: failures.length, results: failures }, ultimoRisultato: ultimo,
+          risultati: { schede: [
+            { ...failures[0], pos: 0, rows: 0 },
+            { ...ultimo, pos: 1, line: 2, sql: 'SELECT * FROM ultima', rows: 0 },
+          ] },
+        }), { runId, failures, ultimo });
+        await settled();
+        assert.equal(await resultTabs.count(), 2);
+        assert.equal(await resultTabs.nth(1).getAttribute('aria-selected'), 'true');
+        if (ultimaFallita) {
+          assert(await dialog.getByText(failures[1].error, { exact: true }).isVisible(), 'Ogni errore conserva il proprio messaggio');
+          await assertMark('seconda_assente', mixedCode.indexOf('seconda_assente'));
+        } else {
+          assert.equal(await dialog.count(), 0, 'Una SELECT riuscita senza righe resta separata dall’errore precedente');
+          assert.equal(await page.locator('#query-results-body').getAttribute('data-query-error'), '');
+          assert.equal(await resultTabs.nth(1).getByText('0 righe', { exact: true }).count(), 1);
+        }
+        await page.screenshot({ path: `${dir}/script-${width}-${ultimaFallita ? 'errore' : 'vuota'}.png` });
+        await resultTabs.nth(0).click();
+        await answerResult(0, { ...failures[0], ok: true, docs: [], columns: [] });
+        await settled();
+        assert(await dialog.getByText(failures[0].error, { exact: true }).isVisible());
+        await assertMark('prima_assente', mixedCode.indexOf('prima_assente'));
+        const toastCount = await page.evaluate(() => window.qef.notices.length);
+        await dialog.getByRole('button', { name: 'Copia errore', exact: true }).click();
+        await page.waitForFunction(text => navigator.clipboard.readText().then(value => value === text), failures[0].error);
+        assert.equal(await page.evaluate(() => window.qef.notices.length), toastCount, 'Anche la copia dalla scheda errore resta senza toast');
+      }
+    }
+    checks.push('Desktop/mobile: errore seguito da SELECT vuota, errori distinti per scheda e copia senza toast');
 
     // Il server può diradare tutti gli eventi statement: resta il riepilogo finale.
     await start(script);
@@ -264,10 +411,9 @@ const version = require('../package.json').version;
     await page.evaluate(({ runId, result }) => window.qef.push('script:progress', {
       runId, tipo: 'done', stato: { status: 'done', total: 2, cursor: 2, eseguiti: 2, falliti: 1, results: [result] },
     }), { runId: terminalRun, result: scriptError });
-    await dialog.waitFor();
+    await dialog.waitFor({ state: 'attached' });
     await assertMark('script_assente', script.indexOf('script_assente'));
     assert(await dialog.getByText(scriptError.error, { exact: true }).isVisible());
-    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
     checks.push('Script con eventi intermedi diradati: errore e posizione recuperati dal solo riepilogo finale');
 
     // La ripresa nasconde il vecchio segno durante l’esecuzione e lo ripristina al termine.
@@ -277,9 +423,8 @@ const version = require('../package.json').version;
     await page.evaluate(({ runId, result }) => window.qef.push('script:progress', {
       runId, tipo: 'paused', stato: { status: 'paused', total: 2, cursor: 1, eseguiti: 1, falliti: 1, results: [result] },
     }), { runId: pausedRun, result: scriptError });
-    await dialog.waitFor();
+    await dialog.waitFor({ state: 'attached' });
     await assertMark('script_assente', script.indexOf('script_assente'));
-    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
     await page.locator('#script-resume-btn').click();
     await settled();
     assert.equal(await marks.count(), 0, 'Durante la ripresa non resta un errore dell’esecuzione sospesa');
@@ -295,13 +440,12 @@ const version = require('../package.json').version;
       'Se il nome contiene maiuscole, scrivilo fra doppi apici: PostgreSQL abbassa gli identificatori non quotati. Controlla il nome dello schema e della tabella, poi riprova. '.repeat(8);
     await start('SELECT * FROM lunghissima');
     await answer('SELECT * FROM lunghissima', { ok: false, error: longMessage, queryError: { start: 14, end: 25 } });
-    await dialog.waitFor();
-    const copy = dialog.locator('.feedback-copy > p').first();
+    await dialog.waitFor({ state: 'attached' });
+    const copy = dialog.locator('p').first();
     assert.equal(await copy.textContent(), longMessage, 'Il messaggio lungo resta completo');
     const bounds = await dialog.boundingBox();
     assert(bounds.x >= 0 && bounds.x + bounds.width <= 320, 'L’errore inline non esce orizzontalmente');
     assert(await copy.evaluate(el => el.scrollHeight > el.clientHeight), 'Il messaggio lungo ha uno scorrimento locale');
-    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
     checks.push('Viewport 320×480: testo completo scorrevole e azioni locali');
 
     await page.setViewportSize({ width: 390, height: 844 });
@@ -324,9 +468,8 @@ const version = require('../package.json').version;
     await page.locator('#query-show-editor').click();
     await start('SELECT * FROM errore_editor');
     await answer('SELECT * FROM errore_editor', { ok: false, error: 'La query non è valida.' });
-    await dialog.waitFor();
+    await dialog.waitFor({ state: 'attached' });
     assert.equal(await surface(), 'editor', 'Un errore conserva la vista Editor');
-    await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
     checks.push('Successo: Editor passa a Risultati anche senza righe; Entrambi, Risultati ed errori mantengono la vista');
 
     await start('SELECT 99');
@@ -361,12 +504,15 @@ const version = require('../package.json').version;
         await page.waitForFunction(() => window.qef.queue.some(q => q.payload.code === 'SELECT * FROM assente;'));
         await answer('SELECT * FROM assente;', { ok: false, error: 'La tabella assente non esiste.', queryError: { start: 14, end: 21 } });
         await assertMark('assente', 14);
-        assert.equal(await surface(), mode === 'results' ? 'editor' : mode, 'L’errore torna all’Editor solo dalla vista Risultati');
-        assert(await editor.isVisible(), 'La parte sottolineata è visibile nell’editor');
-        if (await dialog.isVisible()) await dialog.getByRole('button', { name: 'Chiudi messaggio' }).click();
+        assert.equal(await surface(), mode, 'L’errore conserva la modalità scelta');
+        const go = dialog.getByRole('button', { name: 'Vai all’editor query', includeHidden: true });
+        if (mode === 'editor') await go.evaluate(button => button.click());
+        else await go.click();
+        assert.equal(await surface(), mode === 'results' ? 'editor' : mode, 'Il pulsante apre Editor solo da Risultati');
+        assert(await editor.evaluate(el => el === document.activeElement), 'Il pulsante porta il focus al testo della query');
       }
     }
-    checks.push('Errore mobile/desktop: ritorno Risultati→Editor con token sottolineato; Editor ed Entrambi mantengono la vista');
+    checks.push('Errore mobile/desktop: modalità conservata; il pulsante apre Editor solo da Risultati e mette a fuoco il codice');
 
     await page.locator('#query-show-results').click();
     await page.locator('#query-run-btn').click();

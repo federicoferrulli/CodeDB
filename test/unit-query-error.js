@@ -20,6 +20,13 @@ if (process.argv.includes('--mutant=virtual-join')) require('node:module').regis
   assert(String(result.source).includes(from));
   return { ...result, source: String(result.source).replace(from, '/* Mutante: propaga gli offset della query interna. */') };
 } });
+if (process.argv.includes('--mutant=apici')) require('node:module').registerHooks({ load(url, context, next) {
+  const result = next(url, context);
+  if (!url.endsWith('/query-error.js')) return result;
+  const from = 'if (parserToken && t.chiuso';
+  assert(String(result.source).includes(from));
+  return { ...result, source: String(result.source).replace(from, 'if (false && t.chiuso') };
+} });
 
 const { intervalloErroreQuery } = require('../db/queryError');
 const PostgreSqlStrategy = require('../db/PostgreSqlStrategy');
@@ -82,6 +89,11 @@ module.exports = (async () => {
   assert.deepEqual(intervalloErroreQuery(error('relation "prova" does not exist'), 'SELECT * FROM Prova', 'postgresql'), { start: 14, end: 19 });
   assert.equal(intervalloErroreQuery(error('relation "prova" does not exist'), 'SELECT * FROM "Prova"', 'postgresql'), null, 'Un nome quotato conserva le maiuscole');
   assert.deepEqual(intervalloErroreQuery(error("Errore. (dettaglio tecnico: Table 'prova.sndasjkdn' doesn't exist)"), nomeAssente, 'mysql'), interval(nomeAssente, 'sndasjkdn'));
+  assert.equal(intervalloErroreQuery(error('Atteso un identificatore, trovato "ripetuto".'), "SELECT 'ripetuto' FROM 'ripetuto'", 'mongodb'), null,
+    'Un valore ripetuto resta ambiguo, anche se è fra apici');
+  const unknownOperator = 'db.utenti.find({ $sconosciuto: 1, nota: "$sconosciuto" })';
+  assert.deepEqual(intervalloErroreQuery(error('unknown top level operator: $sconosciuto'), unknownOperator, 'mongodb'), interval(unknownOperator, '$sconosciuto'),
+    'Gli operatori MongoDB non devono essere cercati nei valori delle stringhe');
 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-query-error-'));
   const server = require('../server/createServer').createServer({ config: { desktop: null, env: {
@@ -140,6 +152,14 @@ module.exports = (async () => {
       ['\n  /* commento */ { eta: { $gte: } }', '}'],
       ['\n  // commento\n[{ $match: { nome: "non chiusa } }]', '"non chiusa } }]'],
       ['SELECT * FROM utenti ORDER BY eta FRM', 'FRM'],
+      ["SELECT * FROM 'sadkmaskmd'", "'sadkmaskmd'"],
+      ['SELECT * FROM "sadkmaskmd"', '"sadkmaskmd"'],
+      ["SELECT * FROM ''", "''"],
+      ["SELECT * FROM 'nome''errato'", "'nome''errato'"],
+      ['SELECT * FROM "nome""errato"', '"nome""errato"'],
+      ["UPDATE 'sadkmaskmd' SET id = 1", "'sadkmaskmd'"],
+      ['INSERT INTO "sadkmaskmd" (id) VALUES (1)', '"sadkmaskmd"'],
+      ["DELETE FROM 'sadkmaskmd'", "'sadkmaskmd'"],
     ]) {
       const result = await execute('mongo', code);
       assert.equal(result.ok, false);
@@ -156,6 +176,25 @@ module.exports = (async () => {
     assert.deepEqual(failure.queryError, interval(code, 'inesistente'), 'Lo script espone offset nel codice completo, compresi spazi iniziali');
     const progress = ctx.socket.inviati.find(event => event.evento === 'script:progress' && event.args[0].result?.ok === false);
     assert.deepEqual(progress.args[0].result.queryError, failure.queryError);
+    for (const code of ['SELECT * FROM inesistente;\nSELECT 1;', 'SELECT 1;\nSELECT * FROM inesistente;']) {
+      const runId = `schede-miste-${code.startsWith('SELECT 1;')}`;
+      const ack = await ctx.socket.chiama('script:execute', { tabId: 'pg', code, db: 'prova', runId });
+      assert.equal(ack.ok, true, ack.error);
+      const run = sessions.get('pg').scripts.get(runId);
+      await run.completion;
+      const schede = run.deposito.elenco().schede;
+      assert.equal(schede.length, 2, 'Ogni SELECT deve avere una scheda, anche quando fallisce');
+      assert.deepEqual(schede.map(s => s.index), [0, 1], 'Le schede mantengono l’ordine delle istruzioni');
+      const errore = schede.find(s => s.error);
+      assert(errore, 'La scheda fallita deve dichiarare il proprio errore');
+      const risposta = await ctx.socket.chiama('script:result', { tabId: 'pg', runId, pos: errore.pos });
+      assert.equal(risposta.ok, true, 'Leggere una scheda fallita è una richiesta riuscita');
+      assert.equal(risposta.error, errore.error);
+      assert.deepEqual(risposta.queryError, interval(code, 'inesistente'));
+      assert.deepEqual(risposta.docs, []);
+      assert.equal(run.holder.last.index, 1, 'La selezione iniziale segue l’ultima query, anche fallita');
+      assert.equal(!!run.holder.last.error, code.startsWith('SELECT 1;'));
+    }
     console.log('OK: posizioni query PostgreSQL/MySQL/MQL, Unicode, offset script e ack socket; errori interni e ambigui esclusi.');
   } finally {
     await server.stop();

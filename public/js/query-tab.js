@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { feedbackQuery } from './feedback.js';
-import { renderDataEmpty, showMobileError, clearMobileError } from '../arc/ui.js';
+import { renderDataEmpty } from '../arc/ui.js';
 import { configuraColonne } from './table-resize.js';
 import { activeTab } from './tabs.js';
 import { initNativeTargets, renderNativeTargets } from './query-native.js';
@@ -85,19 +85,15 @@ export function applicaErroreQuery(mark) {
 }
 
 export function mostraErroreQuery(mark) {
-  if (mark && mark.code === $('#query-editor-input')?.value && $('.query-main-panel')?.dataset.surface === 'results') {
-    setQuerySurface('editor');
-  }
   applicaErroreQuery(mark);
   if (!currentErrorMark) return false;
-  const documento = queryDocument();
-  return showMobileError({ source: 'query', title: 'La query non è riuscita', message: mark.message,
-    actionLabel: 'Modifica query', onAction: () => {
-      if (queryDocument() !== documento) return;
-      setQuerySurface('editor');
-      $('#query-editor-input')?.focus();
-      applicaErroreQuery(mark);
-    } });
+  renderQueryError(mark.message);
+  return true;
+}
+
+function vaiAllEditorQuery() {
+  if ($('.query-main-panel')?.dataset.surface === 'results') setQuerySurface('editor');
+  $('#query-editor-input')?.focus();
 }
 
 export function snapshotQueryView() {
@@ -120,7 +116,8 @@ export function snapshotQueryView() {
 
 export function restoreQueryView(q) {
   if (!q) return;
-  clearMobileError('query');
+  renderQueryError(null);
+  applicaErroreQuery(q.errorMark);
   setQuerySurface(q.surface || 'both', false);
   activeSqlFile = q.file || null;
   renderSqlFile();
@@ -147,7 +144,6 @@ export function restoreQueryView(q) {
   if ($('#query-schema-search')) $('#query-schema-search').value = q.schemaSearch || '';
   filterQuerySchemaBrowser(q.schemaSearch || '');
   renderQueryTarget();
-  applicaErroreQuery(q.errorMark);
 }
 
 // Il file e la sua sequenza appartengono al documento anche fuori fuoco.
@@ -181,7 +177,7 @@ export function updateEditorHighlight() {
   aggiornaNumeriRiga();
   if (currentErrorMark && currentErrorMark.code !== code) {
     currentErrorMark = null;
-    clearMobileError('query');
+    renderQueryError(null);
   }
   aggiornaSegnalazioneErrore();
 }
@@ -793,7 +789,7 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
   if (status === 'running') {
     currentErrorMark = null;
     segnalaErroreQuery(null);
-    clearMobileError('query');
+    renderQueryError(null);
     for (const id of ['query-table-view', 'query-json-view', 'chart-empty']) renderDataEmpty($('#' + id), null);
   }
   const statusBadge = $('#query-status-badge');
@@ -804,6 +800,7 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
 
   if (statusBadge) {
     statusBadge.className = `badge badge-${status}`;
+    statusBadge.classList.toggle('hidden', status === 'error');
     if (status === 'idle') statusBadge.textContent = '● In attesa';
     else if (status === 'running') {
       statusBadge.textContent = 'Esecuzione...';
@@ -834,7 +831,7 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
 
   if (count !== null && countMetric && countVal) {
     countVal.textContent = count;
-    countMetric.classList.remove('hidden');
+    countMetric.classList.toggle('hidden', status === 'error' && !count);
   }
 
   renderQueryError(errorMsg);
@@ -848,34 +845,34 @@ function renderQueryError(message) {
   const mark = queryDocument()?.errorMark;
   if (mark && mark.code !== $('#query-editor-input')?.value) message = null;
   box.classList.toggle('hidden', !message);
-  if (!message) { clearMobileError('query'); return; }
-  box.dataset.errorInteractive = 'true';
-  if (box.textContent.includes(message) && box.querySelector('.feedback-local')) return;
-  showMobileError({ source: 'query', title: 'La query non è riuscita', message,
-    actionLabel: 'Modifica query', onAction: () => { setQuerySurface('editor'); $('#query-editor-input')?.focus(); } });
+  $('#query-results-body')?.setAttribute('data-query-error', message ? currentResults.length ? 'partial' : 'empty' : '');
+  renderDataEmpty(box, message ? {
+    kind: 'error', title: 'La query non è riuscita', description: message,
+    actionLabel: 'Vai all’editor query', onAction: vaiAllEditorQuery,
+    copyText: message,
+  } : null);
 }
 
 // Renderizza i risultati nella vista attiva
 function queryEmptyOptions() {
   const status = currentMetrics[0];
-  if (status === 'running') return null;
+  if (status === 'running' || status === 'error' || !$('#query-error-box')?.classList.contains('hidden')) return null;
   const idle = status === 'idle';
-  const error = status === 'error';
   return {
-    title: idle ? 'I risultati iniziano qui' : error ? 'La query non è riuscita' : status === 'cancelled' ? 'Query annullata' : 'Nessun risultato',
+    title: idle ? 'I risultati iniziano qui' : status === 'cancelled' ? 'Query annullata' : 'Nessun risultato',
     description: idle ? 'Scrivi una query nell’editor. Le righe restituite appariranno in questo spazio.'
-      : error ? 'Controlla il messaggio di errore e correggi la query nell’editor.'
-        : status === 'cancelled' ? 'L’esecuzione è stata interrotta. Puoi modificare la query e riprovare.'
+      : status === 'cancelled' ? 'L’esecuzione è stata interrotta. Puoi modificare la query e riprovare.'
           : 'La query non ha restituito righe. Prova a modificare le condizioni di ricerca.',
-    kind: idle ? 'query' : error ? 'error' : 'search',
+    kind: idle ? 'query' : 'search',
     actionLabel: idle ? 'Vai all’editor' : 'Modifica query',
-    onAction: () => { setQuerySurface('editor'); $('#query-editor-input')?.focus(); },
+    onAction: vaiAllEditorQuery,
   };
 }
 
 export function renderResults(data, colonneDichiarate) {
   currentResults = Array.isArray(data) ? data : (data ? [data] : []);
   currentColumns = Array.isArray(colonneDichiarate) ? colonneDichiarate : [];
+  renderQueryError(currentMetrics[3]);
 
   // La scheda 🗺 Mappa esiste solo se in questi risultati ci sono geometrie. Se
   // la si stava guardando e i nuovi risultati non ne hanno, si torna alla
@@ -938,7 +935,7 @@ export function renderResults(data, colonneDichiarate) {
 export function resetQueryView() {
   currentErrorMark = null;
   segnalaErroreQuery(null);
-  clearMobileError('query');
+  renderQueryError(null);
   currentMetrics = ['idle'];
   currentResults = [];
   currentColumns = [];
@@ -2016,7 +2013,7 @@ export function runQuery(opzioni = {}) {
   segnalaRigaErrore(0);
   currentErrorMark = null;
   segnalaErroreQuery(null);
-  clearMobileError('query');
+  renderQueryError(null);
   queryDocument().errorMark = null;
 
   const engine = $('#query-target-engine')?.value || 'auto';

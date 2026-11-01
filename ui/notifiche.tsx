@@ -1,10 +1,11 @@
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, CircleAlert, Copy, TriangleAlert, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ChevronDown, CircleAlert, TriangleAlert, X } from 'lucide-react';
 import { Button } from './components/arc/button/button';
 import { Dialog, DialogContent } from './components/arc/dialog/dialog';
 import { ConnectionLostArt } from './data-empty';
+import { PulsanteCopiaErrore } from './copia-errore';
 
 type Feedback = {
   message: string;
@@ -22,40 +23,11 @@ type Feedback = {
 };
 type Entry = { host: HTMLElement; root: Root; close: (dismissed?: boolean) => void };
 
-async function copiaMessaggio(text: string, container: HTMLElement) {
-  const owner = container.ownerDocument;
-  try {
-    if (owner.defaultView?.navigator.clipboard?.writeText) {
-      await owner.defaultView.navigator.clipboard.writeText(text);
-      return;
-    }
-  } catch { /* Alcune WebView non concedono l'API: prova la copia dal documento attivo. */ }
-  const focused = owner.activeElement as HTMLElement | null;
-  const selection = owner.getSelection();
-  const ranges = selection ? Array.from({ length: selection.rangeCount }, (_, i) => selection.getRangeAt(i).cloneRange()) : [];
-  const field = owner.createElement('textarea');
-  field.value = text; field.readOnly = true; field.tabIndex = -1;
-  field.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0';
-  container.append(field);
-  try {
-    field.focus({ preventScroll: true }); field.select(); field.setSelectionRange(0, text.length);
-    if (!owner.execCommand('copy')) throw new Error('Copia non disponibile');
-  } finally {
-    field.remove(); focused?.focus({ preventScroll: true });
-    if (selection) { selection.removeAllRanges(); for (const range of ranges) selection.addRange(range); }
-  }
-}
-
 function Messaggio({ feedback: f, close }: { feedback: Feedback; close: () => void }) {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   const [paused, setPaused] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [copyBusy, setCopyBusy] = useState(false);
-  const [copyStatus, setCopyStatus] = useState('');
-  const [copied, setCopied] = useState(false);
-  const copyTimer = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(copyTimer.current), []);
   const warning = f.tipo === 'avviso' || f.tono === 'avviso';
   useEffect(() => {
     // Gli avvisi locali restano fino alla correzione; quelli passeggeri si possono leggere in pausa.
@@ -89,21 +61,9 @@ function Messaggio({ feedback: f, close }: { feedback: Feedback; close: () => vo
         catch (error) { setActionError(error instanceof Error ? error.message : String(error)); }
         finally { setBusy(false); }
       }}>{busy ? 'Attendere…' : f.actionLabel || 'Riprova'}</Button>}
-        {!warning && <Button type="button" variant="secondary" className={f.onAction ? 'feedback-copy-icon' : undefined} aria-label="Copia errore" title="Copia errore" disabled={copyBusy} onClick={async event => {
-          const container = event.currentTarget.closest<HTMLElement>('.feedback-message')!;
-          window.clearTimeout(copyTimer.current);
-          setCopied(false); setCopyBusy(true); setCopyStatus('');
-          try {
-            await copiaMessaggio([f.titolo, f.message, f.hint].filter(Boolean).join('\n\n'), container);
-            setCopyStatus('Messaggio copiato.');
-            setCopied(true);
-            copyTimer.current = window.setTimeout(() => setCopied(false), 1000);
-          } catch { setCopyStatus('Copia non riuscita. Seleziona il messaggio e copialo manualmente.'); }
-          finally { setCopyBusy(false); }
-        }}>{copied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}{!f.onAction && (copyBusy ? 'Copia…' : 'Copia errore')}</Button>}
+        {!warning && <PulsanteCopiaErrore text={[f.titolo, f.message, f.hint].filter(Boolean).join('\n\n')} showLabel={!f.onAction} />}
         {f.tipo === 'collegamento' && <Button type="button" variant="ghost" className="connection-lost-continue" onClick={close}>Continua a lavorare</Button>}
       </div>}
-      {!warning && <span className={copyStatus === 'Messaggio copiato.' ? 'visually-hidden' : 'feedback-hint'} role="status">{copyStatus}</span>}
     </div>
     <button type="button" className="feedback-close" aria-label="Chiudi messaggio" onClick={close}><X size={18} aria-hidden="true" /></button>
   </section>;

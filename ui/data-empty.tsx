@@ -5,6 +5,7 @@ import { ArrowRight, Search, Terminal, Table2, CircleAlert, Database } from 'luc
 import connectionLostArt from '../public/images/collegamento-interrotto.webp';
 import { EmptyState } from './components/arc/empty-state/empty-state';
 import { Button } from './components/arc/button/button';
+import { PulsanteCopiaErrore } from './copia-errore';
 
 type EmptyKind = 'data' | 'search' | 'query' | 'error' | 'connection' | 'schema';
 type EmptyOptions = {
@@ -15,6 +16,7 @@ type EmptyOptions = {
   actionLabel?: string;
   onAction?: () => void;
   secondaryAction?: { label: string; onAction: () => void };
+  copyText?: string;
 };
 const mounts = new Map<HTMLElement, { host: HTMLElement; root: Root }>();
 
@@ -66,6 +68,7 @@ export function renderDataEmpty(container: HTMLElement | null, options: EmptyOpt
     icon={<DataEmptyArt kind={options.kind} />}
     action={options.onAction && options.actionLabel ? <div className="data-empty-actions"><Button type="button" variant={options.kind === 'connection' ? 'primary' : 'secondary'} size={options.kind === 'connection' ? 'md' : 'sm'} onClick={options.onAction}>
       {options.actionLabel}<ArrowRight size={14} aria-hidden="true" /></Button>
+      {options.copyText !== undefined && <PulsanteCopiaErrore key={options.copyText} text={options.copyText} />}
       {options.secondaryAction && <Button type="button" variant="ghost" size="sm" onClick={options.secondaryAction.onAction}>{options.secondaryAction.label}</Button>}</div> : undefined} />));
 }
 
