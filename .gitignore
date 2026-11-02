@@ -78,3 +78,9 @@ video
 /test-reports/**/win-unpacked/
 # I dump della tastiera Android possono contenere chiavi API di applicazioni terze.
 /test-reports/**/android-ime*.txt
+.mcp.json
+.agentsroom
+.agentsroom/handoff-transcript-*.txt
+.agentsroom/handoff-summary-*.md
+.agentsroom/fork-context-*.txt
+.agentsroom/transfer-context-*.txt
