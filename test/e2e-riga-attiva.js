@@ -69,6 +69,11 @@ const { startTestServer } = require('./e2e-harness');
     assert.equal((await aspetto()).attiva, '1', 'La riga segue la tastiera');
     await page.keyboard.press('Shift+ArrowDown');
     assert.equal((await aspetto()).attiva, '2', 'La selezione multipla segue il punto attivo');
+    const righeSelezionate = await page.locator('#grid tbody tr').evaluateAll(rows =>
+      rows.map(row => getComputedStyle(row.cells[3]).backgroundColor));
+    assert.notEqual(righeSelezionate[1], 'rgba(0, 0, 0, 0)', 'Anche la riga selezionata non attiva è evidenziata');
+    assert.notEqual(righeSelezionate[2], 'rgba(0, 0, 0, 0)', 'La riga attiva della selezione è evidenziata');
+    assert.equal(righeSelezionate[0], 'rgba(0, 0, 0, 0)', 'Le righe fuori dalla selezione restano invariate');
     await page.evaluate(() => { const g = window.griglie[0]; g.disegna(); g.ist.applica(); });
     assert.equal((await aspetto()).segno, prima.segno, 'Il render virtuale conserva il riferimento');
     assert.equal((await aspetto()).altezza, prima.altezza, 'Nessuno spostamento del layout');

@@ -1975,8 +1975,16 @@ tbody.selezione-celle tr:has(> td.cell-focus) > td:not(.cell-selected):not(.edit
 tbody.selezione-celle tr:has(> td.cell-focus) > td:first-child:not(.cell-focus):not(.editing) {
   box-shadow: inset 3px 0 var(--fg-dim);
 }
+/* Ogni riga che contiene celle selezionate partecipa alla selezione multipla. */
+tbody.selezione-celle tr:has(> td.cell-selected) > td:not(.cell-selected):not(.editing) {
+  background: var(--accent-veil);
+}
+tbody.selezione-celle tr:has(> td.cell-selected) > td:first-child:not(.cell-focus):not(.editing) {
+  box-shadow: inset 3px 0 var(--fg-dim);
+}
 @media (forced-colors: active) {
-  tbody.selezione-celle tr:has(> td.cell-focus) {
+  tbody.selezione-celle tr:has(> td.cell-focus),
+  tbody.selezione-celle tr:has(> td.cell-selected) {
     outline: 1px solid CanvasText;
     outline-offset: -1px;
   }
