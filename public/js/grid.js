@@ -1446,10 +1446,30 @@ export function initGrid() {
   });
   $('#filter-input')?.addEventListener('input', () => {
     const gruppo = $('#filter-mode-switch');
-    if (!gruppo) return;
-    const chiave = modoFiltro() === 'rapido' ? 'testoRapido' : 'testoCondizione';
-    gruppo.dataset[chiave] = $('#filter-input').value;
+    if (gruppo) {
+      const chiave = modoFiltro() === 'rapido' ? 'testoRapido' : 'testoCondizione';
+      gruppo.dataset[chiave] = $('#filter-input').value;
+    }
+    aggiornaPuliziaInput($('#filter-input'));
   });
+  aggiornaPuliziaInput($('#filter-input'));
+  $('#sort-input')?.addEventListener('input', (e) => aggiornaPuliziaInput(e.currentTarget));
+  aggiornaPuliziaInput($('#sort-input'));
+  document.querySelectorAll('[data-clear-input]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const input = document.getElementById(button.dataset.clearInput);
+      if (!input) return;
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.focus();
+      state.skip = 0;
+      runQuery();
+    });
+  });
+  function aggiornaPuliziaInput(input) {
+    const button = document.querySelector(`[data-clear-input="${input.id}"]`);
+    button?.classList.toggle('hidden', !input.value);
+  }
   applicaModoFiltro(modoFiltro());
 
   $('#run-btn').addEventListener('click', () => { state.skip = 0; clearCellSelection(); runQuery(); });

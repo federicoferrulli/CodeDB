@@ -1829,6 +1829,26 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   border-radius: 6px;
 }
 
+.input-group:has(.input-clear:not(.hidden)) > input,
+.input-group:has(.input-clear:not(.hidden)) > .ac-wrap > input { padding-right: 34px; }
+.input-clear {
+  flex: 0 0 30px;
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  margin-left: -34px;
+  align-self: center;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.input-clear:hover { background: var(--hover); color: var(--fg); }
+.input-clear svg { width: 14px; height: 14px; }
+
 #filter-input { min-width: 140px; }
 #sort-input { flex: 1; min-width: 90px; }
 
