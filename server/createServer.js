@@ -18,6 +18,7 @@ function createServer(options = {}) {
   const identita = require('./identita').createModule({ config, trasporto, audit, errori, dependencies });
   const operazioni = require('./operazioni').createModule({ config, identita });
   const query = require('./query').createModule({ config, connessioni, dependencies });
+  const { mcpControl, mcpSettings } = require('./mcp').createModule({ trasporto, vault, connessioni, config, identita, budget });
   const registratori = [
     require('./eventi-connessioni').createModule({ lock, budget, identita, connessioni, vault }),
     require('./eventi-app').createModule({ informazioni, identita }),
@@ -25,6 +26,7 @@ function createServer(options = {}) {
     require('./eventi-identita').createModule({ config, identita, vault }),
     require('./eventi-vault').createModule({ vault, identita, config }),
     require('./eventi-monitoraggio').createModule({ audit, errori, connessioni, lock, identita }),
+    require('./eventi-mcp').createModule({ mcpControl, mcpSettings, config, identita, vault, trasporto }),
     require('./eventi-dati').createModule({ query, lock, identita, operazioni, audit }),
     require('./eventi-script').createModule({ lock, query, audit, dependencies, errori }),
     require('./eventi-backup').createModule({ lock, identita, operazioni, audit, errori, config }),
@@ -32,7 +34,6 @@ function createServer(options = {}) {
   const socket = require('./socket').createModule({
     identita, trasporto, budget, config, connessioni, lock, errori, query, audit, registratori,
   });
-  const { mcpControl } = require('./mcp').createModule({ trasporto, vault, connessioni, config, identita, budget });
   const { app, server, io } = trasporto;
   // Data-plane HTTP degli artefatti: i file viaggiano qui con ticket brevi, i
   // comandi restano su Socket.IO. Il gate Origin è lo stesso dell'handshake.

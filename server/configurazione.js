@@ -12,12 +12,19 @@ function configurazione(options = {}) {
     CODEDB_BACKUPS_DIR: path.join(rootDir, 'backups'),
     CODEDB_UI_AUDIT_FILE: path.join(rootDir, 'ui-audit.log'),
     CODEDB_MCP_AUDIT_FILE: path.join(rootDir, 'mcp-audit.log'),
+    CODEDB_MCP_SETTINGS_FILE: path.join(rootDir, 'mcp-settings.json'),
     CODEDB_SCRIPT_RESULTS_DIR: path.join(os.tmpdir(), 'codedb-risultati-script'),
   };
   for (const [key, fallback] of Object.entries(defaults)) env[key] = path.resolve(env[key] || fallback);
   env.CODEDB_CONNECTIONS_DIR = path.resolve(env.CODEDB_CONNECTIONS_DIR || path.join(path.dirname(env.CODEDB_CONNECTIONS_FILE), 'conns'));
   const port = Number(env.PORT ?? 3030);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('PORT deve essere un intero tra 0 e 65535.');
+  if (env.CODEDB_PUBLIC_URL) {
+    let url;
+    try { url = new URL(env.CODEDB_PUBLIC_URL); } catch { throw new Error('CODEDB_PUBLIC_URL deve essere un URL HTTP(S) valido.'); }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('CODEDB_PUBLIC_URL deve essere un URL HTTP(S) senza credenziali, query o frammenti.');
+    env.CODEDB_PUBLIC_URL = url.href.replace(/\/$/, '');
+  }
   env.PORT = port;
   Object.freeze(env);
   return Object.freeze({

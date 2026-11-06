@@ -29,6 +29,8 @@ const { isInitializeRequest } = require('@modelcontextprotocol/sdk/types.js');
 const DbFactory = require('../db/DbFactory');
 const { makeAuditor } = require('../db/AuditLog');
 const { ConfirmQuota } = require('./ConfirmQuota');
+const { DEFAULTS: MCP_DEFAULTS } = require('./Settings');
+const { createActivity, sanitize: sanitizeActivity, categoryOf } = require('./Activity');
 const { runBackup } = require('../backup/lib/engine');
 const { resolveChain } = require('../backup/lib/restore');
 const { parseStorage, uploadBackupDir } = require('../backup/lib/storage');
@@ -109,7 +111,7 @@ function refreshWritesAllowed(session, dbSess, deps) {
   const all = deps.loadConnections(sessionPrincipal(session).ownerId) || {};
   const saved = all[dbSess.name];
   const flag = saved && saved.readOnly;
-  const allowed = !!saved && String(flag == null ? '' : flag).trim().toLowerCase() === 'false';
+  const allowed = !deps.mcpSettings?.get().readOnly && !!saved && String(flag == null ? '' : flag).trim().toLowerCase() === 'false';
   dbSess.writesAllowed = allowed;
   return allowed;
 }
@@ -162,8 +164,6 @@ function resolveBackupSelection(root, rawGroup, rawBackupId) {
   }
   return { group, backupId, backupDir };
 }
-const MAX_MCP_SESSIONS = 32;                 // client MCP contemporanei
-const MCP_SESSION_TTL_MS = 30 * 60 * 1000;   // sessioni inattive chiuse dopo 30'
 const SWEEP_INTERVAL_MS = 60 * 1000;
 
 // Stesso trattamento del percorso socket (vedi server.js): l'errore tecnico del
@@ -592,7 +592,10 @@ function buildMcpServer(session, deps) {
   );
   // In produzione usa il log append-only condiviso. L'iniezione mantiene il
   // seam pubblico verificabile senza scrivere nel log reale durante i test.
-  const audit = deps.audit || makeAuditor(env.CODEDB_MCP_AUDIT_FILE || path.join(__dirname, '..', 'mcp-audit.log')).audit;
+  const audit = deps.activity ? entry => {
+    deps.activity.legacy(entry);
+    deps.audit?.(sanitizeActivity(entry));
+  } : deps.audit || makeAuditor(env.CODEDB_MCP_AUDIT_FILE || path.join(__dirname, '..', 'mcp-audit.log')).audit;
   const server = new McpServer(
     { name: 'CodeDB-mcp', version: require('../package.json').version },
     {
@@ -612,8 +615,27 @@ function buildMcpServer(session, deps) {
   const tool = (name, config, handler) => {
     server.registerTool(name, config, async (args = {}) => {
       try {
-        return await handler(args);
+        const ctx = deps.activity?.context();
+        if (ctx) { ctx.invoked = true; ctx.entry.summary = config.title || name; }
+        deps.activity?.describe(session, args);
+        const settings = { ...MCP_DEFAULTS, ...deps.mcpSettings?.get() };
+        const pending = args.confirm_token && session.pendingWrites.get(args.confirm_token);
+        if (ctx) ctx.entry.category = categoryOf(name, pending?.summary || args);
+        const operations = pending?.summary?.operations || args.operations || [pending?.summary || args];
+        const ddl = name === 'execute_ddl' || name === 'execute_write' && operations.some(op => /^drop_/.test(op.operation || ''));
+        const mutates = ['execute_write', 'execute_ddl', 'restore_backup', 'import_database_artifact'].includes(name)
+          || name === 'set_connection_read_only' && (pending ? !pending.readOnly : args.read_only === false);
+        if (settings.readOnly && mutates) throw new Error('Il gateway MCP è in sola lettura: questa operazione non è consentita.');
+        if (ddl && !settings.allowDdl) throw new Error('Le operazioni DDL sono disabilitate nelle impostazioni MCP.');
+        if (['backup_database', 'list_backups', 'verify_backup', 'restore_backup'].includes(name) && !settings.allowBackup) throw new Error('Backup e ripristino sono disabilitati nelle impostazioni MCP.');
+        if (['restore_backup', 'import_database_artifact'].includes(name) && !settings.allowImport) throw new Error('Importazione e ripristino sono disabilitati nelle impostazioni MCP.');
+        const result = await handler(args);
+        let payload;
+        try { payload = JSON.parse(result?.content?.[0]?.text); } catch { payload = result; }
+        deps.activity?.outcome(payload);
+        return result;
       } catch (err) {
+        deps.activity?.outcome(err.auditResult, { message: errMsg(err) });
         return errorResult(err);
       }
     });
@@ -686,7 +708,7 @@ function buildMcpServer(session, deps) {
     // riletto dal file del tenant (refreshWritesAllowed), così una revoca a
     // caldo non resta congelata nella sessione MCP.
     const initialReadOnly = conn.effective.readOnly;
-    const writesAllowed = String(initialReadOnly == null ? '' : initialReadOnly).trim().toLowerCase() === 'false';
+    const writesAllowed = !deps.mcpSettings?.get().readOnly && String(initialReadOnly == null ? '' : initialReadOnly).trim().toLowerCase() === 'false';
     session.dbSessions.set(connectionId, {
       strategy: conn.strategy,
       tunnel: conn.tunnel,
@@ -959,11 +981,9 @@ function buildMcpServer(session, deps) {
 
   // --- Fase 3: scritture con conferma esplicita (human-in-the-loop) -----------
   // Primo passo: execute_write senza confirm_token valida l'operazione e
-  // restituisce anteprima + token monouso (5 minuti). Secondo passo: la stessa
+  // restituisce anteprima + token monouso con scadenza configurabile. Secondo passo: la stessa
   // chiamata con confirm_token esegue l'operazione registrata. Il token è la
   // conferma: va richiesto all'utente umano, mai autogenerato dall'AI.
-
-  const CONFIRM_TTL_MS = 5 * 60 * 1000;
 
   const sweepPendingWrites = () => {
     const now = Date.now();
@@ -972,6 +992,7 @@ function buildMcpServer(session, deps) {
         session.pendingWrites.delete(token);
         if (p.expiryTimer) clearTimeout(p.expiryTimer);
         deps.confirmQuota.release(p.reservation);
+        deps.activity?.expire(p);
       }
     }
   };
@@ -987,12 +1008,13 @@ function buildMcpServer(session, deps) {
     // Secondo passo: valida e consuma il token del primo passo.
     consume(token, kind, matches, mismatchNoun) {
       const pending = session.pendingWrites.get(token);
-      if (!pending || pending.kind !== kind || !matches(pending)) {
+      if (!pending || pending.expiresAt <= Date.now() || pending.kind !== kind || !matches(pending)) {
         throw new Error(`confirm_token sconosciuto, scaduto o di un'altra ${mismatchNoun}: ripeti la richiesta senza token.`);
       }
       session.pendingWrites.delete(token); // monouso
       if (pending.expiryTimer) clearTimeout(pending.expiryTimer);
       deps.confirmQuota.release(pending.reservation);
+      deps.activity?.consume(pending);
       return pending;
     },
     // Primo passo: registra l'operazione in sospeso e restituisce anteprima +
@@ -1004,20 +1026,23 @@ function buildMcpServer(session, deps) {
         { kind, data, preview, quotaPayload },
       );
       const confirmToken = crypto.randomUUID();
+      const ttl = (deps.mcpSettings?.get().confirmTimeoutSeconds || MCP_DEFAULTS.confirmTimeoutSeconds) * 1000;
       const pending = {
-        kind, ...data, reservation, expiresAt: Date.now() + CONFIRM_TTL_MS,
+        kind, ...data, reservation, expiresAt: Date.now() + ttl,
       };
+      deps.activity?.pending(pending);
       pending.expiryTimer = setTimeout(() => {
         if (session.pendingWrites.get(confirmToken) !== pending) return;
         session.pendingWrites.delete(confirmToken);
         deps.confirmQuota.release(reservation);
-      }, CONFIRM_TTL_MS);
+        deps.activity?.expire(pending);
+      }, ttl);
       pending.expiryTimer.unref?.();
       session.pendingWrites.set(confirmToken, pending);
       return jsonResult({
         requires_confirmation: true,
         confirm_token: confirmToken,
-        expires_in_seconds: CONFIRM_TTL_MS / 1000,
+        expires_in_seconds: ttl / 1000,
         preview,
         ...(extra || {}),
         istruzioni: `Mostra l'anteprima all'utente umano e chiedi conferma esplicita. Solo se l'utente approva, richiama ${toolName} con questo confirm_token. Se l'utente rifiuta, non richiamare il tool.`,
@@ -1283,7 +1308,7 @@ function buildMcpServer(session, deps) {
       'esplicito in connections.ini (default: sola lettura). ' +
       'Primo passo: chiama SENZA confirm_token per ottenere l\'anteprima dell\'operazione e un token di conferma. ' +
       'Mostra l\'anteprima all\'utente umano e chiedi la sua approvazione esplicita: solo dopo richiama con confirm_token. ' +
-      'NON confermare mai di tua iniziativa. Il token scade dopo 5 minuti ed è monouso. ' +
+      'NON confermare mai di tua iniziativa. Il token è monouso: expires_in_seconds indica la sua validità. ' +
       'MongoDB: "operation" (insert|update|delete) con "doc" (insert: documento o array non vuoto di documenti) ' +
       'o "filter"+"set" (update, con "upsert=true" opzionale) o "filter" (delete), in Extended JSON; ' +
       'filtri vuoti rifiutati. MySQL/PostgreSQL: "sql" con INSERT/UPDATE/DELETE (MySQL anche REPLACE); UPDATE/DELETE richiedono WHERE. ' +
@@ -2023,22 +2048,40 @@ function buildMcpServer(session, deps) {
  */
 function attachMcp(app, deps) {
   const env = deps.env || process.env;
-  const auditStore = deps.auditStore || makeAuditor(env.CODEDB_MCP_AUDIT_FILE || path.join(__dirname, '..', 'mcp-audit.log'));
+  // L'auditor iniettato è il seam dei test e non deve mai aprire il log utente.
+  const memory = [];
+  const auditStore = deps.auditStore || (deps.audit ? {
+    audit: entry => { memory.push(entry); if (memory.length > 50000) memory.shift(); },
+    flush: async () => {}, statoSalute: () => ({ ok: true, pending: 0 }),
+    readRecent: ({ limit }) => ({ entries: memory.slice(-limit).reverse(), total: memory.length }),
+  } : makeAuditor(env.CODEDB_MCP_AUDIT_FILE || path.join(__dirname, '..', 'mcp-audit.log')));
+  const activity = createActivity(auditStore);
+  let settings = { ...MCP_DEFAULTS, ...deps.mcpSettings?.get() };
+  const settingsProvider = { get: () => settings };
   const pendingRequests = new Set();
   let closing = false;
   let shutdown;
+  let drain;
+  let runtimeState = settings.enabled ? 'active' : 'disabled';
   function beginShutdown() {
     closing = true;
+    runtimeState = 'draining';
     // GET resta aperto finché vive il canale SSE. Va chiuso prima di attendere
     // le richieste; attendere prima il GET impedirebbe ogni arresto con client attivi.
     for (const session of mcpSessions.values()) session.transport.closeStandaloneSSEStream?.();
   }
   function tracked(handler) {
     return (req, res) => {
-      if (closing) return res.status(503).json(rpcError(-32000, 'Server in arresto.'));
-      const work = Promise.resolve().then(() => handler(req, res)).catch(err => {
-        if (!res.headersSent) res.status(500).json(rpcError(-32603, errMsg(err)));
+      if (closing || runtimeState !== 'active') return activity.request(req, res, () => {
+        res.status(503).json(rpcError(-32000, closing ? 'Server in arresto.' : 'Gateway MCP disattivato o in fase di arresto.'));
       });
+      const work = Promise.resolve().then(() => activity.request(req, res, async () => {
+        try { await handler(req, res); }
+        catch (err) {
+          activity.outcome(undefined, err);
+          if (!res.headersSent) res.status(500).json(rpcError(-32603, errMsg(err)));
+        }
+      }));
       pendingRequests.add(work);
       work.then(() => pendingRequests.delete(work), () => pendingRequests.delete(work));
       return work;
@@ -2047,7 +2090,7 @@ function attachMcp(app, deps) {
   /** @type {Map<string, {id: string|null, transport: any, dbSessions: Map<string, any>, lastActivity: number, destroyed: boolean}>} */
   const mcpSessions = new Map();
   const confirmQuota = deps.confirmQuota || new ConfirmQuota();
-  const runtimeDeps = { ...deps, audit: deps.audit || auditStore.audit, confirmQuota };
+  const runtimeDeps = { ...deps, activity, mcpSettings: settingsProvider, confirmQuota };
 
   async function destroyMcpSession(session, { closeTransport = true } = {}) {
     if (session.destroyed) return;
@@ -2057,6 +2100,7 @@ function attachMcp(app, deps) {
       for (const pending of session.pendingWrites.values()) {
         if (pending.expiryTimer) clearTimeout(pending.expiryTimer);
         confirmQuota.release(pending.reservation);
+        activity.expire(pending);
       }
       session.pendingWrites.clear();
     }
@@ -2070,10 +2114,63 @@ function attachMcp(app, deps) {
     }
   }
 
+  async function closeSession(id) {
+    const session = mcpSessions.get(String(id));
+    if (!session) return { closed: true, id };
+    session.closing = true;
+    session.transport.closeStandaloneSSEStream?.();
+    if (!session.closePromise) session.closePromise = (async () => {
+      if (session.activeRequests) await new Promise(resolve => session.idleWaiters.push(resolve));
+      await destroyMcpSession(session);
+      return { closed: true, id };
+    })();
+    return session.closePromise;
+  }
+
+  async function serveSession(session, req, res) {
+    if (session.closing) return res.status(409).json(rpcError(-32000, 'La sessione MCP è in chiusura.'));
+    session.lastActivity = Date.now();
+    session.activeRequests += 1;
+    let args = req.body?.params?.arguments || {};
+    if (req.body?.method === 'resources/read') {
+      try { const uri = new URL(req.body.params.uri); args = { connectionId: uri.hostname, db: decodeURIComponent(uri.pathname.slice(1)) }; } catch { /* la validazione resta all'SDK */ }
+    }
+    activity.started(session, args);
+    try { await session.transport.handleRequest(req, res, req.body); }
+    finally {
+      if (activity.context()) activity.context().entry.sessionId = session.id;
+      session.activeRequests -= 1;
+      session.lastActivity = Date.now();
+      if (!session.activeRequests) for (const resolve of session.idleWaiters.splice(0)) resolve();
+    }
+  }
+
+  function startDrain() {
+    runtimeState = 'draining';
+    for (const session of mcpSessions.values()) session.transport.closeStandaloneSSEStream?.();
+    if (!drain) drain = (async () => {
+      while (pendingRequests.size) await Promise.allSettled([...pendingRequests]);
+      await Promise.all([...mcpSessions.keys()].map(closeSession));
+      await auditStore.flush();
+    })().finally(() => { drain = null; runtimeState = !closing && settings.enabled ? 'active' : 'disabled'; });
+    return drain;
+  }
+
+  function applySettings(value) {
+    settings = { ...MCP_DEFAULTS, ...value };
+    confirmQuota.updateLimits({ principalCount: settings.pendingPerPrincipal, globalCount: settings.pendingGlobal,
+      principalBytes: settings.pendingBytesPerPrincipalMiB * 1048576, globalBytes: settings.pendingBytesGlobalMiB * 1048576 });
+    auditStore.updateOptions?.({ maxBytes: settings.auditMaxMiB * 1048576, maxGenerations: settings.auditGenerations });
+    if (!settings.enabled && runtimeState === 'active') startDrain().catch(() => {});
+    else if (settings.enabled && runtimeState === 'disabled' && !closing) runtimeState = 'active';
+  }
+  applySettings(settings);
+  const unsubscribe = deps.mcpSettings?.subscribe(applySettings);
+
   const sweepTimer = setInterval(() => {
     const now = Date.now();
     for (const session of [...mcpSessions.values()]) {
-      if (now - session.lastActivity > MCP_SESSION_TTL_MS) destroyMcpSession(session);
+      if (!session.activeRequests && now - session.lastActivity > settings.idleTimeoutMinutes * 60000) closeSession(session.id).catch(() => {});
     }
   }, SWEEP_INTERVAL_MS);
   sweepTimer.unref();
@@ -2082,9 +2179,8 @@ function attachMcp(app, deps) {
     beginShutdown();
     return shutdown ||= (async () => {
       clearInterval(sweepTimer);
-      while (pendingRequests.size) await Promise.allSettled([...pendingRequests]);
-      for (const session of [...mcpSessions.values()]) await destroyMcpSession(session);
-      await auditStore.flush();
+      unsubscribe?.();
+      await startDrain();
     })();
   }
 
@@ -2136,6 +2232,7 @@ function attachMcp(app, deps) {
     const auth = await authenticate(req, res);
     if (!auth) return;
     const { principal, credentialFingerprint: requestFingerprint } = auth;
+    activity.describe({ principal }, req.body?.params?.arguments || {});
     try {
       const sid = req.headers['mcp-session-id'];
       const existing = sid ? mcpSessions.get(String(sid)) : undefined;
@@ -2147,16 +2244,15 @@ function attachMcp(app, deps) {
           return;
         }
         refreshSessionPrincipal(existing, principal);
-        existing.lastActivity = Date.now();
-        await existing.transport.handleRequest(req, res, req.body);
+        await serveSession(existing, req, res);
         return;
       }
       if (sid || !isInitializeRequest(req.body)) {
         res.status(400).json(rpcError(-32000, 'Sessione MCP assente o scaduta: reinizializza la connessione.'));
         return;
       }
-      if (mcpSessions.size >= MAX_MCP_SESSIONS) {
-        res.status(503).json(rpcError(-32000, `Raggiunto il limite di ${MAX_MCP_SESSIONS} sessioni MCP contemporanee.`));
+      if (mcpSessions.size >= settings.maxSessions) {
+        res.status(503).json(rpcError(-32000, `Raggiunto il limite di ${settings.maxSessions} sessioni MCP contemporanee.`));
         return;
       }
 
@@ -2169,6 +2265,8 @@ function attachMcp(app, deps) {
         credentialFingerprint: requestFingerprint,
         dbSessions: new Map(),
         pendingWrites: new Map(),
+        client: sanitizeActivity(req.body?.params?.clientInfo || null),
+        startedAt: new Date().toISOString(), activeRequests: 0, idleWaiters: [],
         lastActivity: Date.now(),
         destroyed: false,
       };
@@ -2181,10 +2279,11 @@ function attachMcp(app, deps) {
         },
       });
       session.transport = transport;
-      transport.onclose = () => { destroyMcpSession(session, { closeTransport: false }); };
+      transport.onclose = () => { closeSession(session.id).catch(() => {}); };
       await buildMcpServer(session, runtimeDeps).connect(transport);
-      await transport.handleRequest(req, res, req.body);
+      await serveSession(session, req, res);
     } catch (err) {
+      activity.outcome(undefined, err);
       if (!res.headersSent) res.status(500).json(rpcError(-32603, errMsg(err)));
     }
   }));
@@ -2209,6 +2308,13 @@ function attachMcp(app, deps) {
     }
     refreshSessionPrincipal(session, principal);
     session.lastActivity = Date.now();
+    activity.started(session, {});
+    if (req.method === 'DELETE') {
+      await closeSession(session.id);
+      res.status(200).end();
+      return;
+    }
+    if (session.closing) return res.status(409).json(rpcError(-32000, 'La sessione MCP è in chiusura.'));
     try {
       await session.transport.handleRequest(req, res);
     } catch (err) {
@@ -2221,6 +2327,14 @@ function attachMcp(app, deps) {
   return {
     beginShutdown, shutdownMcp, mcpSessions, auditHealth: auditStore.statoSalute,
     confirmQuota: () => confirmQuota.snapshot(),
+    status: () => ({ state: runtimeState, auditHealth: auditStore.statoSalute(), sessions: [...mcpSessions.values()].map(session => ({
+      id: session.id, ownerId: session.principal?.ownerId, userId: session.principal?.id,
+      user: session.principal?.email || session.principal?.displayName || null,
+      client: session.client, startedAt: session.startedAt, lastActivity: new Date(session.lastActivity).toISOString(),
+      activeRequests: session.activeRequests, closing: !!session.closing,
+      connections: [...session.dbSessions.values()].map(conn => ({ name: conn.name, dbType: conn.dbType })),
+    })) }),
+    listActivity: activity.list, getActivity: activity.get, recordAdmin: activity.admin, closeSession,
   };
 }
 

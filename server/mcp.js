@@ -3,6 +3,7 @@
 // CodeDB — mcp. Stato e dipendenze appartengono alla singola istanza.
 const { attachMcp } = require('../mcp/McpGateway');
 const { allowedConnections } = require('../auth/permissions');
+const { createSettings } = require('../mcp/Settings');
 
 function createModule({ trasporto, vault, connessioni, config, identita, budget }) {
   /* ---------------------------------------------------------------------------
@@ -11,8 +12,10 @@ function createModule({ trasporto, vault, connessioni, config, identita, budget 
    * delle sessioni di questo file; il budget globale è condiviso coi socket.
    * ------------------------------------------------------------------------- */
 
+  const mcpSettings = createSettings({ filePath: config.env.CODEDB_MCP_SETTINGS_FILE, env: config.env });
   const mcpControl = attachMcp(trasporto.app, {
     env: config.env,
+    mcpSettings,
     loadConnections: vault.loadConnections,
     connLabel: vault.connLabel,
     connDbType: vault.connDbType,
@@ -39,7 +42,7 @@ function createModule({ trasporto, vault, connessioni, config, identita, budget 
   });
 
   return {
-    mcpControl
+    mcpControl, mcpSettings,
   };
 }
 

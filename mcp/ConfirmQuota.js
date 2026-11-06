@@ -32,6 +32,15 @@ class ConfirmQuota {
     this.principals = new Map();
   }
 
+  // Le prenotazioni esistenti restano valide; i nuovi ingressi rispettano
+  // immediatamente il limite, anche quando è stato abbassato sotto l'uso attuale.
+  updateLimits(limits) {
+    for (const [key, value] of Object.entries(limits)) {
+      if (!(key in DEFAULTS) || !Number.isSafeInteger(value) || value < 1) throw new Error('Limite delle conferme MCP non valido.');
+    }
+    this.limits = { ...this.limits, ...limits };
+  }
+
   reserve(principalId, payload) {
     const id = String(principalId || 'anonimo');
     const bytes = Math.max(1, costoValore(payload));

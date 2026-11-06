@@ -11,8 +11,8 @@ module.exports = (async () => {
   const { registraEventi } = require('../server');
   const amministrativi = catalogoEventi().filter(e => e.famiglia === 'amministrativo');
   const policy = politiche();
-  await prova('tutti i 33 eventi amministrativi dichiarano audit o motivo', () => {
-    assert.strictEqual(amministrativi.length, 33);
+  await prova('tutti i 42 eventi amministrativi dichiarano audit o motivo', () => {
+    assert.strictEqual(amministrativi.length, 42);
     assert(amministrativi.some(({ evento }) => evento === 'ssh:key:validate'));
     assert.strictEqual(policy.EVENTI_AMMINISTRATIVI['ssh:key:validate'].tracciato, false, 'La validazione non deve registrare il materiale chiave');
     for (const { evento, handler } of amministrativi) {

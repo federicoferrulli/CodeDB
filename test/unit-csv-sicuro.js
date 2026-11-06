@@ -30,6 +30,9 @@ module.exports = (async () => {
   assert.strictEqual(cellaCsv('+cmd'), "'+cmd");
   assert.strictEqual(cellaCsv('-2'), "'-2");
   assert.strictEqual(cellaCsv('@formula'), "'@formula");
+  assert.strictEqual(cellaCsv('\t=1+1'), "'\t=1+1");
+  assert.strictEqual(cellaCsv('  @formula'), "'  @formula");
+  assert.strictEqual(cellaCsv('\t=1+1', { modalita: 'letterale' }), '\t=1+1');
   assert.strictEqual(cellaCsv('=1+1', { modalita: 'letterale' }), '=1+1');
   assert.strictEqual(cellaCsv('a,"b"'), '"a,""b"""');
   assert.strictEqual(rigaCsv(['=titolo', 'normale']), "'=titolo,normale",

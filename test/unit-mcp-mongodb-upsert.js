@@ -24,6 +24,7 @@ const strategy = {
   },
 };
 const deps = {
+  audit: () => {},
   loadConnections: () => ({ scrivibile: savedConnection }),
   connLabel: () => 'MongoDB finto',
   connDbType: () => 'mongodb',
