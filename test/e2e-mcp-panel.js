@@ -26,6 +26,13 @@ async function main() {
     await mcp.callTool({ name: 'connect_database', arguments: { name: 'connessione-di-test-inesistente' } });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
     const errors = [];
+    if (process.env.MCP_PANEL_SELECTION_MUTANT === '1') await page.route('**/js/mcp-panel.js', async route => {
+      const response = await route.fetch();
+      const source = await response.text();
+      const mutated = source.replace("row.classList.toggle('selected',", "row.classList.toggle('selezione-rotta',");
+      assert.notEqual(source, mutated, 'Il mutante deve rompere la selezione visiva');
+      await route.fulfill({ response, body: mutated });
+    });
     if (process.env.MCP_PANEL_MUTANT === '1') await page.route('**/js/mcp-panel.js', async route => {
       const response = await route.fetch();
       const source = await response.text();
@@ -53,15 +60,18 @@ async function main() {
     assert.match(await page.locator('#mcp-activity-list').innerText(), /list_saved_connections/);
     await page.locator('[data-action="detail"]').first().click();
     await page.locator('#mcp-detail h2').waitFor();
+    assert.equal(await page.locator('.mcp-activity-list tr.selected').count(), 1, 'Il dettaglio deve evidenziare la riga selezionata');
     assert.match(await page.locator('#mcp-detail').innerText(), /Invocazione/);
     await page.screenshot({ path: path.join(output, 'activity-dark-1440.png') });
     await page.locator('[data-action="close-detail"]').click();
+    assert.equal(await page.locator('.mcp-activity-list tr.selected').count(), 0, 'Chiudere il dettaglio rimuove la selezione visiva');
     await page.locator('#mcp-filters [name="search"]').fill('nessun-evento-corrispondente');
     await page.getByText('Nessuna attività con questi filtri').waitFor();
     await page.locator('[data-action="reset-filters"]').click();
     await page.locator('[data-action="detail"]').first().waitFor();
     await page.locator('[data-action="live"]').click();
     assert.equal(await page.locator('[data-action="live"]').getAttribute('aria-pressed'), 'false');
+    assert.match(await page.locator('#mcp-live-state').innerText(), /in pausa/);
     await page.locator('[data-action="live"]').click();
     const download = page.waitForEvent('download');
     await page.locator('[data-action="export-json"]').click();
@@ -74,6 +84,13 @@ async function main() {
     await page.getByText(/CodeDB è in modalità locale/).waitFor();
     await page.locator('#mcp-tab-settings').click();
     await page.locator('#mcp-setting-maxSessions').waitFor();
+    for (const width of [375, 768, 1024, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Impostazioni senza overflow a ${width}px`);
+      await page.locator('#mcp-setting-auditGenerations').scrollIntoViewIfNeeded();
+      const bar = await page.locator('.mcp-settings-footer').boundingBox();
+      assert(bar && bar.y >= 0 && bar.y + bar.height < 1000, `Salvataggio sempre raggiungibile a ${width}px`);
+    }
     await page.locator('#mcp-setting-maxSessions').fill('17');
     assert.equal(await page.locator('#mcp-save-settings').isEnabled(), true);
     await page.locator('#mcp-tab-overview').click();
@@ -119,6 +136,7 @@ async function main() {
       await page.locator('[data-action="close-detail"]').click();
       await page.locator('#mcp-tab-settings').click();
       await page.locator('#mcp-setting-maxSessions').waitFor();
+      assert.equal(await page.locator('.mcp-content').evaluate(el => el.scrollTop), 0, 'Una sezione diversa si apre dall’inizio');
       await page.screenshot({ path: path.join(output, `settings-${theme}-390.png`) });
     }
     await page.setViewportSize({ width: 1440, height: 1000 });
