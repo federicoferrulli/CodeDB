@@ -20,7 +20,14 @@ const { startTestServer } = require('./e2e-harness');
       assert.notEqual(body, source);
       await route.fulfill({ response, body });
     });
-    await page.goto(server.url, { waitUntil: 'networkidle' });
+    await page.addInitScript(version => localStorage.setItem('codedb:onboarding', JSON.stringify({ visto: true, versioneVista: version, traguardi: {}, checklistChiusa: true })), require('../package.json').version);
+    await page.goto(server.url, { waitUntil: 'networkidle', timeout: 20000 });
+    async function assertCentered(containerSel, emptySel, label) {
+      const c = await page.locator(containerSel).boundingBox(), e = await page.locator(emptySel).boundingBox();
+      assert(c && e, label);
+      assert(Math.abs((c.x + c.width / 2) - (e.x + e.width / 2)) <= 2, `${label}: centrato orizzontalmente`);
+      assert(Math.abs((c.y + c.height / 2) - (e.y + e.height / 2)) <= 16, `${label}: centrato verticalmente`);
+    }
     if (await page.locator('#onboarding-close').isVisible()) await page.locator('#onboarding-close').click();
     if (await page.getByRole('button', { name: 'Nascondi i primi passi' }).isVisible()) await page.getByRole('button', { name: 'Nascondi i primi passi' }).click();
     await page.evaluate(async () => {
@@ -54,8 +61,12 @@ const { startTestServer } = require('./e2e-harness');
     assert.equal(await page.locator('#mcp-overview-content .data-empty-art').count(), 1);
     assert.match(await page.locator('#mcp-overview-content').innerText(), /Errore controllato di lettura/);
     assert.doesNotMatch(await page.locator('#mcp-overview-content').innerText(), /Caricamento/);
+    await assertCentered('.mcp-content', '#mcp-overview-content .data-empty', 'Errore panoramica desktop');
     await page.screenshot({ path: path.join(output, 'errore-servizio-desktop.png') });
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await assertCentered('.mcp-content', '#mcp-overview-content .data-empty', 'Errore panoramica wide 1920');
     await page.setViewportSize({ width: 375, height: 844 });
+    await assertCentered('.mcp-content', '#mcp-overview-content .data-empty', 'Errore panoramica mobile');
     await page.screenshot({ path: path.join(output, 'errore-servizio-mobile.png') });
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.evaluate(() => { window.review.fail = null; });
@@ -82,6 +93,7 @@ const { startTestServer } = require('./e2e-harness');
     assert.equal(await page.locator('#mcp-message').isVisible(), false);
     assert.equal(await page.locator('#mcp-panel .mcp-pager').isVisible(), false, 'Paginazione nascosta senza attività');
     assert.equal(await page.locator('#mcp-page-info').innerText(), '');
+    await assertCentered('.mcp-activity-layout', '#mcp-activity-list .data-empty', 'Storico attività vuoto');
     await page.screenshot({ path: path.join(output, 'attivita-vuote.png') });
     await page.locator('#mcp-filters [name="search"]').fill('assente');
     await page.getByText('Nessuna attività con questi filtri', { exact: true }).waitFor();

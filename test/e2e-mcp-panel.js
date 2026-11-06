@@ -42,6 +42,7 @@ async function main() {
     });
     page.on('pageerror', err => errors.push(err.message));
     page.on('dialog', d => d.accept());
+    await page.addInitScript(version => localStorage.setItem('codedb:onboarding', JSON.stringify({ visto: true, versioneVista: version, traguardi: {}, checklistChiusa: true })), require('../package.json').version);
     await page.goto(server.url, { waitUntil: 'networkidle' });
     if (await page.locator('#onboarding-close').isVisible()) await page.locator('#onboarding-close').click();
     if (await page.getByRole('button', { name: 'Nascondi i primi passi' }).isVisible()) await page.getByRole('button', { name: 'Nascondi i primi passi' }).click();
