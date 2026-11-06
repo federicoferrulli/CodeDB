@@ -2,7 +2,7 @@ import { $, emit as emitSocket, esc, refreshLucideIcons, scaricaFile, toast } fr
 import { socket } from './socket.js';
 import { chiediConferma } from './conferma.js';
 import { closeDrawers } from './responsive.js';
-import { mountArcControls } from '../arc/ui.js';
+import { mountArcControls, renderDataEmpty } from '../arc/ui.js';
 
 // La sezione conserva il workspace montato: tornare ai dati non perde editor o selezioni.
 const STATI = { running: 'In corso', pending: 'Conferma richiesta', confirmed: 'Conferma utilizzata', completed: 'Completata', rejected: 'Rifiutata', failed: 'Fallita', partial: 'Parzialmente applicata', rolled_back: 'Ripristinata dopo errore', expired: 'Scaduta', unknown: 'Esito non disponibile' };
@@ -35,6 +35,7 @@ let panel, pane = 'overview', generation = 0, timer, filterTimer, opener, status
 let activity = { entries: [], offset: 0, total: 0, limit: 50, snapshot: null };
 let selectedId = null, paused = false, dirty = false, busy = false, creatingKey = false, latestId = null;
 let requestSequence = 0, detailSequence = 0, detailScrollTop = 0;
+let settingsSequence = 0, settingsEdits = 0;
 const fingerprint = entries => JSON.stringify(entries.map(e => [e.id, e.status, e.finishedAt, e.durationMs]));
 const visible = () => !!panel && !panel.hidden;
 const emit = (event, payload) => emitSocket(event, payload, { bindTab: false, reconnect: false, timeoutMs: 20000, rejectOnDisconnect: true });
@@ -48,6 +49,11 @@ const badge = value => `<span class="mcp-status mcp-status-${esc(Object.hasOwn(S
 function paint(node = panel) { mountArcControls(node); refreshLucideIcons(node); }
 function error(err) { q('#mcp-message').textContent = err?.message || String(err); q('#mcp-message').hidden = false; }
 function clearError() { q('#mcp-message').hidden = true; q('#mcp-message').textContent = ''; }
+function emptyState(node, options) {
+  renderDataEmpty(node, null); node.replaceChildren();
+  renderDataEmpty(node, { compact: true, ...options });
+  node.querySelector('.data-empty-host')?.setAttribute('data-arc-owned', '');
+}
 function resetSecret() { const box = q('#mcp-new-key'); if (box) { box.replaceChildren(); box.hidden = true; } }
 function clearActivity() {
   activity = { entries: [], offset: 0, total: 0, limit: 50, snapshot: null }; selectedId = null; latestId = null;
@@ -140,12 +146,13 @@ async function refreshAll() {
     const form = q('#mcp-settings-form'); if (form) form.inert = false;
     status = res; renderOverview();
     await loadPane(pane);
-  } catch (err) { if (token === generation && visible()) error(err); }
+  } catch (err) { if (token === generation && visible()) { error(err); if (!status) emptyState(q('#mcp-overview-content'), { kind: 'error', title: 'Servizio MCP non disponibile', description: err.message, actionLabel: 'Riprova', onAction: refreshAll }); } }
   finally { if (token === generation) schedule(); }
 }
 
 function endpoint() { return status?.endpoint || `${location.origin}/mcp`; }
 function renderOverview() {
+  renderDataEmpty(q('#mcp-overview-content'), null);
   const names = { active: 'Attivo', draining: 'Disattivazione in corso', disabled: 'Disattivato' };
   const sessions = status.sessions || [];
   q('#mcp-overview-content').innerHTML = `
@@ -156,6 +163,7 @@ function renderOverview() {
     ${sessions.length ? `<div class="mcp-session-list">${sessions.map(s=>`<article class="mcp-session"><span class="mcp-session-icon" aria-hidden="true"><i data-lucide="terminal"></i></span><div><strong>${esc(client(s.client))}</strong><p>${esc(s.user || 'Utente locale')} · ${Number(s.activeRequests || 0)} operazioni in corso</p><p class="mcp-muted">${esc((s.connections || []).map(c=>`${c.name}${c.dbType ? ` (${c.dbType})` : ''}`).join(', ') || 'Nessuna connessione DB aperta')}</p><p class="mcp-muted">Ultima attività: ${esc(date(s.lastActivity))}</p><code title="Identificativo sessione">${esc(s.id)}</code></div>${s.canClose === false ? '' : `<button type="button" data-action="close-session" data-id="${esc(s.id)}" class="ghost">Chiudi sessione</button>`}</article>`).join('')}</div>` : '<div class="mcp-empty"><i data-lucide="unplug" aria-hidden="true"></i><h3>Nessun client collegato</h3><p>Usa l’endpoint nel tuo client MCP. Le sessioni compariranno qui alla connessione.</p></div>'}
     <div class="mcp-section-title"><h2>Ultimi fallimenti</h2><button type="button" data-action="overview-errors" class="ghost">Apri attività</button></div><div id="mcp-recent-errors"><p class="mcp-muted">Caricamento…</p></div>`;
   paint(q('#mcp-overview-content'));
+  if (!sessions.length) emptyState(q('#mcp-overview-content .mcp-empty'), { kind: 'connection', title: 'Nessun client collegato', description: 'Usa l’endpoint nel tuo client MCP. Le sessioni compariranno qui alla connessione.' });
   loadRecentErrors();
 }
 
@@ -176,7 +184,7 @@ async function selectPane(name) {
   pane = name; clearError();
   panel.querySelectorAll('[role="tab"]').forEach(t => { t.setAttribute('aria-selected', String(t.dataset.pane === name)); t.tabIndex = t.dataset.pane === name ? 0 : -1; });
   panel.querySelectorAll('[role="tabpanel"]').forEach(p => { p.hidden = p.id !== `mcp-pane-${name}`; });
-  try { await loadPane(name); } catch (err) { if (visible() && pane === name) error(err); }
+  try { await loadPane(name); } catch (err) { if (visible() && pane === name) { error(err); if (name === 'settings' && !q('#mcp-settings-form')) emptyState(q('#mcp-settings-content'), { kind: 'error', title: 'Impostazioni non disponibili', description: err.message, actionLabel: 'Riprova', onAction: () => selectPane(name) }); if (name === 'access') emptyState(q('#mcp-connections'), { kind: 'error', title: 'Accessi non disponibili', description: err.message, actionLabel: 'Riprova', onAction: () => selectPane(name) }); } }
   schedule();
 }
 async function loadPane(name) {
@@ -191,6 +199,15 @@ function filters() {
   for (const [key,value] of f) if (String(value).trim()) result[key] = ['from','to'].includes(key) ? new Date(`${value}T${key === 'from' ? '00:00:00.000' : '23:59:59.999'}`).toISOString() : String(value).trim();
   return result;
 }
+function resetFilters() {
+  q('#mcp-filters').reset();
+  q('#mcp-filters').querySelectorAll('input[name], select[name]').forEach(control => {
+    const prototype = control.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, 'value').set.call(control, '');
+    control.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  clearTimeout(filterTimer);
+}
 async function loadActivity(reset = false) {
   const seq = ++requestSequence, token = generation;
   if (reset) { activity.offset = 0; activity.snapshot = null; closeDetail(false); }
@@ -203,10 +220,12 @@ async function loadActivity(reset = false) {
     latestId = fingerprint(activity.entries);
     if (reset) q('#mcp-new-activity').hidden = true;
     renderActivity();
-  } catch (err) { if (seq === requestSequence && token === generation) error(err); }
+  } catch (err) { if (seq === requestSequence && token === generation) { error(err); if (!activity.entries.length) emptyState(q('#mcp-activity-list'), { kind: 'error', title: 'Attività non disponibili', description: err.message, actionLabel: 'Riprova', onAction: () => loadActivity(true) }); } }
   finally { if (seq === requestSequence) q('#mcp-activity-list').setAttribute('aria-busy', 'false'); }
 }
 function renderActivity() {
+  clearError();
+  renderDataEmpty(q('#mcp-activity-list'), null);
   const current = filters();
   q('[data-action="errors"]').setAttribute('aria-pressed', String(current.status === 'failed'));
   q('[data-action="writes"]').setAttribute('aria-pressed', String(current.category === 'write'));
@@ -216,6 +235,10 @@ function renderActivity() {
   q('[data-action="next"]').disabled = activity.offset + activity.entries.length >= activity.total;
   q('#mcp-activity-note').textContent = activity.truncated ? 'Lo storico disponibile è limitato dalla conservazione del registro.' : 'Anteprime e conferme sono distinte dalle operazioni eseguite. I dati sensibili vengono mascherati.';
   paint(q('#mcp-activity-list'));
+  if (!activity.entries.length) {
+    const filtered = Object.keys(current).length > 0;
+    emptyState(q('#mcp-activity-list'), { kind: filtered ? 'search' : 'data', title: filtered ? 'Nessuna attività con questi filtri' : 'Nessuna attività registrata', description: filtered ? 'Modifica i filtri per cercare altre attività.' : 'Esegui un’operazione dal tuo client MCP per visualizzarla qui.', ...(filtered ? { actionLabel: 'Azzera filtri', onAction: () => { resetFilters(); loadActivity(true); } } : {}) });
+  }
 }
 async function openDetail(id) {
   const seq = ++detailSequence, token = generation; selectedId = id;
@@ -237,10 +260,11 @@ async function openDetail(id) {
 function closeDetail(focus = true) { detailSequence++; q('#mcp-detail').hidden = true; q('.mcp-activity-layout').classList.remove('has-detail'); panel.querySelectorAll('.mcp-activity-list tr.selected').forEach(row => row.classList.remove('selected')); if (focus && selectedId) { panel.querySelector(`[data-action="detail"][data-id="${CSS.escape(selectedId)}"]`)?.focus({ preventScroll: true }); q('.mcp-content').scrollTop = detailScrollTop; } selectedId = null; }
 
 async function loadSettings() {
-  const token = generation;
+  const token = generation, seq = ++settingsSequence, edits = settingsEdits;
   const res = await emit('mcp:settings:get', {});
-  if (token !== generation || !visible()) return;
+  if (token !== generation || seq !== settingsSequence || edits !== settingsEdits || !visible()) return;
   settings = res; dirty = false;
+  clearError(); renderDataEmpty(q('#mcp-settings-content'), null);
   const canManage = !!status?.permissions?.manageSettings;
   const saveBar = '<div class="mcp-settings-footer"><span id="mcp-dirty" role="status">Impostazioni salvate</span><div><button type="button" data-action="discard-settings" disabled>Scarta modifiche</button><button type="submit" class="primary" id="mcp-save-settings" disabled>Salva impostazioni</button></div></div>';
   q('#mcp-settings-content').innerHTML = `<div class="mcp-section-title"><div><h2>Impostazioni del gateway</h2><p class="mcp-muted">Configurazione persistente dell’installazione. I cambiamenti salvati si applicano al servizio.</p></div></div>${canManage ? '' : '<p class="mcp-notice">Puoi consultare la configurazione. Le modifiche sono riservate all’amministratore dell’installazione.</p>'}
@@ -256,8 +280,10 @@ async function loadAccess() {
   const res = await emit('mcp:connections:list', {});
   if (token !== generation || !visible()) return;
   const connections = res.connections || [];
+  clearError(); renderDataEmpty(q('#mcp-connections'), null);
   q('#mcp-connections').innerHTML = `<div class="mcp-section-title"><h2>Connessioni disponibili</h2><button type="button" data-action="refresh-access" class="ghost">Aggiorna</button></div><p class="mcp-muted">La sola lettura della connessione è condivisa con la UI. I permessi effettivi MCP includono anche le restrizioni del gateway e del soggetto.</p>${connections.length ? `<div class="mcp-table-scroll"><table class="mcp-table"><thead><tr><th>Connessione</th><th>Motore</th><th>Accesso</th><th>Gestione</th></tr></thead><tbody>${connections.map(c=>`<tr><td><strong>${esc(c.label || c.name)}</strong></td><td>${esc(c.dbType || '—')}</td><td>${c.readOnly ? 'Sola lettura' : 'Scrittura consentita dalla connessione'}${status?.settings?.readOnly || status?.readOnly ? '<span class="mcp-subline">MCP limitato alla lettura</span>' : ''}${c.permissions ? `<span class="mcp-subline">${esc(permissionsText(c.permissions))}</span>` : ''}</td><td>${c.canManage ? `<button type="button" data-action="readonly" data-name="${esc(c.name)}" data-value="${!c.readOnly}">${c.readOnly ? 'Consenti scritture' : 'Imposta sola lettura'}</button>` : 'Permessi gestiti dall’amministratore'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="mcp-empty">Nessuna connessione disponibile. Aggiungila da Connessioni o richiedi l’accesso all’amministratore.</p>'}`;
   paint(q('#mcp-connections'));
+  if (!connections.length) emptyState(q('#mcp-connections .mcp-empty'), { kind: 'connection', title: 'Nessuna connessione disponibile', description: 'Aggiungila da Connessioni o richiedi l’accesso all’amministratore.' });
   if (!status?.rbac) { q('#mcp-keys').innerHTML = '<h2>Accesso dei client</h2><p class="mcp-notice">CodeDB è in modalità locale, con RBAC disattivato. Le API key sono disponibili quando l’autenticazione RBAC è attiva nell’installazione.</p>'; return; }
   if (!status.permissions?.manageAccess) { q('#mcp-keys').innerHTML = '<h2>API key</h2><p class="mcp-notice">Le chiavi di accesso sono gestite dall’amministratore del tuo account.</p>'; return; }
   const [keys, users] = await Promise.all([emit('apikeys:list', {}), emit('users:list', {})]);
@@ -289,19 +315,20 @@ async function poll() {
 
 async function action(work) { if (busy) return; busy = true; clearError(); q('#mcp-operation-status').hidden = false; try { await work(); } catch (err) { if (visible()) error(err); } finally { busy = false; q('#mcp-operation-status').hidden = true; if (settings && q('#mcp-settings-form')) updateDirty(); } }
 async function copy(text) { if (!navigator.clipboard?.writeText) throw new Error('Copia automatica non disponibile: seleziona il testo e copialo con la tastiera.'); await navigator.clipboard.writeText(text); toast('Copiato negli appunti.'); }
-function onInput(e) { if (e.target.closest('#mcp-settings-form')) updateDirty(); if (e.target.closest('#mcp-filters')) { clearTimeout(filterTimer); filterTimer = setTimeout(()=>loadActivity(true), 400); } }
-function onChange(e) { if (e.target.closest('#mcp-settings-form')) updateDirty(); if (e.target.closest('#mcp-filters')) { clearTimeout(filterTimer); loadActivity(true); } if (e.target.id === 'mcp-page-size') { activity.limit = Number(e.target.value); loadActivity(true); } if (e.target.id === 'mcp-key-all') q('#mcp-key-scopes').hidden = e.target.checked; }
+function onInput(e) { if (e.target.closest('#mcp-settings-form')) { settingsEdits++; updateDirty(); } if (e.target.closest('#mcp-filters')) { clearTimeout(filterTimer); filterTimer = setTimeout(()=>loadActivity(true), 400); } }
+function onChange(e) { if (e.target.closest('#mcp-settings-form')) { settingsEdits++; updateDirty(); } if (e.target.closest('#mcp-filters') && e.target.matches('select')) { clearTimeout(filterTimer); loadActivity(true); } if (e.target.id === 'mcp-page-size') { activity.limit = Number(e.target.value); loadActivity(true); } if (e.target.id === 'mcp-key-all') q('#mcp-key-scopes').hidden = e.target.checked; }
 function onClick(e) {
   const button = e.target.closest('button'); if (!button || button.disabled) return;
   if (button.dataset.pane) { selectPane(button.dataset.pane); return; }
   const name = button.dataset.action;
+  if (!name) return;
   if (name === 'close') { close(); return; }
   if (name === 'close-detail') { closeDetail(); return; }
   if (name === 'detail') { openDetail(button.dataset.id); return; }
   if (name === 'refresh-activity') { loadActivity(true); return; }
   if (name === 'live') { paused = !paused; button.setAttribute('aria-pressed', String(!paused)); button.innerHTML = `<i data-lucide="${paused ? 'play' : 'pause'}"></i> ${paused ? 'Riprendi aggiornamenti' : 'Pausa aggiornamenti'}`; q('#mcp-live-state').dataset.paused = String(paused); q('#mcp-live-state').innerHTML = `<span class="mcp-status-dot" aria-hidden="true"></span>${paused ? 'Aggiornamento in pausa' : 'Aggiornamento attivo'}`; refreshLucideIcons(button); return; }
   if (name === 'prev' || name === 'next') { activity.offset = Math.max(0, activity.offset + (name === 'prev' ? -activity.limit : activity.limit)); loadActivity(); return; }
-  if (['errors','writes','reset-filters','overview-errors'].includes(name)) { q('#mcp-filters').reset(); if (name === 'errors' || name === 'overview-errors') q('[name="status"]').value = 'failed'; if (name === 'writes') q('[name="category"]').value = 'write'; if (name === 'overview-errors') selectPane('activity'); else loadActivity(true); return; }
+  if (['errors','writes','reset-filters','overview-errors'].includes(name)) { resetFilters(); if (name === 'errors' || name === 'overview-errors') q('[name="status"]').value = 'failed'; if (name === 'writes') q('[name="category"]').value = 'write'; if (name === 'overview-errors') selectPane('activity'); else loadActivity(true); return; }
   if (name === 'open-activity') { selectPane('activity').then(()=>openDetail(button.dataset.id)); return; }
   action(async () => {
     if (name === 'refresh-status') await refreshAll();
