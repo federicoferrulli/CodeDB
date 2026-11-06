@@ -68,6 +68,7 @@ module.exports = (async () => {
     assert.strictEqual(status.endpoint, 'http://127.0.0.1:41234/mcp', 'porta effettiva del server');
     assert.strictEqual(status.permissions.manageSettings, false);
     assert.strictEqual(status.permissions.manageAccess, true);
+    assert.strictEqual(status.readOnly, false, 'readOnly riflette lo stato globale delle impostazioni MCP');
     assert.strictEqual(status.auditHealth.lastError, undefined, 'percorsi globali riservati all’install admin');
     assert(!JSON.stringify(status.sessions).includes('segreto'), 'le sessioni non espongono credenziali');
     await assert.rejects(call('mcp:settings:update', { values: { enabled: false }, revision: 0 }), /amministratore/);
@@ -164,3 +165,4 @@ if (require.main === module && process.argv.includes('--sensitivity')) {
     console.log('  OK   Sensibilità MCP API: mutante senza isolamento tenant rilevato');
   });
 }
+

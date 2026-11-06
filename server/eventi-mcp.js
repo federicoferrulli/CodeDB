@@ -70,7 +70,7 @@ function createModule({ mcpControl, mcpSettings, config, identita, vault, traspo
     lifecycle.amministrativo('mcp:status', async (_payload, cb) => {
       const state = mcpControl.status();
       cb({ ok: true, state: state.state, endpoint: endpointOf(trasporto, config), rbac: config.rbacOn(), permissions: permissions(),
-        sessions: sessions(), auditHealth: permissions().manageSettings ? state.auditHealth : { ok: !!state.auditHealth?.ok },
+        sessions: sessions(), auditHealth: permissions().manageSettings ? state.auditHealth : { ok: !!state.auditHealth?.ok }, readOnly: !!mcpSettings.get().readOnly,
       });
     });
 
