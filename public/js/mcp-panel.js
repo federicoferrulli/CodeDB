@@ -2,7 +2,7 @@ import { $, emit as emitSocket, esc, refreshLucideIcons, scaricaFile, toast } fr
 import { socket } from './socket.js';
 import { chiediConferma } from './conferma.js';
 import { closeDrawers } from './responsive.js';
-import { mountArcControls, renderDataEmpty } from '../arc/ui.js';
+import { mountArcControls, renderDataEmpty, openNavigationSheet, closeNavigationSheet } from '../arc/ui.js';
 
 // La sezione conserva il workspace montato: tornare ai dati non perde editor o selezioni.
 const STATI = { running: 'In corso', pending: 'Conferma richiesta', confirmed: 'Conferma utilizzata', completed: 'Completata', rejected: 'Rifiutata', failed: 'Fallita', partial: 'Parzialmente applicata', rolled_back: 'Ripristinata dopo errore', expired: 'Scaduta', unknown: 'Esito non disponibile' };
@@ -35,11 +35,11 @@ let panel, pane = 'overview', generation = 0, timer, filterTimer, opener, status
 let activity = { entries: [], offset: 0, total: 0, limit: 50, snapshot: null };
 let selectedId = null, paused = false, dirty = false, busy = false, creatingKey = false, latestId = null;
 let requestSequence = 0, detailSequence = 0, detailScrollTop = 0;
-let settingsSequence = 0, settingsEdits = 0;
+let settingsSequence = 0, settingsEdits = 0, filterContent, filtersInSheet = false;
 const fingerprint = entries => JSON.stringify(entries.map(e => [e.id, e.status, e.finishedAt, e.durationMs]));
 const visible = () => !!panel && !panel.hidden;
 const emit = (event, payload) => emitSocket(event, payload, { bindTab: false, reconnect: false, timeoutMs: 20000, rejectOnDisconnect: true });
-const q = selector => panel.querySelector(selector);
+const q = selector => panel.querySelector(selector) || filterContent?.querySelector(selector);
 const date = value => { const d = new Date(value); return value && Number.isFinite(d.getTime()) ? d.toLocaleString('it-IT') : 'Non disponibile'; };
 const client = value => typeof value === 'object' && value ? [value.name, value.version].filter(Boolean).join(' ') : value || 'Client non dichiarato';
 const pretty = value => typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? 'Non disponibile';
@@ -77,7 +77,10 @@ export function initMcpPanel() {
   panel = document.createElement('section');
   panel.id = 'mcp-panel'; panel.hidden = true; panel.setAttribute('aria-labelledby', 'mcp-title');
   panel.innerHTML = `
-    <header class="mcp-header"><div class="mcp-heading"><i data-lucide="plug-zap" aria-hidden="true"></i><div><h1 id="mcp-title" tabindex="-1">MCP</h1><p>Accedi, configura e segui le attività dei tuoi client AI.</p></div></div><button type="button" data-action="close" class="ghost"><i data-lucide="arrow-left"></i> Torna ai dati</button></header>
+    <header class="mcp-header">
+      <div class="mcp-heading"><button type="button" data-action="close" class="mcp-back"><i data-lucide="arrow-left" aria-hidden="true"></i><span>Torna ai dati</span></button><h1 id="mcp-title" tabindex="-1">MCP</h1></div>
+      <p>Accedi, configura e segui le attività dei tuoi client AI.</p>
+    </header>
     <nav class="mcp-tabs" role="tablist" aria-label="Sezioni MCP">${[['overview','Panoramica','layout-dashboard'],['activity','Attività','activity'],['access','Connessioni e accessi','key-round'],['settings','Impostazioni','sliders-horizontal']].map(([id,label,icon])=>`<button type="button" id="mcp-tab-${id}" role="tab" aria-controls="mcp-pane-${id}" aria-selected="${id === pane}" tabindex="${id === pane ? 0 : -1}" data-pane="${id}"><i data-lucide="${icon}" aria-hidden="true"></i>${label}</button>`).join('')}</nav>
     <div id="mcp-message" class="mcp-message" role="alert" hidden></div>
     <p id="mcp-operation-status" class="mcp-operation-status" role="status" hidden>Operazione in corso…</p>
@@ -85,15 +88,16 @@ export function initMcpPanel() {
       <section id="mcp-pane-overview" role="tabpanel" aria-labelledby="mcp-tab-overview"><div id="mcp-overview-content" class="mcp-section-body"></div></section>
       <section id="mcp-pane-activity" role="tabpanel" aria-labelledby="mcp-tab-activity" hidden>
         <div class="mcp-activity-heading"><div><h2>Registro attività</h2><p class="mcp-muted">Ogni richiesta, dal primo contatto all’esito.</p></div><span id="mcp-live-state" class="mcp-live-state"><span class="mcp-status-dot" aria-hidden="true"></span>Aggiornamento attivo</span></div>
-        <form id="mcp-filters" class="mcp-filters">
+        <div class="mcp-filter-accordion"><button type="button" class="mcp-filter-toggle" data-action="toggle-filters" aria-expanded="false" aria-controls="mcp-filter-content"><i data-lucide="list-filter" aria-hidden="true"></i>Filtri<span id="mcp-filter-count">Nessun filtro attivo</span><i class="mcp-filter-chevron" data-lucide="chevron-down" aria-hidden="true"></i></button>
+        <div id="mcp-filter-content" hidden><form id="mcp-filters" class="mcp-filters">
           <label class="mcp-search">Cerca<input name="search" type="search" placeholder="Azione, bersaglio, dettaglio…" autocomplete="off"></label>
           <label>Dal giorno<input id="mcp-filter-from" name="from" type="date" class="arc-inline-date-model"></label><label>Al giorno<input id="mcp-filter-to" name="to" type="date" class="arc-inline-date-model"></label>
           <label>Esito<select name="status"><option value="">Tutti gli esiti</option>${Object.entries(STATI).map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select></label>
-          <details class="mcp-more-filters"><summary>Altri filtri</summary><div>
+          <div class="mcp-more-filters"><div>
           <label>Tool<input name="tool" placeholder="Es. execute_query" autocomplete="off"></label><label>Connessione<input name="connection" autocomplete="off"></label><label>Database<input name="db" autocomplete="off"></label><label>Autore<input name="user" autocomplete="off"></label>
-          <label>Categoria<select name="category"><option value="">Tutte</option>${Object.entries(CATEGORIE).map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select></label></div></details>
-        </form>
-        <div class="mcp-activity-toolbar"><div><button type="button" data-action="errors" aria-pressed="false"><i data-lucide="circle-alert" aria-hidden="true"></i>Fallimenti</button><button type="button" data-action="writes" aria-pressed="false"><i data-lucide="pencil-line" aria-hidden="true"></i>Scritture</button><button type="button" data-action="reset-filters" class="ghost">Azzera filtri</button></div><div><button type="button" data-action="live" aria-pressed="true"><i data-lucide="pause"></i> Pausa aggiornamenti</button><button type="button" data-action="refresh-activity" aria-label="Aggiorna attività"><i data-lucide="refresh-cw"></i></button><button type="button" data-action="export-json" aria-label="Esporta attività in JSON">JSON</button><button type="button" data-action="export-csv" aria-label="Esporta attività in CSV">CSV</button></div></div>
+          <label>Categoria<select name="category"><option value="">Tutte</option>${Object.entries(CATEGORIE).map(([v,t])=>`<option value="${v}">${t}</option>`).join('')}</select></label></div></div>
+        </form><div class="mcp-filter-actions"><button type="button" data-action="reset-filters" class="ghost">Azzera filtri</button><button type="button" data-action="close-filters">Mostra risultati</button></div></div></div>
+        <div class="mcp-activity-toolbar"><div class="mcp-quick-filters"><button type="button" data-action="errors" aria-pressed="false"><i data-lucide="circle-alert" aria-hidden="true"></i>Fallimenti</button><button type="button" data-action="writes" aria-pressed="false"><i data-lucide="pencil-line" aria-hidden="true"></i>Scritture</button><button type="button" data-action="reset-filters" class="ghost">Azzera filtri</button></div><div><button type="button" data-action="live" aria-pressed="true"><i data-lucide="pause"></i> Pausa aggiornamenti</button><button type="button" data-action="refresh-activity" aria-label="Aggiorna attività"><i data-lucide="refresh-cw"></i></button><button type="button" data-action="export-json" aria-label="Esporta attività in JSON">JSON</button><button type="button" data-action="export-csv" aria-label="Esporta attività in CSV">CSV</button></div></div>
         <button type="button" id="mcp-new-activity" data-action="refresh-activity" class="mcp-new-activity" hidden>Nuove attività disponibili · Aggiorna elenco</button>
         <p id="mcp-activity-note" class="mcp-muted" role="status"></p>
         <div class="mcp-activity-layout"><div class="mcp-activity-list" id="mcp-activity-list" aria-label="Elenco attività"></div><aside id="mcp-detail" class="mcp-detail" aria-label="Dettaglio attività" hidden></aside></div>
@@ -103,6 +107,10 @@ export function initMcpPanel() {
       <section id="mcp-pane-settings" role="tabpanel" aria-labelledby="mcp-tab-settings" hidden><div class="mcp-section-body" id="mcp-settings-content"></div></section>
     </div>`;
   area.appendChild(panel); paint();
+  filterContent = q('#mcp-filter-content');
+  // Il drawer sposta gli stessi controlli fuori dal pannello, conservandone lo stato.
+  for (const [event, handler] of [['click', onClick], ['input', onInput], ['change', onChange], ['submit', onSubmit]]) filterContent.addEventListener(event, e => { e.stopPropagation(); handler(e); });
+  matchMedia('(max-width: 700px)').addEventListener('change', () => { if (filtersInSheet) closeNavigationSheet(true); filterContent.hidden = true; q('[data-action="toggle-filters"]').setAttribute('aria-expanded', 'false'); });
   $('#btn-mcp')?.addEventListener('click', openMcpPanel);
   panel.addEventListener('click', onClick);
   panel.addEventListener('submit', onSubmit);
@@ -160,13 +168,20 @@ async function refreshAll() {
 }
 
 function endpoint() { return status?.endpoint || `${location.origin}/mcp`; }
+function clientConfiguration() {
+  return JSON.stringify({ mcpServers: { codedb: {
+    command: 'npx',
+    args: ['-y', 'mcp-remote', endpoint(), ...(status?.rbac ? ['--header', 'Authorization:${CODEDB_AUTH_HEADER}'] : [])],
+    ...(status?.rbac ? { env: { CODEDB_AUTH_HEADER: 'Bearer INSERISCI_LA_TUA_API_KEY' } } : {}),
+  } } }, null, 2);
+}
 function renderOverview() {
   renderDataEmpty(q('#mcp-overview-content'), null);
   const names = { active: 'Attivo', draining: 'Disattivazione in corso', disabled: 'Disattivato' };
   const sessions = status.sessions || [];
   q('#mcp-overview-content').innerHTML = `
     <div class="mcp-service-surface"><div class="mcp-service-line"><div><h2>Gateway MCP <span class="mcp-service-state" data-state="${esc(status.state)}"><span class="mcp-status-dot" aria-hidden="true"></span>${esc(names[status.state] || 'Non disponibile')}</span></h2><p class="mcp-muted">${status.state === 'draining' ? 'Le operazioni avviate stanno terminando. Le nuove richieste sono sospese.' : 'Streamable HTTP · Stesso server e stessa porta di CodeDB.'}</p></div><button type="button" data-pane="settings"><i data-lucide="settings"></i> Configura MCP</button></div>
-    <div class="mcp-endpoint"><label for="mcp-endpoint-value">Endpoint per il client</label><div><input type="text" readonly id="mcp-endpoint-value" value="${esc(endpoint())}"><button type="button" data-action="copy-endpoint"><i data-lucide="copy"></i> Copia</button></div></div>
+    <div class="mcp-endpoint"><label for="mcp-endpoint-value">Endpoint per il client</label><div><input type="text" readonly id="mcp-endpoint-value" value="${esc(endpoint())}"><button type="button" data-action="copy-endpoint" aria-label="Copia configurazione JSON MCP"><i data-lucide="copy" aria-hidden="true"></i> Copia JSON</button></div><p class="mcp-muted">Configurazione pronta da incollare. Richiede Node.js e CodeDB avviato.${status.rbac ? ' Nel JSON sostituisci INSERISCI_LA_TUA_API_KEY con una chiave creata in Connessioni e accessi.' : ''}</p></div>
     <p class="mcp-audit-health ${status.auditHealth?.ok === false ? 'mcp-danger' : ''}"><i data-lucide="${status.auditHealth?.ok === false ? 'shield-alert' : 'shield-check'}" aria-hidden="true"></i><span>${status.auditHealth?.ok === false ? `Registrazione attività non disponibile: ${esc(status.auditHealth.lastError || 'errore di scrittura del registro')}. Lo storico può essere incompleto.` : 'Registrazione attività operativa.'} ${status.auditHealth?.pending ? `${Number(status.auditHealth.pending)} eventi in salvataggio.` : ''}</span></p></div>
     <div class="mcp-section-title"><h2>Sessioni attive <span class="mcp-count">${sessions.length}</span></h2><button type="button" data-action="refresh-status" class="ghost"><i data-lucide="refresh-cw"></i> Aggiorna</button></div>
     ${sessions.length ? `<div class="mcp-session-list">${sessions.map(s=>`<article class="mcp-session"><span class="mcp-session-icon" aria-hidden="true"><i data-lucide="terminal"></i></span><div><strong>${esc(client(s.client))}</strong><p>${esc(s.user || 'Utente locale')} · ${Number(s.activeRequests || 0)} operazioni in corso</p><p class="mcp-muted">${esc((s.connections || []).map(c=>`${c.name}${c.dbType ? ` (${c.dbType})` : ''}`).join(', ') || 'Nessuna connessione DB aperta')}</p><p class="mcp-muted">Ultima attività: ${esc(date(s.lastActivity))}</p><code title="Identificativo sessione">${esc(s.id)}</code></div>${s.canClose === false ? '' : `<button type="button" data-action="close-session" data-id="${esc(s.id)}" class="ghost">Chiudi sessione</button>`}</article>`).join('')}</div>` : '<div class="mcp-empty"><i data-lucide="unplug" aria-hidden="true"></i><h3>Nessun client collegato</h3><p>Usa l’endpoint nel tuo client MCP. Le sessioni compariranno qui alla connessione.</p></div>'}
@@ -186,6 +201,7 @@ async function loadRecentErrors() {
 }
 
 async function selectPane(name) {
+  if (filtersInSheet) closeNavigationSheet(true);
   if (!['overview','activity','access','settings'].includes(name)) return;
   if (creatingKey) { error('Attendi il completamento della creazione: la nuova chiave viene mostrata una sola volta.'); return; }
   if (name !== 'access') resetSecret();
@@ -203,6 +219,16 @@ async function loadPane(name) {
   if (name === 'settings' && !dirty) await loadSettings();
 }
 
+function toggleFilters() {
+  const trigger = q('[data-action="toggle-filters"]');
+  if (matchMedia('(max-width: 700px)').matches) {
+    filterContent.hidden = false; filtersInSheet = true; trigger.setAttribute('aria-expanded', 'true');
+    openNavigationSheet(filterContent, () => { filtersInSheet = false; filterContent.hidden = true; trigger.setAttribute('aria-expanded', 'false'); if (visible() && pane === 'activity') trigger.focus({ preventScroll: true }); }, { title: 'Filtri attività MCP', description: 'I risultati si aggiornano mentre modifichi i filtri.', tools: false, navigation: false });
+  } else {
+    filterContent.hidden = !filterContent.hidden;
+    trigger.setAttribute('aria-expanded', String(!filterContent.hidden));
+  }
+}
 function filters() {
   const f = new FormData(q('#mcp-filters')), result = {};
   for (const [key,value] of f) if (String(value).trim()) result[key] = ['from','to'].includes(key) ? new Date(`${value}T${key === 'from' ? '00:00:00.000' : '23:59:59.999'}`).toISOString() : String(value).trim();
@@ -218,10 +244,17 @@ function resetFilters() {
   clearTimeout(filterTimer);
 }
 async function loadActivity(reset = false) {
+  const count = Object.keys(filters()).length;
+  q('#mcp-filter-count').textContent = count ? `${count} ${count === 1 ? 'filtro attivo' : 'filtri attivi'}` : 'Nessun filtro attivo';
   const seq = ++requestSequence, token = generation;
   if (reset) { activity.offset = 0; activity.snapshot = null; closeDetail(false); }
   q('#mcp-activity-list').setAttribute('aria-busy', 'true');
-  if (!activity.entries.length) { q('.mcp-pager').hidden = true; q('#mcp-activity-list').innerHTML = '<p class="mcp-empty" role="status">Caricamento attività…</p>'; }
+  const current = filters();
+  q('[data-action="errors"]').setAttribute('aria-pressed', String(current.status === 'failed'));
+  q('[data-action="writes"]').setAttribute('aria-pressed', String(current.category === 'write'));
+  renderDataEmpty(q('#mcp-activity-list'), null);
+  q('.mcp-pager').hidden = true;
+  q('#mcp-activity-list').innerHTML = `<span class="visually-hidden" role="status">Caricamento attività…</span><table class="mcp-table mcp-events mcp-loading" aria-hidden="true"><thead><tr>${['Ora / Azione','Bersaglio','Autore / Client','Durata','Esito','Dettagli'].map(label => `<th>${label}</th>`).join('')}</tr></thead><tbody>${Array.from({ length: 5 }, () => `<tr>${Array.from({ length: 6 }, () => '<td><div class="skeleton skeleton-text"></div></td>').join('')}</tr>`).join('')}</tbody></table>`;
   try {
     const result = await emit('mcp:activity:list', { ...filters(), limit: activity.limit, offset: activity.offset, ...(activity.snapshot ? { snapshot: activity.snapshot } : {}) });
     if (seq !== requestSequence || token !== generation || !visible()) return;
@@ -229,7 +262,7 @@ async function loadActivity(reset = false) {
     latestId = fingerprint(activity.entries);
     if (reset) q('#mcp-new-activity').hidden = true;
     renderActivity();
-  } catch (err) { if (seq === requestSequence && token === generation) { if (!activity.entries.length) { q('.mcp-pager').hidden = true; q('#mcp-page-info').textContent = ''; emptyState(q('#mcp-activity-list'), { kind: 'error', title: 'Attività non disponibili', description: err.message, actionLabel: 'Riprova', onAction: () => loadActivity(true) }); } else error(err); } }
+  } catch (err) { if (seq === requestSequence && token === generation) { if (!activity.entries.length) { q('.mcp-pager').hidden = true; q('#mcp-page-info').textContent = ''; emptyState(q('#mcp-activity-list'), { kind: 'error', title: 'Attività non disponibili', description: err.message, actionLabel: 'Riprova', onAction: () => loadActivity(true) }); } else { renderActivity(); error(err); } } }
   finally { if (seq === requestSequence) q('#mcp-activity-list').setAttribute('aria-busy', 'false'); }
 }
 function renderActivity() {
@@ -238,7 +271,7 @@ function renderActivity() {
   const current = filters();
   q('[data-action="errors"]').setAttribute('aria-pressed', String(current.status === 'failed'));
   q('[data-action="writes"]').setAttribute('aria-pressed', String(current.category === 'write'));
-  q('#mcp-activity-list').innerHTML = activity.entries.length ? `<table class="mcp-table"><thead><tr><th>Ora / Azione</th><th>Bersaglio</th><th>Autore / Client</th><th>Durata</th><th>Esito</th></tr></thead><tbody>${activity.entries.map(e=>`<tr${e.id === selectedId ? ' class="selected"' : ''}><td><button type="button" class="mcp-row-open" data-action="detail" data-id="${esc(e.id)}" aria-label="Dettaglio ${esc(e.tool || 'attività')} del ${esc(date(e.ts))}"><span class="mcp-muted">${esc(date(e.ts))}</span><strong>${esc(e.tool || e.summary || 'Attività MCP')}</strong></button></td><td>${esc(e.connection || '—')}<span class="mcp-subline">${esc([e.db,e.coll].filter(Boolean).join(' › '))}</span></td><td>${esc(e.user || 'Non attribuito')}<span class="mcp-subline">${esc(client(e.client))}</span></td><td class="mcp-duration">${e.durationMs == null ? '—' : `${Number(e.durationMs).toLocaleString('it-IT')} ms`}</td><td>${badge(e.status)}</td></tr>`).join('')}</tbody></table>` : '<div class="mcp-empty"><i data-lucide="list-filter" aria-hidden="true"></i><h3>Nessuna attività con questi filtri</h3><p>Modifica i filtri oppure esegui un’operazione dal tuo client MCP.</p></div>';
+  q('#mcp-activity-list').innerHTML = activity.entries.length ? `<table class="mcp-table mcp-events"><thead><tr><th>Ora / Azione</th><th>Bersaglio</th><th>Autore / Client</th><th>Durata</th><th>Esito</th><th><span class="visually-hidden">Dettagli</span></th></tr></thead><tbody>${activity.entries.map(e=>`<tr${e.id === selectedId ? ' class="selected"' : ''}><td><button type="button" class="mcp-row-open" data-action="detail" data-id="${esc(e.id)}" aria-label="Dettaglio ${esc(e.tool || 'attività')} del ${esc(date(e.ts))}"><span class="mcp-muted">${esc(date(e.ts))}</span><strong>${esc(e.tool || e.summary || 'Attività MCP')}</strong></button></td><td data-label="Bersaglio">${esc(e.connection || '—')}<span class="mcp-subline">${esc([e.db,e.coll].filter(Boolean).join(' › '))}</span></td><td data-label="Autore / Client">${esc(e.user || 'Non attribuito')}<span class="mcp-subline">${esc(client(e.client))}</span></td><td class="mcp-duration" data-label="Durata">${e.durationMs == null ? '—' : `${Number(e.durationMs).toLocaleString('it-IT')} ms`}</td><td class="mcp-event-status">${badge(e.status)}</td><td class="mcp-event-info"><button type="button" data-action="detail" data-id="${esc(e.id)}" aria-label="Informazioni ${esc(e.tool || 'evento')} del ${esc(date(e.ts))}"><i data-lucide="info" aria-hidden="true"></i>Info</button></td></tr>`).join('')}</tbody></table>` : '<div class="mcp-empty"><i data-lucide="list-filter" aria-hidden="true"></i><h3>Nessuna attività con questi filtri</h3><p>Modifica i filtri oppure esegui un’operazione dal tuo client MCP.</p></div>';
   const hasEntries = activity.entries.length > 0, showPager = hasEntries || (activity.offset > 0 && activity.total > 0);
   q('.mcp-pager').hidden = !showPager;
   const total = Math.max(activity.total || 0, activity.offset + activity.entries.length);
@@ -326,7 +359,16 @@ async function poll() {
 }
 
 async function action(work) { if (busy) return; busy = true; clearError(); q('#mcp-operation-status').hidden = false; try { await work(); } catch (err) { if (visible()) error(err); } finally { busy = false; q('#mcp-operation-status').hidden = true; if (settings && q('#mcp-settings-form')) updateDirty(); } }
-async function copy(text) { if (!navigator.clipboard?.writeText) throw new Error('Copia automatica non disponibile: seleziona il testo e copialo con la tastiera.'); await navigator.clipboard.writeText(text); toast('Copiato negli appunti.'); }
+const copyTimers = new WeakMap();
+async function copy(text, button) {
+  if (!navigator.clipboard?.writeText) throw new Error('Copia automatica non disponibile: seleziona il testo e copialo con la tastiera.');
+  await navigator.clipboard.writeText(text);
+  clearTimeout(copyTimers.get(button));
+  const label = button.dataset.action === 'copy-key' ? 'Copia chiave' : 'Copia JSON';
+  button.innerHTML = '<i data-lucide="check" aria-hidden="true"></i> Copiato';
+  refreshLucideIcons(button);
+  copyTimers.set(button, setTimeout(() => { button.innerHTML = `<i data-lucide="copy" aria-hidden="true"></i> ${label}`; refreshLucideIcons(button); copyTimers.delete(button); }, 2000));
+}
 function onInput(e) { if (e.target.closest('#mcp-settings-form')) { settingsEdits++; updateDirty(); } if (e.target.closest('#mcp-filters')) { clearTimeout(filterTimer); filterTimer = setTimeout(()=>loadActivity(true), 400); } }
 function onChange(e) { if (e.target.closest('#mcp-settings-form')) { settingsEdits++; updateDirty(); } if (e.target.closest('#mcp-filters') && e.target.matches('select')) { clearTimeout(filterTimer); loadActivity(true); } if (e.target.id === 'mcp-page-size') { activity.limit = Number(e.target.value); loadActivity(true); } if (e.target.id === 'mcp-key-all') q('#mcp-key-scopes').hidden = e.target.checked; }
 function onClick(e) {
@@ -334,6 +376,8 @@ function onClick(e) {
   if (button.dataset.pane) { selectPane(button.dataset.pane); return; }
   const name = button.dataset.action;
   if (!name) return;
+  if (name === 'toggle-filters') { toggleFilters(); return; }
+  if (name === 'close-filters') { if (filtersInSheet) closeNavigationSheet(); else { filterContent.hidden = true; q('[data-action="toggle-filters"]').setAttribute('aria-expanded', 'false'); q('[data-action="toggle-filters"]').focus(); } return; }
   if (name === 'close') { close(); return; }
   if (name === 'close-detail') { closeDetail(); return; }
   if (name === 'detail') { openDetail(button.dataset.id); return; }
@@ -342,15 +386,18 @@ function onClick(e) {
   if (name === 'prev' || name === 'next') { activity.offset = Math.max(0, activity.offset + (name === 'prev' ? -activity.limit : activity.limit)); loadActivity(); return; }
   if (['errors','writes','reset-filters','overview-errors'].includes(name)) { resetFilters(); if (name === 'errors' || name === 'overview-errors') q('[name="status"]').value = 'failed'; if (name === 'writes') q('[name="category"]').value = 'write'; if (name === 'overview-errors') selectPane('activity'); else loadActivity(true); return; }
   if (name === 'open-activity') { selectPane('activity').then(()=>openDetail(button.dataset.id)); return; }
+  if (name === 'copy-endpoint' || name === 'copy-key') {
+    clearError();
+    copy(name === 'copy-endpoint' ? clientConfiguration() : q('#mcp-secret').value, button).catch(err => { if (visible()) error(err); });
+    return;
+  }
   action(async () => {
     if (name === 'refresh-status') await refreshAll();
-    if (name === 'copy-endpoint') await copy(endpoint());
     if (name === 'refresh-access') { try { await loadAccess(); } catch (err) { paneError('access', err); } }
     if (name === 'discard-settings') { if (await chiediConferma('Scartare le modifiche alle impostazioni?')) await loadSettings(); }
     if (name === 'close-session' && await chiediConferma('Chiudere questa sessione MCP? Le operazioni già avviate vengono attese; il client dovrà riconnettersi.')) { await emit('mcp:sessions:close', { id: button.dataset.id }); await refreshAll(); }
     if (name === 'readonly' && await chiediConferma(`Impostare “${button.dataset.name}” ${button.dataset.value === 'true' ? 'in sola lettura' : 'come scrivibile'}? La proprietà della connessione è condivisa con la UI.`)) { await emit('mcp:connections:readonly', { name: button.dataset.name, readOnly: button.dataset.value === 'true' }); await loadAccess(); }
     if (name === 'revoke-key' && await chiediConferma('Revocare questa API key? Le successive richieste del client saranno rifiutate.')) { await emit('apikeys:revoke', { id: button.dataset.id }); resetSecret(); await loadAccess(); }
-    if (name === 'copy-key') await copy(q('#mcp-secret').value);
     if (name === 'hide-key') resetSecret();
     if (name === 'export-json' || name === 'export-csv') { const res = await emit('mcp:activity:export', { ...filters(), format: name === 'export-csv' ? 'csv' : 'json', ...(activity.snapshot ? { snapshot: activity.snapshot } : {}) }); await scaricaFile(new Blob([res.content], { type: res.mimeType }), res.filename); if (res.truncated) error('Esportazione limitata al registro disponibile.'); }
   });

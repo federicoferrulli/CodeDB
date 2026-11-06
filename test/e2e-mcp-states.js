@@ -95,6 +95,7 @@ const { startTestServer } = require('./e2e-harness');
     assert.equal(await page.locator('#mcp-page-info').innerText(), '');
     await assertCentered('.mcp-activity-layout', '#mcp-activity-list .data-empty', 'Storico attività vuoto');
     await page.screenshot({ path: path.join(output, 'attivita-vuote.png') });
+    await page.locator('[data-action="toggle-filters"]').click();
     await page.locator('#mcp-filters [name="search"]').fill('assente');
     await page.getByText('Nessuna attività con questi filtri', { exact: true }).waitFor();
     assert.equal(await page.locator('#mcp-panel .mcp-pager').isVisible(), false, 'Paginazione nascosta senza corrispondenze ai filtri');

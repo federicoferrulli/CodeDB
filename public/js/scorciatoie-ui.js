@@ -100,6 +100,7 @@ export function apriPannelloScorciatoie() {
   document.body.appendChild(overlay);
 
   const lista = overlay.querySelector('#scorciatoie-lista');
+  let mappaSalvata = JSON.stringify(mappaEffettiva(personali).mappa);
   let inRegistrazione = null; // id dell'azione in attesa di una combinazione
 
   const disegna = () => {
@@ -160,6 +161,7 @@ export function apriPannelloScorciatoie() {
     salvaScorciatoie({}).then(() => {
       toast('Scorciatoie ripristinate.'); // anche qui, senza dettagli interni
     });
+    mappaSalvata = JSON.stringify(mappaEffettiva(personali).mappa);
   });
 
   function chiudi() {
@@ -174,6 +176,8 @@ export function apriPannelloScorciatoie() {
   // toast, non una modale ostaggio del socket.
   overlay.querySelector('#scorciatoie-chiudi').addEventListener('click', () => {
     chiudi();
+    const { mappa, errori } = mappaEffettiva(personali);
+    if (!errori.length && JSON.stringify(mappa) === mappaSalvata) return;
     salvaScorciatoie(personali).then((esito) => {
       if (esito.errori.length) {
         notifica('Attenzione: ' + esito.errori[0], { tipo: 'errore', titolo: "Scorciatoie" });

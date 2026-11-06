@@ -26,6 +26,23 @@ async function main() {
     await mcp.callTool({ name: 'connect_database', arguments: { name: 'connessione-di-test-inesistente' } });
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
     const errors = [];
+    if (process.env.MCP_PANEL_SKELETON_MUTANT === '1') await page.route('**/css/mcp.css*', async route => {
+      const response = await route.fetch();
+      const source = await response.text();
+      const body = source.replace('.mcp-loading { flex: 1; height: 100%; }', '.mcp-loading { flex: none; height: auto; }');
+      assert.notEqual(body, source, 'Il mutante rimuove il riempimento dello skeleton');
+      await route.fulfill({ response, body });
+    });
+    if (process.env.MCP_PANEL_FILTER_MUTANT === '1') await page.route('**/js/mcp-panel.js', async route => {
+      const response = await route.fetch(), source = await response.text();
+      const body = source.replace('e.stopPropagation(); handler(e);', 'e.stopPropagation(); if (!filtersInSheet) handler(e);');
+      assert.notEqual(body, source, 'Il mutante interrompe i controlli nel drawer');
+      await route.fulfill({ response, body });
+    });
+    if (process.env.MCP_PANEL_MOBILE_MUTANT === '1') await page.route('**/css/mcp.css*', async route => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body: `${await response.text()}\n@media(max-width:700px){.mcp-events{min-width:900px!important}}` });
+    });
     if (process.env.MCP_PANEL_SELECTION_MUTANT === '1') await page.route('**/js/mcp-panel.js', async route => {
       const response = await route.fetch();
       const source = await response.text();
@@ -54,6 +71,11 @@ async function main() {
     console.log('OK: apertura e sessione reale.');
     assert.equal(await page.locator('#welcome').isVisible(), false, 'Il workspace lascia spazio alla sezione MCP');
     assert.match(await page.locator('#mcp-endpoint-value').inputValue(), /\/mcp$/);
+    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedMcpConfig = text; } } }));
+    await page.locator('[data-action="copy-endpoint"]').click();
+    const copiedConfig = await page.evaluate(() => JSON.parse(window.copiedMcpConfig));
+    assert.deepEqual(copiedConfig, { mcpServers: { codedb: { command: 'npx', args: ['-y', 'mcp-remote', `${server.url}/mcp`] } } }, 'La copia include la configurazione npx completa');
+    assert.equal(await page.locator('#mcp-operation-status').isVisible(), false, 'La copia non avvia il caricamento globale');
     await page.screenshot({ path: path.join(output, 'overview-dark-1440.png') });
 
     await page.locator('#mcp-tab-activity').click();
@@ -66,10 +88,12 @@ async function main() {
     await page.screenshot({ path: path.join(output, 'activity-dark-1440.png') });
     await page.locator('[data-action="close-detail"]').click();
     assert.equal(await page.locator('.mcp-activity-list tr.selected').count(), 0, 'Chiudere il dettaglio rimuove la selezione visiva');
+    await page.locator('[data-action="toggle-filters"]').click();
     await page.locator('#mcp-filters [name="search"]').fill('nessun-evento-corrispondente');
     await page.getByText('Nessuna attività con questi filtri').waitFor();
-    await page.locator('[data-action="reset-filters"]').click();
+    await page.locator('#mcp-filter-content [data-action="reset-filters"]').click();
     await page.locator('[data-action="detail"]').first().waitFor();
+    if (await page.locator('#mcp-filter-content').isVisible()) await page.locator('[data-action="close-filters"]').click();
     await page.locator('[data-action="live"]').click();
     assert.equal(await page.locator('[data-action="live"]').getAttribute('aria-pressed'), 'false');
     assert.match(await page.locator('#mcp-live-state').innerText(), /in pausa/);
@@ -80,6 +104,39 @@ async function main() {
     const exported = JSON.parse(fs.readFileSync(await file.path(), 'utf8'));
     assert(exported.some(e => e.tool === 'list_saved_connections'), 'Esportazione dello storico reale');
     console.log('OK: elenco, dettaglio, ricerca, pausa ed esportazione.');
+    // Ritarda la risposta per verificare il feedback durante una richiesta reale.
+    await page.evaluate(async () => {
+      const { socketReale, impostaSocket } = await import('/js/socket.js');
+      const real = socketReale();
+      impostaSocket(new Proxy(real, { get(target, key) {
+        if (key === 'timeout') return undefined;
+        if (key === 'emit') return (event, payload, cb) => {
+          if (event === 'mcp:activity:list') { window.releaseMcpFilter = () => { impostaSocket(real); target.emit(event, payload, cb); }; return target; }
+          return target.emit(event, payload, cb);
+        };
+        const value = target[key]; return typeof value === 'function' ? value.bind(target) : value;
+      } }));
+    });
+    await page.locator('.mcp-activity-toolbar [data-action="errors"]').click();
+    assert.equal(await page.locator('[data-action="errors"]').getAttribute('aria-pressed'), 'true', 'Selezione immediata durante la richiesta');
+    assert.equal(await page.locator('#mcp-activity-list').getAttribute('aria-busy'), 'true');
+    assert.equal(await page.locator('.mcp-loading .skeleton').count(), 30, 'Skeleton durante il caricamento');
+    const viewportSkeleton = page.viewportSize();
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 1200 });
+      const misure = await page.evaluate(() => {
+        const lista = document.querySelector('#mcp-activity-list').getBoundingClientRect();
+        const tabella = document.querySelector('.mcp-loading').getBoundingClientRect();
+        return { disponibile: lista.height, occupata: tabella.height };
+      });
+      assert(Math.abs(misure.disponibile - misure.occupata) <= 1, `Skeleton a piena altezza (${width}px): ${JSON.stringify(misure)}`);
+    }
+    await page.setViewportSize(viewportSkeleton);
+    await page.evaluate(async () => { window.releaseMcpFilter(); const { socketReale, impostaSocket } = await import('/js/socket.js'); impostaSocket(socketReale()); });
+    await page.waitForFunction(() => document.querySelector('#mcp-activity-list').getAttribute('aria-busy') === 'false');
+    assert.equal(await page.locator('.mcp-loading').count(), 0);
+    await page.locator('.mcp-activity-toolbar [data-action="reset-filters"]').click();
+    await page.locator('[data-action="detail"]').first().waitFor();
 
     await page.locator('#mcp-tab-access').click();
     await page.getByText(/CodeDB è in modalità locale/).waitFor();
@@ -130,7 +187,27 @@ async function main() {
       await page.locator('#mcp-tab-activity').click();
       await page.locator('[data-action="detail"]').first().waitFor();
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Nessuno scorrimento orizzontale della pagina mobile');
-      await page.locator('[data-action="detail"]').first().click();
+      await page.locator('[data-action="toggle-filters"]').click();
+      await page.getByRole('dialog', { name: /Filtri.*MCP/ }).waitFor();
+      await page.screenshot({ path: path.join(output, `filters-${theme}-390.png`) });
+      assert.equal(await page.locator('#mcp-filters').isVisible(), true, 'Il drawer contiene i filtri esistenti');
+      await page.locator('#mcp-filters [name="search"]').fill('evento-inesistente-drawer');
+      await page.waitForFunction(() => document.querySelector('#mcp-filter-count').textContent === '1 filtro attivo', null, { timeout: 5000 });
+      await page.locator('[data-action="close-filters"]').click();
+      await page.getByRole('dialog', { name: /Filtri.*MCP/ }).waitFor({ state: 'hidden' });
+      await page.getByText('Nessuna attività con questi filtri').waitFor();
+      await page.locator('[data-action="toggle-filters"]').click();
+      assert.equal(await page.locator('#mcp-filters [name="search"]').inputValue(), 'evento-inesistente-drawer', 'Riaprire il drawer conserva i filtri');
+      await page.locator('#mcp-filter-content [data-action="reset-filters"]').click();
+      await page.waitForFunction(() => document.querySelector('#mcp-filter-count').textContent === 'Nessun filtro attivo');
+      await page.locator('[data-action="close-filters"]').click();
+      await page.getByRole('dialog', { name: /Filtri.*MCP/ }).waitFor({ state: 'hidden' });
+      await page.locator('.mcp-event-info button').first().waitFor();
+      assert.equal(await page.locator('[data-action="toggle-filters"]').getAttribute('aria-expanded'), 'false');
+      const list = await page.locator('#mcp-activity-list').evaluate(el => ({ width: el.clientWidth, scroll: el.scrollWidth }));
+      assert(list.scroll <= list.width + 1, 'Gli eventi mobile non richiedono scorrimento orizzontale');
+      await page.screenshot({ path: path.join(output, `events-${theme}-390.png`) });
+      await page.locator('.mcp-event-info [data-action="detail"]').first().click();
       await page.locator('#mcp-detail h2').waitFor();
       assert.equal(await page.locator('#mcp-activity-list').isVisible(), false, 'Il dettaglio mobile sostituisce l’elenco');
       await page.screenshot({ path: path.join(output, `activity-${theme}-390.png`) });
