@@ -58,6 +58,8 @@
 .mcp-empty > svg { width: 28px; height: 28px; margin-bottom: 12px; }
 .mcp-empty h3 { color: var(--fg); }
 .mcp-empty p { max-width: 60ch; margin-inline: auto !important; }
+#mcp-panel .data-empty h3 { margin-top: var(--space-md, 12px); }
+#mcp-panel .data-empty p { margin-inline: auto; }
 .mcp-activity-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 24px 28px 0; }
 .mcp-live-state { display: inline-flex; align-items: center; gap: 7px; color: var(--fg-dim); font-size: 12px; white-space: nowrap; }
 .mcp-live-state:not([data-paused="true"]) .mcp-status-dot { color: var(--success); }

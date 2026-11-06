@@ -50,16 +50,25 @@ function paint(node = panel) { mountArcControls(node); refreshLucideIcons(node);
 function error(err) { q('#mcp-message').textContent = err?.message || String(err); q('#mcp-message').hidden = false; }
 function clearError() { q('#mcp-message').hidden = true; q('#mcp-message').textContent = ''; }
 function emptyState(node, options) {
+  if (options.kind === 'error') clearError();
   renderDataEmpty(node, null); node.replaceChildren();
   renderDataEmpty(node, { compact: true, ...options });
-  node.querySelector('.data-empty-host')?.setAttribute('data-arc-owned', '');
+  const host = node.querySelector('.data-empty-host');
+  if (host) { host.setAttribute('data-arc-owned', ''); host.dataset.kind = options.kind || 'data'; }
+}
+const hasPaneError = () => !!q(`#mcp-pane-${pane} .data-empty-host[data-kind="error"]`);
+function paneError(name, err) {
+  if (name === 'overview' && !status) { emptyState(q('#mcp-overview-content'), { kind: 'error', title: 'Servizio MCP non disponibile', description: err.message, actionLabel: 'Riprova', onAction: refreshAll }); return; }
+  if (name === 'settings' && !q('#mcp-settings-form')) { emptyState(q('#mcp-settings-content'), { kind: 'error', title: 'Impostazioni non disponibili', description: err.message, actionLabel: 'Riprova', onAction: () => selectPane(name) }); return; }
+  if (name === 'access' && !q('#mcp-connections table')) { q('#mcp-keys').replaceChildren(); emptyState(q('#mcp-connections'), { kind: 'error', title: 'Accessi non disponibili', description: err.message, actionLabel: 'Riprova', onAction: () => selectPane(name) }); return; }
+  if (!hasPaneError()) error(err);
 }
 function resetSecret() { const box = q('#mcp-new-key'); if (box) { box.replaceChildren(); box.hidden = true; } }
 function clearActivity() {
   activity = { entries: [], offset: 0, total: 0, limit: 50, snapshot: null }; selectedId = null; latestId = null;
   for (const id of ['mcp-overview-content','mcp-activity-list','mcp-detail','mcp-connections','mcp-keys']) q(`#${id}`).replaceChildren();
   q('#mcp-detail').hidden = true; q('.mcp-activity-layout').classList.remove('has-detail');
-  q('#mcp-new-activity').hidden = true; q('#mcp-page-info').textContent = '';
+  q('#mcp-new-activity').hidden = true; q('#mcp-page-info').textContent = ''; q('.mcp-pager').hidden = true;
 }
 
 export function initMcpPanel() {
@@ -88,7 +97,7 @@ export function initMcpPanel() {
         <button type="button" id="mcp-new-activity" data-action="refresh-activity" class="mcp-new-activity" hidden>Nuove attività disponibili · Aggiorna elenco</button>
         <p id="mcp-activity-note" class="mcp-muted" role="status"></p>
         <div class="mcp-activity-layout"><div class="mcp-activity-list" id="mcp-activity-list" aria-label="Elenco attività"></div><aside id="mcp-detail" class="mcp-detail" aria-label="Dettaglio attività" hidden></aside></div>
-        <footer class="mcp-pager"><span id="mcp-page-info" role="status"></span><label>Per pagina<select id="mcp-page-size"><option>25</option><option selected>50</option><option>100</option><option>200</option></select></label><button type="button" data-action="prev">Precedenti</button><button type="button" data-action="next">Successivi</button></footer>
+        <footer class="mcp-pager" hidden><span id="mcp-page-info" role="status"></span><label>Per pagina<select id="mcp-page-size"><option>25</option><option selected>50</option><option>100</option><option>200</option></select></label><button type="button" data-action="prev">Precedenti</button><button type="button" data-action="next">Successivi</button></footer>
       </section>
       <section id="mcp-pane-access" role="tabpanel" aria-labelledby="mcp-tab-access" hidden><div class="mcp-section-body"><div id="mcp-connections"></div><div id="mcp-keys"></div><div id="mcp-new-key" class="mcp-key-reveal" hidden></div></div></section>
       <section id="mcp-pane-settings" role="tabpanel" aria-labelledby="mcp-tab-settings" hidden><div class="mcp-section-body" id="mcp-settings-content"></div></section>
@@ -146,7 +155,7 @@ async function refreshAll() {
     const form = q('#mcp-settings-form'); if (form) form.inert = false;
     status = res; renderOverview();
     await loadPane(pane);
-  } catch (err) { if (token === generation && visible()) { error(err); if (!status) emptyState(q('#mcp-overview-content'), { kind: 'error', title: 'Servizio MCP non disponibile', description: err.message, actionLabel: 'Riprova', onAction: refreshAll }); } }
+  } catch (err) { if (token === generation && visible()) { if (!status) emptyState(q('#mcp-overview-content'), { kind: 'error', title: 'Servizio MCP non disponibile', description: err.message, actionLabel: 'Riprova', onAction: refreshAll }); if (pane !== 'overview' || status) paneError(pane, err); } }
   finally { if (token === generation) schedule(); }
 }
 
@@ -184,7 +193,7 @@ async function selectPane(name) {
   pane = name; clearError();
   panel.querySelectorAll('[role="tab"]').forEach(t => { t.setAttribute('aria-selected', String(t.dataset.pane === name)); t.tabIndex = t.dataset.pane === name ? 0 : -1; });
   panel.querySelectorAll('[role="tabpanel"]').forEach(p => { p.hidden = p.id !== `mcp-pane-${name}`; });
-  try { await loadPane(name); } catch (err) { if (visible() && pane === name) { error(err); if (name === 'settings' && !q('#mcp-settings-form')) emptyState(q('#mcp-settings-content'), { kind: 'error', title: 'Impostazioni non disponibili', description: err.message, actionLabel: 'Riprova', onAction: () => selectPane(name) }); if (name === 'access') emptyState(q('#mcp-connections'), { kind: 'error', title: 'Accessi non disponibili', description: err.message, actionLabel: 'Riprova', onAction: () => selectPane(name) }); } }
+  try { await loadPane(name); } catch (err) { if (visible() && pane === name) paneError(name, err); }
   schedule();
 }
 async function loadPane(name) {
@@ -212,7 +221,7 @@ async function loadActivity(reset = false) {
   const seq = ++requestSequence, token = generation;
   if (reset) { activity.offset = 0; activity.snapshot = null; closeDetail(false); }
   q('#mcp-activity-list').setAttribute('aria-busy', 'true');
-  if (!activity.entries.length) q('#mcp-activity-list').innerHTML = '<p class="mcp-empty" role="status">Caricamento attività…</p>';
+  if (!activity.entries.length) { q('.mcp-pager').hidden = true; q('#mcp-activity-list').innerHTML = '<p class="mcp-empty" role="status">Caricamento attività…</p>'; }
   try {
     const result = await emit('mcp:activity:list', { ...filters(), limit: activity.limit, offset: activity.offset, ...(activity.snapshot ? { snapshot: activity.snapshot } : {}) });
     if (seq !== requestSequence || token !== generation || !visible()) return;
@@ -220,7 +229,7 @@ async function loadActivity(reset = false) {
     latestId = fingerprint(activity.entries);
     if (reset) q('#mcp-new-activity').hidden = true;
     renderActivity();
-  } catch (err) { if (seq === requestSequence && token === generation) { error(err); if (!activity.entries.length) emptyState(q('#mcp-activity-list'), { kind: 'error', title: 'Attività non disponibili', description: err.message, actionLabel: 'Riprova', onAction: () => loadActivity(true) }); } }
+  } catch (err) { if (seq === requestSequence && token === generation) { if (!activity.entries.length) { q('.mcp-pager').hidden = true; q('#mcp-page-info').textContent = ''; emptyState(q('#mcp-activity-list'), { kind: 'error', title: 'Attività non disponibili', description: err.message, actionLabel: 'Riprova', onAction: () => loadActivity(true) }); } else error(err); } }
   finally { if (seq === requestSequence) q('#mcp-activity-list').setAttribute('aria-busy', 'false'); }
 }
 function renderActivity() {
@@ -230,9 +239,12 @@ function renderActivity() {
   q('[data-action="errors"]').setAttribute('aria-pressed', String(current.status === 'failed'));
   q('[data-action="writes"]').setAttribute('aria-pressed', String(current.category === 'write'));
   q('#mcp-activity-list').innerHTML = activity.entries.length ? `<table class="mcp-table"><thead><tr><th>Ora / Azione</th><th>Bersaglio</th><th>Autore / Client</th><th>Durata</th><th>Esito</th></tr></thead><tbody>${activity.entries.map(e=>`<tr${e.id === selectedId ? ' class="selected"' : ''}><td><button type="button" class="mcp-row-open" data-action="detail" data-id="${esc(e.id)}" aria-label="Dettaglio ${esc(e.tool || 'attività')} del ${esc(date(e.ts))}"><span class="mcp-muted">${esc(date(e.ts))}</span><strong>${esc(e.tool || e.summary || 'Attività MCP')}</strong></button></td><td>${esc(e.connection || '—')}<span class="mcp-subline">${esc([e.db,e.coll].filter(Boolean).join(' › '))}</span></td><td>${esc(e.user || 'Non attribuito')}<span class="mcp-subline">${esc(client(e.client))}</span></td><td class="mcp-duration">${e.durationMs == null ? '—' : `${Number(e.durationMs).toLocaleString('it-IT')} ms`}</td><td>${badge(e.status)}</td></tr>`).join('')}</tbody></table>` : '<div class="mcp-empty"><i data-lucide="list-filter" aria-hidden="true"></i><h3>Nessuna attività con questi filtri</h3><p>Modifica i filtri oppure esegui un’operazione dal tuo client MCP.</p></div>';
-  q('#mcp-page-info').textContent = activity.total ? `${activity.offset + 1}–${activity.offset + activity.entries.length} di ${activity.total}` : 'Nessuna attività';
+  const hasEntries = activity.entries.length > 0, showPager = hasEntries || (activity.offset > 0 && activity.total > 0);
+  q('.mcp-pager').hidden = !showPager;
+  const total = Math.max(activity.total || 0, activity.offset + activity.entries.length);
+  q('#mcp-page-info').textContent = hasEntries ? `${activity.offset + 1}–${activity.offset + activity.entries.length} di ${total}` : '';
   q('[data-action="prev"]').disabled = activity.offset === 0;
-  q('[data-action="next"]').disabled = activity.offset + activity.entries.length >= activity.total;
+  q('[data-action="next"]').disabled = activity.offset + activity.entries.length >= total;
   q('#mcp-activity-note').textContent = activity.truncated ? 'Lo storico disponibile è limitato dalla conservazione del registro.' : 'Anteprime e conferme sono distinte dalle operazioni eseguite. I dati sensibili vengono mascherati.';
   paint(q('#mcp-activity-list'));
   if (!activity.entries.length) {
@@ -304,12 +316,12 @@ async function poll() {
     if (token !== generation || !visible()) return;
     status = res;
     if (pane === 'overview' && !q('#mcp-overview-content').contains(document.activeElement)) renderOverview();
-    if (pane === 'activity' && !paused) {
+    if (pane === 'activity' && !paused && latestId !== null) {
       const recent = await emit('mcp:activity:list', { ...filters(), limit: activity.limit, offset: activity.offset, transient: true });
       if (token !== generation || !visible() || pane !== 'activity') return;
       if (fingerprint(recent.entries || []) !== latestId) q('#mcp-new-activity').hidden = false;
     }
-  } catch (err) { if (token === generation && visible()) error(err); }
+  } catch (err) { if (token === generation && visible() && !hasPaneError()) error(err); }
   finally { if (token === generation) schedule(); }
 }
 
@@ -333,7 +345,7 @@ function onClick(e) {
   action(async () => {
     if (name === 'refresh-status') await refreshAll();
     if (name === 'copy-endpoint') await copy(endpoint());
-    if (name === 'refresh-access') await loadAccess();
+    if (name === 'refresh-access') { try { await loadAccess(); } catch (err) { paneError('access', err); } }
     if (name === 'discard-settings') { if (await chiediConferma('Scartare le modifiche alle impostazioni?')) await loadSettings(); }
     if (name === 'close-session' && await chiediConferma('Chiudere questa sessione MCP? Le operazioni già avviate vengono attese; il client dovrà riconnettersi.')) { await emit('mcp:sessions:close', { id: button.dataset.id }); await refreshAll(); }
     if (name === 'readonly' && await chiediConferma(`Impostare “${button.dataset.name}” ${button.dataset.value === 'true' ? 'in sola lettura' : 'come scrivibile'}? La proprietà della connessione è condivisa con la UI.`)) { await emit('mcp:connections:readonly', { name: button.dataset.name, readOnly: button.dataset.value === 'true' }); await loadAccess(); }
