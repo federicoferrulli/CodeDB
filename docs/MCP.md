@@ -1,6 +1,6 @@
 # Guida: installare e usare il server MCP di CodeDB
 
-CodeDB (già Mongo Web GUI) espone un server **MCP (Model Context Protocol)** che permette ad agenti AI (Claude Code, Claude Desktop, Cursor, ...) di esplorare e interrogare i database MongoDB e MySQL configurati nella GUI, senza mai vedere le credenziali. Di default l'accesso è in **sola lettura**; le scritture (inclusi i drop di database/collection) sono opt-in per connessione e passano sempre da una **doppia conferma umana**.
+CodeDB (già Mongo Web GUI) espone un server **MCP (Model Context Protocol)** che permette ad agenti AI (Claude Code, Claude Desktop, Cursor, ...) di esplorare e interrogare i database MongoDB, MySQL e PostgreSQL configurati nella GUI, senza mai vedere le credenziali. Di default l'accesso è in **sola lettura**; le scritture (inclusi i drop di database/collection) sono opt-in per connessione e passano sempre da una **doppia conferma umana**.
 
 ## 1. Prerequisiti
 
@@ -20,7 +20,24 @@ Mongo Web GUI in ascolto su http://127.0.0.1:3030
 Endpoint MCP (Streamable HTTP) su http://127.0.0.1:3030/mcp
 ```
 
-Il server MCP è **lo stesso processo** della GUI: finché la GUI è su, l'endpoint `/mcp` è disponibile. Porta e host si cambiano con le env `PORT` e `HOST`.
+Il server MCP è **lo stesso processo** della GUI e usa l'endpoint `/mcp`. Puoi attivarlo e disattivarlo da **Strumenti → MCP → Impostazioni**. Porta e host sono condivisi con la GUI e si cambiano con le variabili `PORT` e `HOST`.
+
+### Sezione MCP nell'applicazione
+
+**Strumenti → MCP** apre una sezione indipendente dalla connessione selezionata. Tornando ai dati ritrovi il workspace aperto.
+
+- **Panoramica:** indirizzo del servizio, stato attivo/disattivazione/disattivato, salute del registro e sessioni visibili al tuo account. La chiusura di una sessione attende le operazioni già in corso e libera connessioni e conferme pendenti.
+- **Attività:** letture, scritture, esplorazioni ed errori con filtri, dettaglio e aggiornamento sospendibile. La richiesta di conferma e la sua esecuzione sono invocazioni distinte, collegate dalla stessa operazione. Esiti parziali, ripristini dopo errore e risultati non verificabili sono indicati esplicitamente. Il client mostrato è il nome dichiarato dal client MCP; l'identità autorizzata è quella associata alla chiave API.
+- **Connessioni e accessi:** connessioni consentite, permessi effettivi e gestione delle chiavi API quando RBAC è attivo. Una nuova chiave viene mostrata una sola volta. Il flag di sola lettura della connessione è condiviso con il resto di CodeDB; la restrizione globale in Impostazioni riguarda invece il solo MCP.
+- **Impostazioni:** abilitazione, sola lettura MCP, operazioni DDL/backup/import, numero e inattività delle sessioni, durata e quote delle conferme, dimensione e generazioni dei registri. Le modifiche sono validate e conservate dopo il riavvio. Se un altro amministratore salva nel frattempo, occorre ricaricare prima di applicare la propria modifica.
+
+Solo l'amministratore dell'installazione può cambiare i parametri globali. L'owner consulta le attività del proprio tenant e i sottoutenti soltanto le proprie. Le vecchie registrazioni prive di identità restano riservate al root locale: il nome di una connessione non basta ad attribuirle a un account.
+
+La disattivazione blocca nuove operazioni e attende quelle accettate prima di chiudere le sessioni. La riattivazione consente ai client di inizializzare nuove sessioni. Le restrizioni di scrittura vengono verificate anche sulle connessioni già aperte e quando si usa un token di conferma.
+
+I parametri risiedono in `mcp-settings.json`, oppure nel percorso `CODEDB_MCP_SETTINGS_FILE`; in Electron distribuito il file si trova nella cartella dati utente. Le variabili `CODEDB_MCP_*` hanno precedenza sui valori salvati: il form mostra i campi imposti dall'ambiente e il nome della variabile da modificare prima di riavviare. `CODEDB_PUBLIC_URL` permette di indicare l'indirizzo esterno dietro un reverse proxy.
+
+L'audit conserva metadati, struttura dei parametri e riepiloghi; non archivia credenziali, token di conferma o copie integrali dei risultati. I literal delle query e i valori dei documenti vengono mascherati. Lo storico è limitato dalla rotazione dei file e dalla finestra di consultazione: un limite o una lettura incompleta vengono segnalati. Le esportazioni JSON/CSV rispettano gli stessi permessi, arrivano fino a 10.000 attività e 10 MiB e dichiarano eventuali troncamenti.
 
 ## 3. Registrare il server nei client AI
 
@@ -100,7 +117,7 @@ Le righe eventualmente restituite da uno statement (`RETURNING` su PostgreSQL) p
 
 ### Flag readOnly modificabile dall'AI (solo con doppia conferma)
 
-L'AI **non può modificare `connections.ini`**, con una sola eccezione controllata: il tool `set_connection_read_only` cambia il flag `readOnly` di una connessione salvata (mai credenziali o altri campi). Anche qui vale la doppia conferma: la prima chiamata restituisce l'anteprima del cambio e un `confirm_token`; l'applicazione avviene solo col token, dopo la tua approvazione esplicita — in **entrambe** le direzioni (anche per tornare a sola lettura). Il nuovo valore vale per le connessioni aperte da quel momento: l'AI deve riconnettersi con `connect_database` per usarlo. Tutto finisce nell'audit log.
+L'AI **non può modificare `connections.ini`**, con una sola eccezione controllata: il tool `set_connection_read_only` cambia il flag `readOnly` di una connessione salvata (mai credenziali o altri campi). Anche qui vale la doppia conferma: la prima chiamata restituisce l'anteprima del cambio e un `confirm_token`; l'applicazione avviene solo col token, dopo la tua approvazione esplicita — in **entrambe** le direzioni (anche per tornare a sola lettura). Il valore salvato viene ricontrollato anche sulle sessioni MCP già aperte e prima di eseguire una conferma pendente: non serve riconnettersi. Tutto finisce nell'audit log.
 
 ### Backup e ripristino via MCP
 
@@ -118,8 +135,8 @@ Esempio di prompt: *"Connettiti alla connessione 'Produzione', guarda lo schema 
 
 - **Sola lettura di default**: `execute_query` non può mai scrivere, nemmeno sulle connessioni scrivibili. Su MongoDB sono vietati gli stage `$out`/`$merge`; su MySQL la query deve iniziare con SELECT/WITH/SHOW/DESCRIBE/EXPLAIN e gira comunque in una transazione `READ ONLY` (timeout 30 s), che blocca anche il DML annidato. Le scritture (DML e drop) passano solo da `execute_write`, solo su connessioni con `readOnly=false`, e con conferma a due passaggi.
 - Le credenziali non transitano mai verso l'AI: si connette solo per nome di connessione salvata. `connections.ini` non è modificabile dall'AI, tranne il solo flag `readOnly` via `set_connection_read_only`, sempre con doppia conferma.
-- Le connessioni DB condividono con la UI il budget globale di 100 per istanza, senza un limite separato per client. Max 32 sessioni MCP; le sessioni inattive da 30 minuti vengono chiuse.
-- Con bind su loopback (default) l'endpoint rifiuta richieste con header `Host` non locale (anti DNS-rebinding). Se esponi il server in rete (`HOST=0.0.0.0`), ricorda che **non c'è autenticazione**: fallo solo su reti fidate.
+- Le connessioni DB condividono con la UI il budget globale di 100 per istanza, senza un limite separato per client. I valori iniziali sono 32 sessioni MCP e 30 minuti di inattività; sono configurabili dalla sezione MCP. Le operazioni in corso vengono attese prima della chiusura.
+- Con bind su loopback (default) l'endpoint rifiuta richieste con header `Host` non locale (anti DNS-rebinding). Con RBAC attivo serve una chiave API valida a ogni richiesta, verificata anche sulle sessioni esistenti. L'esposizione in rete resta soggetta ai controlli HTTPS e autenticazione del server CodeDB.
 
 ## 6. Risoluzione problemi
 
@@ -132,4 +149,6 @@ Esempio di prompt: *"Connettiti alla connessione 'Produzione', guarda lo schema 
 | Errori "sola lettura" | Comportamento voluto: la connessione non ha `readOnly=false` — abilitala dal file o via `set_connection_read_only` (con la tua conferma) |
 | `confirm_token sconosciuto o scaduto` | Token già usato (monouso) o passati più di 5 minuti: l'AI deve ripetere la richiesta senza token |
 
-Test end-to-end: `node test/e2e-mcp.js` (MongoDB) e `node test/e2e-mcp-mysql.js` (MySQL), col server già avviato.
+Test end-to-end: `node test/e2e-mcp.js` (MongoDB) e `node test/e2e-mcp-mysql.js` (MySQL) avviano un server isolato tramite l'harness. `npm run test:e2e:mcp-panel` verifica la nuova interfaccia senza database; `npm run test:unit:mcp-monitor` verifica protocollo, audit e ciclo di vita con strategie simulate.
+
+Per verificare il pannello con MongoDB, MySQL e PostgreSQL reali, avvia il laboratorio con `npm run lab:up`, imposta `CODEDB_E2E_DESTRUCTIVE=1` e lancia `npm run test:e2e:mcp-control`. La prova crea e rimuove soltanto database/schemi casuali registrati dalla propria fixture, sulle porte del laboratorio 37017, 33306 e 35432. Le credenziali e la configurazione dell'installazione non vengono modificate.

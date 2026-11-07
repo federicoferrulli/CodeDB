@@ -39,6 +39,7 @@ const strategy = {
   async listDatabases() { return []; },
 };
 const deps = {
+  audit: () => {},
   loadConnections: () => ({ grande: savedConnection }),
   connLabel: () => 'MongoDB finto',
   connDbType: () => 'mongodb',

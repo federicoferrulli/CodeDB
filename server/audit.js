@@ -288,6 +288,19 @@ function createModule({ config, dependencies, errori }) {
     'app:updates:check': NON_TRACCIATO('interrogazione del canale aggiornamenti'),
     'app:license': NON_TRACCIATO('testo della licenza'),
     'audit:list': NON_TRACCIATO('lettura dello storico: tracciarla lo riempirebbe di se stessa'),
+    'mcp:status': NON_TRACCIATO('lettura dello stato MCP'),
+    'mcp:settings:get': NON_TRACCIATO('lettura delle impostazioni MCP'),
+    'mcp:settings:update': { op: 'Modifica impostazioni MCP' },
+    'mcp:activity:list': NON_TRACCIATO('lettura delle attività MCP'),
+    'mcp:activity:get': NON_TRACCIATO('lettura del dettaglio MCP'),
+    'mcp:activity:export': { op: 'Esportazione attività MCP' },
+    'mcp:sessions:close': { op: 'Chiusura sessione MCP', bersaglio: p => p && p.id },
+    'mcp:connections:list': NON_TRACCIATO('lettura delle connessioni MCP'),
+    'mcp:connections:readonly': {
+      op: 'Modifica sola lettura della connessione da MCP',
+      bersaglio: p => p && p.name,
+      dettagli: p => ({ readOnly: p && p.readOnly }),
+    },
     // Preferenze del tenant (scorciatoie da tastiera): tracciarle riempirebbe lo
     // storico di rumore a ogni rimappatura di un tasto.
     'prefs:get': NON_TRACCIATO('lettura di una preferenza personale'),

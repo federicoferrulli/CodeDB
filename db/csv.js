@@ -13,7 +13,7 @@ function cellaCsv(valore, { modalita = 'sicura' } = {}) {
   else if (typeof valore === 'object') testo = JSON.stringify(valore);
   else testo = String(valore);
 
-  if (modalita !== 'letterale' && /^[=+\-@]/.test(testo)) testo = `'${testo}`;
+  if (modalita !== 'letterale' && /^(?:\s*[=+\-@]|[\t\r\n])/.test(testo)) testo = `'${testo}`;
   return /[",\r\n]/.test(testo) ? `"${testo.replace(/"/g, '""')}"` : testo;
 }
 

@@ -312,6 +312,42 @@
     "famiglia": "delegate"
   },
   {
+    "evento": "mcp:activity:export",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "mcp:activity:get",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "mcp:activity:list",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "mcp:connections:list",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "mcp:connections:readonly",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "mcp:sessions:close",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "mcp:settings:get",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "mcp:settings:update",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "mcp:status",
+    "famiglia": "amministrativo"
+  },
+  {
     "evento": "mongo:connect",
     "famiglia": "safeOn"
   },

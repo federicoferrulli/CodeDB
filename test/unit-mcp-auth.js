@@ -21,6 +21,7 @@ console.log('--- Test Gate Autenticazione MCP ---');
 const owner = makePrincipal({ _id: 'o1', type: 'owner', ownerId: 'o1', email: 'o@x.it' }, []);
 
 const deps = {
+  audit: () => {},
   loadConnections: () => ({}),
   connLabel: () => '',
   connDbType: () => 'mongodb',

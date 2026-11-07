@@ -11,6 +11,10 @@ connections.ini.bak2
 # Audit log delle scritture eseguite via MCP.
 mcp-audit.log
 mcp-audit.log.1
+mcp-audit.log.*
+# Preferenze dell'installazione MCP: restano locali come connessioni e audit.
+mcp-settings.json
+mcp-settings.json.*
 # Audit log delle operazioni critiche/di scrittura eseguite via Web UI.
 ui-audit.log
 ui-audit.log.1

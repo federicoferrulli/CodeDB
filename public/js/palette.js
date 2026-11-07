@@ -91,6 +91,7 @@ function databaseSuccessivo() {
 /** Le voci della palette: comandi fissi + connessioni + database + tabelle. */
 function raccogliVoci() {
   const voci = [
+    { tipo: 'Comando', etichetta: 'MCP — attività, accessi e impostazioni', esegui: () => document.querySelector('#btn-mcp')?.click() },
     { tipo: 'Comando', etichetta: window.matchMedia('(max-width: 900px)').matches ? 'Apri/chiudi Connessioni' : 'Mostra/nascondi la navigazione', esegui: mostraBarraConnessioni },
     { tipo: 'Comando', etichetta: 'Nuova connessione', esegui: () => openConnModal() },
   ];

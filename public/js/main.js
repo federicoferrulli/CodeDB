@@ -30,6 +30,7 @@ import { initAuth } from './auth.js';
 import { initQueryTab, loadQueryTab } from './query-tab.js';
 import { initBackupManager } from './backupmanager.js';
 import { initAuditLog } from './auditlog.js';
+import { initMcpPanel } from './mcp-panel.js';
 import { initHealth } from './health.js';
 import { initSessions } from './sessions.js';
 import { initSessionPersistence } from './session-restore.js';
@@ -206,7 +207,7 @@ initFeedback();
 initExportImport();
 if (!contestoIncorporato) initVault();
 initQueryTab();
-if (!contestoIncorporato) { initBackupManager(); initAuditLog(); initHealth(); initSessions(); initAdminRbac(); }
+if (!contestoIncorporato) { initBackupManager(); initAuditLog(); initMcpPanel(); initHealth(); initSessions(); initAdminRbac(); }
 initPendingQueries();
 initScriptRun();
 if (!contestoIncorporato) initPassphrase();

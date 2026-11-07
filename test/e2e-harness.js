@@ -125,6 +125,7 @@ async function startTestServer({ port = DEFAULT_PORT, verbose = false, env = {} 
       CODEDB_CONNECTIONS_DIR: path.join(dir, 'conns'),
       CODEDB_UI_AUDIT_FILE: path.join(dir, 'ui-audit.log'),
       CODEDB_MCP_AUDIT_FILE: path.join(dir, 'mcp-audit.log'),
+      CODEDB_MCP_SETTINGS_FILE: path.join(dir, 'mcp-settings.json'),
       CODEDB_BACKUPS_DIR: path.join(dir, 'backups'),
       // La passphrase del vault reale non deve mai arrivare all'istanza di test.
       GUI_MONGO_PASSPHRASE: '',
