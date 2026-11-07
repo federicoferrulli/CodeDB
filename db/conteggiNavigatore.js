@@ -3,6 +3,9 @@
 const LIMITE_RIGHE = 1000;
 const BUDGET_MS = 350;
 const QUERY_MS = 100;
+// Sotto questa soglia una lettura non può concludersi: meglio fermarsi che
+// lanciare raffiche di sonde da 1 ms a fine budget (il loro numero dipende dal timer).
+const QUERY_MIN_MS = 10;
 
 function stimaConteggio(value) {
   const n = Number(value);
@@ -24,10 +27,10 @@ async function completaConteggi(collections, leggi) {
   const scadenza = performance.now() + BUDGET_MS;
   let prossimo = 0;
   async function worker() {
-    while (prossimo < collections.length && performance.now() < scadenza) {
+    while (prossimo < collections.length && scadenza - performance.now() >= QUERY_MIN_MS) {
       const coll = collections[prossimo++];
       if (coll.type === 'view' || coll.count > LIMITE_RIGHE) continue;
-      const ms = Math.max(1, Math.min(QUERY_MS, Math.floor(scadenza - performance.now())));
+      const ms = Math.max(QUERY_MIN_MS, Math.min(QUERY_MS, Math.floor(scadenza - performance.now())));
       try { Object.assign(coll, await leggi(coll, LIMITE_RIGHE + 1, ms)); }
       catch { /* Timeout, permessi o tabella rimossa: resta la stima, mai uno zero fittizio. */ }
     }
