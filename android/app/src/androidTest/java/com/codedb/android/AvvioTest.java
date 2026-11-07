@@ -111,12 +111,15 @@ public class AvvioTest {
         instrumentation.runOnMainSync(() -> {
             assertTrue("La scena deve essere visibile senza dialoghi di sistema sopra", view.hasWindowFocus());
             // Si misura il simbolo: le animazioni di stato del pulsante Riprova sono indipendenti.
-            nucleo.getLocationOnScreen(posizione);
-            misura[0] = nucleo.getWidth(); misura[1] = nucleo.getHeight();
             // Il Canvas software non legge le proprietà animate sul RenderThread.
             view.postOnAnimation(() -> view.postOnAnimation(presentato::countDown));
         });
         assertTrue("Il fotogramma deve essere presentato", presentato.await(5, TimeUnit.SECONDS));
+        instrumentation.runOnMainSync(() -> {
+            // Riprova cambia il layout: legge il ritaglio dopo il fotogramma presentato.
+            nucleo.getLocationOnScreen(posizione);
+            misura[0] = nucleo.getWidth(); misura[1] = nucleo.getHeight();
+        });
         Bitmap screen = instrumentation.getUiAutomation().takeScreenshot();
         assertNotNull(screen);
         Bitmap frame = Bitmap.createBitmap(screen, posizione[0], posizione[1], misura[0], misura[1]);
@@ -184,6 +187,20 @@ public class AvvioTest {
             });
             scalaAnimazioni(instrumentation, "1");
             instrumentation.runOnMainSync(() -> scena.get().errore("Impossibile aprire CodeDB. Riprova."));
+            instrumentation.runOnMainSync(() -> {
+                try {
+                    Field clock = AvvioView.class.getDeclaredField("clock");
+                    clock.setAccessible(true);
+                    assertNull("Un errore arresta il clock della scena", clock.get(scena.get()));
+                    Field campo = AvvioView.class.getDeclaredField("nucleo");
+                    campo.setAccessible(true);
+                    Object nucleo = campo.get(scena.get());
+                    Field particelle = nucleo.getClass().getDeclaredField("particelle");
+                    particelle.setAccessible(true);
+                    assertFalse("Un errore arresta le particelle sul RenderThread",
+                        ((android.graphics.drawable.AnimatedVectorDrawable) particelle.get(nucleo)).isRunning());
+                } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
+            });
             prima = fotogramma(scena.get(), instrumentation);
             Thread.sleep(300);
             dopo = fotogramma(scena.get(), instrumentation);
