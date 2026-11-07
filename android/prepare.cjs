@@ -60,7 +60,7 @@ async function prepara() {
   } else {
     execFileSync('npm', ['ci', '--omit=dev', '--omit=optional', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: DEST, stdio: 'inherit' });
   }
-  const unicode = require('./unicode.cjs').preparaUnicode(path.join(DEST, 'node_modules'));
+  const unicode = require('./unicode.cjs').preparaUnicode(DEST);
   console.log(`Compatibilità Unicode Android: ${unicode} file trasformati senza dipendenza da ICU.`);
   console.log('Runtime Android preparato in ' + DEST);
 }

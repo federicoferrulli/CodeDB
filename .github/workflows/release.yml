@@ -366,7 +366,8 @@ jobs:
           api-level: 35
           target: google_apis
           arch: x86_64
-          disable-animations: true
+          # Il test di fluidit? misura le particelle animate sul RenderThread.
+          disable-animations: false
           script: gradle --no-daemon -p android connectedDebugAndroidTest
       - run: node tools/release-assets.cjs stage dist staged/android android
       - uses: actions/upload-artifact@v4

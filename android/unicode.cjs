@@ -4,10 +4,11 @@ const path = require('node:path');
 const { parse } = require('@babel/parser');
 const riscrivi = require('regexpu-core');
 const proprieta = /\\[pP]\{/;
-const emoji = new Set([
+const patternDinamici = new Set([
   '^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$',
   '^[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$',
   '^(?=[\\s\\S]*[\\p{Extended_Pictographic}\\p{Regional_Indicator}\\u20E3])[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$',
+  '(?:"(?:[^" ]|""| )+"|`(?:[^`]|``)+`|[\\p{L}_][\\p{L}\\p{N}_$]*)',
 ]);
 
 // Il libnode mobile 18 non include ICU. Espandiamo le proprietà in intervalli
@@ -26,9 +27,9 @@ function trasforma(source) {
     const value = node.type === 'StringLiteral' ? node.value
       : node.type === 'TemplateLiteral' && node.expressions.length === 0 ? node.quasis[0].value.cooked : null;
     if (typeof value === 'string' && proprieta.test(value)) {
-      // Le sole stringhe-pattern presenti nel lockfile sono gli emoji di Zod.
+      // Pattern verificati: emoji di Zod e identificatori SQL del server.
       // Un nuovo caso richiede verificarne i flag e l'uso, senza riscrivere testo arbitrario.
-      if (!emoji.has(value)) throw new Error('Pattern Unicode dinamico non riconosciuto: aggiornare la preparazione Android.');
+      if (!patternDinamici.has(value)) throw new Error('Pattern Unicode dinamico non riconosciuto: aggiornare la preparazione Android.');
       edits.push({ start: node.start, end: node.end, text: JSON.stringify(pattern(value, 'u')) });
       return;
     }
