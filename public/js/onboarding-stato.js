@@ -61,6 +61,21 @@ export const TRAGUARDI = [
  */
 export const NOVITA = [
   {
+    versione: '0.3.0-beta.1',
+    punti: [
+      "Sezione MCP: nuovo pannello per seguire cosa fanno gli agenti collegati al gateway. Panoramica, storico delle attività con filtri (su mobile in un cassetto con il conteggio dei filtri attivi) e impostazioni di accesso; la configurazione da incollare nel client e la chiave segreta si copiano con un riscontro visivo immediato. Gli stati vuoti e gli errori hanno illustrazioni centrate e azioni di recupero, e le bozze delle impostazioni non si perdono se si cambia vista. Il registro di audit è ora configurabile da variabili d’ambiente e lo stato delle connessioni mostra se sono in sola lettura.",
+      "Chiavi SSH in tutti i formati: il file si riconosce dal contenuto, senza convertirlo. Supportate le chiavi RSA, DSA, Ed25519 ed ECDSA nei formati OpenSSH, PEM, PKCS#8, DER, PuTTY PPK v2/v3 e PKCS#12 (.pfx/.p12), anche cifrate; il form mostra formato e impronta e chiede la passphrase quando serve. I file pubblici e i certificati selezionano la chiave corrispondente nell’agente SSH, con supporto a certificati OpenSSH e chiavi FIDO. Con RBAC attivo l’agente della macchina è riservato agli amministratori.",
+      "Errori e riconnessione più chiari: i messaggi di errore restano visibili nel contesto in cui sono nati, con dettagli tecnici espandibili, copia del testo e azioni di recupero, e sono raggiungibili da tastiera anche nelle modali e nella palette dei comandi. Quando il collegamento si interrompe compare un avviso illustrato con la diagnostica della connessione e il progresso condiviso di connessione e ripristino della sessione. I nuovi tentativi dell’albero dei database restano legati alla connessione di origine; i moduli con valori non validi restano aperti.",
+      "Query & Aggregate, errori: il dettaglio dell’errore compare nel pannello dei risultati e il token sbagliato è sottolineato in rosso, anche nelle traduzioni da SQL a MongoDB con nomi fra apici. Il ritorno all’editor conserva la modalità Entrambi e riporta il cursore nella query. Le istruzioni fallite di uno script hanno una scheda dedicata, separata dai risultati riusciti, e le risposte arrivate in ritardo non sovrascrivono più la selezione. Su mobile si passa da sola fra Editor e Risultati.",
+      "Backup e ripristino: i backup restano reattivi, mostrano l’avanzamento e si possono annullare, e la chiusura dell’app non resta più bloccata da query ancora in corso (la chiusura di Electron è protetta). Corretti il ripristino su più database, i riferimenti PostgreSQL e le scritture dal gateway MCP; dipendenze aggiornate.",
+      "Griglia: la riga della cella attiva e tutte le righe selezionate sono evidenziate, i campi filtro e ordinamento hanno un pulsante per svuotarli con un clic e il caricamento mostra uno scheletro coerente con la tabella.",
+      "Feedback aptico nell’app Android: vibrazione leggera durante la selezione delle celle e l’esecuzione degli script, disattivabile dalle preferenze. Sistemati vari difetti dell’interfaccia mobile (navigatore, selettore dei documenti, grafo 3D) e rifinita l’animazione di avvio dell’app Android.",
+      "SQL su MongoDB: nei confronti con costanti di 24 cifre esadecimali (=, !=, intervalli, IN, ANY/ALL, IS DISTINCT FROM) vengono riconosciuti anche gli ObjectId, su _id e sugli altri campi, mentre gli ID realmente testuali restano cercabili.",
+      "Scorciatoie da tastiera: chiudere il pannello senza modifiche non salva né notifica più nulla.",
+      "Verifiche: nuovo laboratorio di affidabilità con database reali, controprove su guasti controllati e rapporto dell’audit del 22 ottobre; molte più regressioni su backup, SSH, MCP e interfaccia.",
+    ],
+  },
+  {
     versione: '0.2.1-beta.1',
     punti: [
       "Scorciatoie per le schede: Ctrl+Tab passa alla tabella successiva della connessione attiva; Ctrl+Shift+Tab passa alla connessione/database successivo nella barra superiore. Con almeno due schede, il giro segue il loro ordine e torna alla prima dopo l’ultima. Funzionano anche dai pannelli affiancati e si modificano da Impostazioni → Scorciatoie da tastiera. Nei browser che riservano questi tasti alle proprie schede occorre scegliere altre combinazioni.",
