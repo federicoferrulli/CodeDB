@@ -4,7 +4,11 @@ const path = require('node:path');
 const { parse } = require('@babel/parser');
 const riscrivi = require('regexpu-core');
 const proprieta = /\\[pP]\{/;
-const emoji = '^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$';
+const emoji = new Set([
+  '^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$',
+  '^[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$',
+  '^(?=[\\s\\S]*[\\p{Extended_Pictographic}\\p{Regional_Indicator}\\u20E3])[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$',
+]);
 
 // Il libnode mobile 18 non include ICU. Espandiamo le proprietà in intervalli
 // solo nella copia destinata all'APK, conservando nomi Unicode e validazione URI.
@@ -24,7 +28,7 @@ function trasforma(source) {
     if (typeof value === 'string' && proprieta.test(value)) {
       // Le sole stringhe-pattern presenti nel lockfile sono gli emoji di Zod.
       // Un nuovo caso richiede verificarne i flag e l'uso, senza riscrivere testo arbitrario.
-      if (value !== emoji) throw new Error('Pattern Unicode dinamico non riconosciuto: aggiornare la preparazione Android.');
+      if (!emoji.has(value)) throw new Error('Pattern Unicode dinamico non riconosciuto: aggiornare la preparazione Android.');
       edits.push({ start: node.start, end: node.end, text: JSON.stringify(pattern(value, 'u')) });
       return;
     }

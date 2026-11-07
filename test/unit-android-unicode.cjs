@@ -5,7 +5,9 @@ const { trasforma } = require('../android/unicode.cjs');
 const source = String.raw`[
   /\P{ASCII}/u, /^[$_\p{ID_Start}][$\u200c\u200d\p{ID_Continue}]*$/u,
   /[\p{Cs}\p{Cn}]/u, /\p{Cs}/u,
-  RegExp("^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$", "u")
+  RegExp("^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$", "u"),
+  RegExp("^[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$", "u"),
+  RegExp("^(?=[\\s\\S]*[\\p{Extended_Pictographic}\\p{Regional_Indicator}\\u20E3])[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$", "u")
 ]`;
 const result = trasforma(source);
 const compatibile = code => assert(!/\\[pP]\{/.test(code), 'Proprietà Unicode non compilata');
