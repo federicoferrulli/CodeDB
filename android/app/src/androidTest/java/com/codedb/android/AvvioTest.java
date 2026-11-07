@@ -186,21 +186,39 @@ public class AvvioTest {
                 root.addView(scena.get(), new FrameLayout.LayoutParams(-1, -1));
             });
             scalaAnimazioni(instrumentation, "1");
-            instrumentation.runOnMainSync(() -> scena.get().errore("Impossibile aprire CodeDB. Riprova."));
+            CountDownLatch particelleFerme = new CountDownLatch(1);
+            AtomicReference<android.graphics.drawable.AnimatedVectorDrawable> orbite = new AtomicReference<>();
+            android.graphics.drawable.Animatable2.AnimationCallback fineParticelle =
+                new android.graphics.drawable.Animatable2.AnimationCallback() {
+                    @Override public void onAnimationEnd(android.graphics.drawable.Drawable drawable) {
+                        particelleFerme.countDown();
+                    }
+                };
             instrumentation.runOnMainSync(() -> {
                 try {
-                    Field clock = AvvioView.class.getDeclaredField("clock");
-                    clock.setAccessible(true);
-                    assertNull("Un errore arresta il clock della scena", clock.get(scena.get()));
                     Field campo = AvvioView.class.getDeclaredField("nucleo");
                     campo.setAccessible(true);
                     Object nucleo = campo.get(scena.get());
                     Field particelle = nucleo.getClass().getDeclaredField("particelle");
                     particelle.setAccessible(true);
-                    assertFalse("Un errore arresta le particelle sul RenderThread",
-                        ((android.graphics.drawable.AnimatedVectorDrawable) particelle.get(nucleo)).isRunning());
+                    orbite.set((android.graphics.drawable.AnimatedVectorDrawable) particelle.get(nucleo));
+                    orbite.get().registerAnimationCallback(fineParticelle);
+                    scena.get().errore("Impossibile aprire CodeDB. Riprova.");
+                    Field clock = AvvioView.class.getDeclaredField("clock");
+                    clock.setAccessible(true);
+                    assertNull("Un errore arresta il clock della scena", clock.get(scena.get()));
+                    if (!orbite.get().isRunning()) particelleFerme.countDown();
                 } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
             });
+            try {
+                // stop() sul RenderThread termina prima della notifica al thread UI.
+                assertTrue("Il RenderThread conferma l'arresto delle particelle",
+                    particelleFerme.await(5, TimeUnit.SECONDS));
+                instrumentation.runOnMainSync(() ->
+                    assertFalse("Un errore arresta le particelle sul RenderThread", orbite.get().isRunning()));
+            } finally {
+                instrumentation.runOnMainSync(() -> orbite.get().unregisterAnimationCallback(fineParticelle));
+            }
             prima = fotogramma(scena.get(), instrumentation);
             Thread.sleep(300);
             dopo = fotogramma(scena.get(), instrumentation);
