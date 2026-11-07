@@ -87,6 +87,9 @@ const { startTestServer } = require('./e2e-harness');
           if (scroll.necessario) assert(['auto', 'scroll'].includes(scroll.overflow), `${nome}: il contenuto deve essere scorribile`);
           for (const azione of await modal.locator('button, input, select, textarea, a[href], [tabindex="0"]').all()) {
             if (!await azione.isVisible()) continue;
+            // Gli input di formulario generati dai componenti Arc (checkbox/switch)
+            // sono nascosti agli utenti e alla tecnologia assistiva: non sono azioni.
+            if (await azione.evaluate(el => el.closest('[aria-hidden="true"]') !== null)) continue;
             await azione.scrollIntoViewIfNeeded();
             dentro(await azione.boundingBox(), areaCorpo, `${nome}: azione raggiungibile`);
           }
