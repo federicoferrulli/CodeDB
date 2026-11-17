@@ -1,0 +1,432 @@
+{
+  "progetto": "CodeDB",
+  "data": "2026-11-17",
+  "branch": "develop",
+  "revisione": "2805904bf081392b17dc5e0c7c5bb3b9a674d030",
+  "versione_analizzata": "0.3.0-beta.1",
+  "tipo": "Audit statico del repository e della landing locale",
+  "stato_sorgenti": "Working tree al momento della lettura, incluse le modifiche locali e i nuovi moduli di strategia, backup e MCP. La landing è ignorata dal Git del repository principale.",
+  "riepilogo": {
+    "totale": 27,
+    "critica": 0,
+    "alta": 16,
+    "media": 10,
+    "bassa": 1
+  },
+  "priorita_intervento": [
+    "CDB-20261117-01",
+    "CDB-20261117-02",
+    "CDB-20261117-03",
+    "CDB-20261117-04",
+    "CDB-20261117-05"
+  ],
+  "ambito_analizzato": [
+    "Griglia, scritture da UI, paginazione, import ed export di collection e database, dialoghi React, contesto delle schede e trasporto Socket.IO.",
+    "Strategie MongoDB, MySQL e PostgreSQL, identificatori, esecuzione SQL, inventario e DDL, catene full/incrementali, staging, promozione e verifica di backup e import.",
+    "Autenticazione locale e tenant, controlli su connessioni e backup, eventi del server, limiti di risorse e strumenti del gateway MCP.",
+    "Avvio Electron, launcher Windows e Unix, avvio e WebView Android, volumi e configurazione Docker, isolamento delle suite E2E, lettura selettiva di packaging e workflow.",
+    "Landing italiana e inglese, generazione da template, rilascio e download, moduli di contatto, preferenze lingua, configurazione Apache e deploy."
+  ],
+  "verifiche": [
+    "Lettura statica dei percorsi interessati, dai chiamanti agli effetti su database, filesystem o interfaccia. Le condizioni indicate sono dedotte dal codice.",
+    "Parsing statico con @babel/parser di 948 file JavaScript e TypeScript, inclusi sorgenti applicativi e test. Nessun errore di sintassi nel sottoinsieme esaminato.",
+    "Scansione di src, srcset, poster e href HTML con percorso locale assoluto nelle 26 pagine di landing/dist. Tutte le destinazioni così individuate sono presenti su disco.",
+    "Controllo strutturale locale del rapporto JSON, degli identificativi, dei conteggi e dei riferimenti file/riga."
+  ],
+  "ambito_non_analizzato": [
+    "Nessuna esecuzione dei flussi su DBMS reali, server, browser, dispositivi o ambienti di produzione. Nessuna misura del consumo di memoria o del traffico reale.",
+    "Nessuna verifica esaustiva di ogni operatore SQL/MQL, combinazione di tipi, interazione grafica, servizio cloud, procedura di firma o dipendenza di terze parti. Il controllo sintattico non misura la copertura funzionale.",
+    "Esclusi i dati locali dell’utente, vault, credenziali, log, archivi reali e report di test storici come prova del comportamento attuale."
+  ],
+  "rilievi": [
+    {
+      "id": "CDB-20261117-01",
+      "gravita": "alta",
+      "titolo": "Una modifica della griglia PostgreSQL può coinvolgere più partizioni",
+      "condizione": "Tabella padre partizionata senza chiave primaria, con due righe in partizioni diverse che occupano la stessa posizione fisica.",
+      "effetto": "La sottoquery sceglie una riga tramite il filtro e LIMIT 1. La scrittura esterna conserva soltanto il ctid, che è locale alla singola tabella. Anche una riga con valori diversi in un’altra partizione può essere modificata o eliminata.",
+      "correzione": "Confrontare la coppia (tableoid, ctid) nella stessa istruzione. Verificare aggiornamento e cancellazione sul padre controllando il contenuto di entrambe le partizioni.",
+      "riferimenti": [
+        "db/PostgreSqlStrategy.js:470",
+        "db/PostgreSqlStrategy.js:891",
+        "db/PostgreSqlStrategy.js:918"
+      ],
+      "fonti": [
+        "https://www.postgresql.org/docs/current/ddl-system-columns.html"
+      ]
+    },
+    {
+      "id": "CDB-20261117-02",
+      "gravita": "alta",
+      "titolo": "MongoDB può modificare il documento con un altro tipo di identificatore",
+      "condizione": "Nella stessa collection esistono un _id stringa esadecimale di 24 caratteri e un ObjectId con le stesse cifre.",
+      "effetto": "La griglia conserva il tipo dell’identificatore. Il backend converte però la stringa in ObjectId dopo la decodifica EJSON. Aggiornare o eliminare il documento con chiave stringa colpisce quello con ObjectId. Se esiste soltanto la stringa, il comando non trova il documento.",
+      "correzione": "Conservare il tipo EJSON nell’intero percorso di scrittura e nei cursori della griglia. Verificare le due chiavi affiancate.",
+      "riferimenti": [
+        "public/js/righe.js:22",
+        "db/MongoDbStrategy.js:123",
+        "db/MongoDbStrategy.js:714",
+        "db/MongoDbStrategy.js:741"
+      ]
+    },
+    {
+      "id": "CDB-20261117-03",
+      "gravita": "alta",
+      "titolo": "La cancellazione massiva può superare il numero di righe confermato",
+      "condizione": "L’utente visualizza due righe, cambia il filtro con uno più ampio e preme Elimina prima di eseguire la nuova ricerca.",
+      "effetto": "La conferma usa il conteggio della vista precedente. La richiesta di cancellazione usa già il filtro appena digitato. Il numero mostrato può sottostimare di molto le righe effettivamente cancellate.",
+      "correzione": "Associare filtro, modalità e conteggio all’ultima ricerca completata. Se la bozza cambia, rieseguire l’anteprima prima della conferma.",
+      "riferimenti": [
+        "public/js/grid.js:553",
+        "public/js/grid.js:1323",
+        "public/js/grid.js:1344",
+        "public/js/grid.js:1447",
+        "server/eventi-dati.js:181"
+      ]
+    },
+    {
+      "id": "CDB-20261117-04",
+      "gravita": "alta",
+      "titolo": "Un import in modalità unione può perdere scritture concorrenti",
+      "condizione": "Su MongoDB o MySQL un’altra sessione inserisce una riga dopo la copia di recupero e prima della promozione dell’import. Anche una collection o tabella fuori dal file importato può essere interessata.",
+      "effetto": "L’unione prepara una copia della destinazione, applica il file su quella copia e sostituisce l’intero database con lo staging. La scrittura successiva alla fotografia iniziale rimane fuori sia dallo staging sia dalla copia di recupero.",
+      "correzione": "Applicare alla destinazione soltanto le modifiche del file, oppure proteggere l’intervallo fra la fotografia e la promozione con una garanzia di concorrenza che includa i client esterni.",
+      "riferimenti": [
+        "db/importPlan.js:135",
+        "db/importArtifactAdapter.js:355",
+        "db/importArtifactAdapter.js:369",
+        "db/importArtifactAdapter.js:455",
+        "db/importArtifactAdapter.js:459"
+      ]
+    },
+    {
+      "id": "CDB-20261117-05",
+      "gravita": "alta",
+      "titolo": "Il permesso di restore copre la destinazione ma lascia scoperta la sorgente",
+      "condizione": "RBAC attivo, archivio dello stesso tenant e utente o chiave con amministrazione su una sola connessione di destinazione compatibile. Per MCP devono essere consentiti il restore e le scritture.",
+      "effetto": "Il controllo verifica la destinazione e il percorso rimane confinato al tenant. Manca la verifica del diritto di lettura sulla connessione che ha prodotto il backup. Le restrizioni fra connessioni dello stesso tenant possono essere disattese.",
+      "correzione": "Associare l’archivio alla connessione di origine con una provenienza verificabile. Applicare i permessi di lettura sulla sorgente e di amministrazione sulla destinazione e filtrare il catalogo con gli stessi criteri.",
+      "riferimenti": [
+        "server/eventi-backup.js:139",
+        "server/operazioni.js:26",
+        "mcp/strumenti-artefatti.js:155",
+        "mcp/strumenti-artefatti.js:205",
+        "db/backupRestoreAdapter.js:392",
+        "backup/lib/engine.js:1183"
+      ]
+    },
+    {
+      "id": "CDB-20261117-06",
+      "gravita": "alta",
+      "titolo": "Il backup PostgreSQL perde la struttura delle partizioni",
+      "condizione": "Un backup logico comprende una tabella partizionata e le sue partizioni nello stesso schema.",
+      "effetto": "L’inventario elenca padre e figli come tabelle. La lettura del padre include anche i dati dei figli e la DDL ricostruita usa CREATE TABLE semplice. Il ripristino può creare tabelle indipendenti e perdere l’instradamento delle nuove righe.",
+      "correzione": "Salvare strategia, chiavi, limiti e relazioni fra partizioni. Esportare le righe fisiche una volta e confrontare il catalogo delle partizioni dopo il restore.",
+      "riferimenti": [
+        "db/PostgreSqlStrategy.js:300",
+        "backup/lib/engine.js:1015",
+        "db/pg-ddl.js:232"
+      ],
+      "fonti": [
+        "https://www.postgresql.org/docs/current/ddl-partitioning.html"
+      ]
+    },
+    {
+      "id": "CDB-20261117-07",
+      "gravita": "alta",
+      "titolo": "Una collection rimossa può ricomparire dal backup incrementale",
+      "condizione": "Fra un backup completo e un incrementale dell’intero database viene eliminata una collection MongoDB. Nel database rimane almeno un’altra collection.",
+      "effetto": "Il delta registra cancellazioni di righe per le sole entità ancora presenti. Il piano di restore conserva l’unione dei nomi dei vari backup e può dichiarare completa una catena che ripristina anche la collection eliminata.",
+      "correzione": "Distinguere nel manifest la copertura integrale dalla selezione parziale. Registrare le rimozioni di intere entità e applicarle nella ricostruzione e nella verifica finale.",
+      "riferimenti": [
+        "backup/lib/engine.js:171",
+        "backup/lib/engine.js:1148",
+        "db/backupRestoreAdapter.js:23",
+        "backup/lib/tombstones.js:35"
+      ]
+    },
+    {
+      "id": "CDB-20261117-08",
+      "gravita": "alta",
+      "titolo": "Una tabella SQL aggiunta dopo il backup completo può rendere inutilizzabile la catena",
+      "condizione": "Su MySQL o PostgreSQL viene aggiunta una tabella fra il full e l’incrementale. Il ripristino parte da una destinazione vuota.",
+      "effetto": "Il validatore accetta una tabella vista per la prima volta in un livello successivo e pubblica la catena. Il restore crea le tabelle soltanto nel primo livello e fallisce quando accede alla nuova tabella.",
+      "correzione": "Gestire la prima comparsa di ogni tabella con la sua DDL e l’ordine delle dipendenze. Verificare la catena pubblicata restaurandola su database vuoto.",
+      "riferimenti": [
+        "backup/lib/restore-catena.js:175",
+        "backup/lib/engine.js:1202",
+        "backup/lib/restore-mysql.js:97",
+        "backup/lib/restore-postgres.js:101"
+      ]
+    },
+    {
+      "id": "CDB-20261117-09",
+      "gravita": "alta",
+      "titolo": "Un backup completo PostgreSQL omette tabelle utente con prefisso system.",
+      "condizione": "Lo schema contiene una tabella con nome letterale quotato, per esempio \"system.eventi\".",
+      "effetto": "L’inventario legge il nome corretto. Il filtro comune ai tre motori scarta qualsiasi nome che inizi con system. prima di scrivere il manifest. Un backup integrale può quindi omettere tutti i dati di quella tabella.",
+      "correzione": "Applicare il prefisso riservato al solo motore MongoDB, come già avviene nella verifica della destinazione. Controllare i nomi di tutte le tabelle incluse.",
+      "riferimenti": [
+        "db/PostgreSqlStrategy.js:300",
+        "backup/lib/engine.js:1149",
+        "db/backupRestoreAdapter.js:373"
+      ]
+    },
+    {
+      "id": "CDB-20261117-10",
+      "gravita": "alta",
+      "titolo": "L’export di una collection MongoDB può produrre un file incompleto",
+      "condizione": "Collection ferma con 500 documenti con _id numerico e un documento con ObjectId. L’esportazione EJSON legge blocchi da 500.",
+      "effetto": "La seconda pagina confronta _id con l’ultimo numero usando $gt, che limita il confronto ai tipi BSON compatibili. La pagina vuota chiude l’export anche se il totale iniziale era 501. Lo stesso limite interessa la navigazione con cursore della griglia.",
+      "correzione": "Conservare un cursore server oppure implementare la continuazione nell’ordinamento BSON completo. Segnalare una discordanza fra righe lette e totale atteso quando la lettura usa una fotografia coerente.",
+      "riferimenti": [
+        "db/mongo-trasferimento-shell.js:120",
+        "public/js/exportimport.js:134",
+        "db/MongoDbStrategy.js:447"
+      ],
+      "fonti": [
+        "https://www.mongodb.com/docs/manual/reference/operator/query/gt/"
+      ]
+    },
+    {
+      "id": "CDB-20261117-11",
+      "gravita": "alta",
+      "titolo": "L’import JSON MongoDB arrotonda gli interi grandi",
+      "condizione": "Nell’import di una singola collection un intero come 9007199254740993 arriva come numero JSON ordinario. Il caso riguarda i numeri senza un wrapper EJSON esplicito.",
+      "effetto": "JSON.parse lo converte in un Number JavaScript prima dell’invio al server. MongoDB riceve già 9007199254740992 e può confermare l’inserimento con quel valore.",
+      "correzione": "Usare il lettore numerico esatto già disponibile nel progetto durante l’anteprima e l’invio dei blocchi. Verificare sul valore persistito anche gli interi annidati.",
+      "riferimenti": [
+        "public/js/exportimport.js:189",
+        "db/mongo-trasferimento-shell.js:141",
+        "public/js/insert-json.mjs:56",
+        "test/unit-insert-values.js:13"
+      ]
+    },
+    {
+      "id": "CDB-20261117-12",
+      "gravita": "alta",
+      "titolo": "Il budget in byte non limita i risultati dell’editor SQL",
+      "condizione": "Una lettura libera su MySQL o PostgreSQL restituisce dati superiori al budget configurato. Il valore predefinito è 32 MiB.",
+      "effetto": "L’editor invia un limite righe infinito. Le strategie caricano tutto in memoria, tagliano per numero di righe e calcolano truncated con quel solo criterio. Il controllo superiore può quindi restituire un risultato oltre budget e una query ordinaria può esaurire la memoria condivisa.",
+      "correzione": "Contare i byte della rappresentazione inviata durante una lettura progressiva e interromperla quando si raggiunge il limite. Verificare sia un singolo risultato sia i risultati multipli.",
+      "riferimenti": [
+        "server/query.js:54",
+        "server/query.js:360",
+        "server/query.js:481",
+        "db/MySqlStrategy.js:799",
+        "db/PostgreSqlStrategy.js:722",
+        "db/DbStrategy.js:638"
+      ]
+    },
+    {
+      "id": "CDB-20261117-13",
+      "gravita": "alta",
+      "titolo": "Nel profilo Docker locale il controllo Host usa l’indirizzo interno del container",
+      "condizione": "Configurazione Compose predefinita con porta pubblicata sul loopback, bind interno su tutte le interfacce e RBAC disattivato.",
+      "effetto": "L’avvio valuta l’indirizzo di pubblicazione. Socket.IO e MCP decidono invece dal bind interno se applicare la verifica Host delle istanze locali. La protezione prevista per il profilo locale viene omessa.",
+      "correzione": "Usare una decisione condivisa sull’esposizione effettiva nell’avvio e nei controlli HTTP, Socket.IO e MCP. Verificare i profili loopback e reverse proxy separatamente.",
+      "riferimenti": [
+        "docker-compose.yml:34",
+        "docker-compose.yml:48",
+        "server/trasporto.js:84",
+        "server/trasporto.js:226",
+        "mcp/McpGateway.js:319"
+      ]
+    },
+    {
+      "id": "CDB-20261117-14",
+      "gravita": "alta",
+      "titolo": "La ricreazione del container perde restrizioni MCP e storico audit",
+      "condizione": "Le preferenze MCP sono salvate dalla UI nel Compose fornito. In seguito il container CodeDB viene ricreato.",
+      "effetto": "I volumi persistono /app/data e /app/backups. Il server salva le impostazioni MCP e i due audit sotto /app. Alla ricreazione si perde lo storico locale e le opzioni tornano ai valori iniziali, che includono gateway attivo e sola lettura disattivata, salvo override d’ambiente.",
+      "correzione": "Spostare impostazioni e audit nel volume dati. Per installazioni esistenti prevedere il trasferimento dei file prima della sostituzione del container e verificare la persistenza ricreandolo.",
+      "riferimenti": [
+        "docker-compose.yml:64",
+        "server/configurazione.js:13",
+        "server/configurazione.js:15",
+        "mcp/settings.js:8",
+        "mcp/settings.js:60"
+      ]
+    },
+    {
+      "id": "CDB-20261117-15",
+      "gravita": "alta",
+      "titolo": "Cambiare l’email dell’owner locale crea un secondo tenant",
+      "condizione": "Provider self-hosted con RBAC attivo. L’amministratore cambia CODEDB_OWNER_EMAIL mantenendo il control plane e riavvia.",
+      "effetto": "Il bootstrap cerca l’owner tramite la nuova email e, se assente, genera una nuova identità. Le connessioni restano associate al tenant precedente e il vecchio proprietario attivo può ancora autenticarsi con le credenziali precedenti.",
+      "correzione": "Associare il bootstrap a un’identità persistente dell’installazione. Migrare email, credenziali e sessioni mantenendo l’ownerId.",
+      "riferimenti": [
+        "auth/EntitlementProvider.js:44",
+        "auth/EntitlementProvider.js:60",
+        "auth/AppStore.js:165",
+        "auth/AppStore.js:174"
+      ]
+    },
+    {
+      "id": "CDB-20261117-16",
+      "gravita": "alta",
+      "titolo": "Due suite E2E possono cancellare database locali preesistenti",
+      "condizione": "I test MongoDB o MySQL vengono eseguiti contro un server locale che contiene già uno dei nomi fissi usati dalle fixture.",
+      "effetto": "L’harness crea un server CodeDB isolato, ma queste suite indirizzano le operazioni di drop al DBMS locale senza verificare che il database appartenga a questa esecuzione. Su MySQL la pulizia precede anche la creazione del database di test.",
+      "correzione": "Adottare il registro di proprietà e i nomi univoci già usati dalla suite PostgreSQL, con cleanup riservato ai bersagli della singola esecuzione.",
+      "riferimenti": [
+        "test/e2e-mysql.js:67",
+        "test/e2e.js:14",
+        "test/e2e.js:321",
+        "test/e2e-harness.js:41",
+        "test/e2e-postgres.js:30"
+      ]
+    },
+    {
+      "id": "CDB-20261117-17",
+      "gravita": "media",
+      "titolo": "Il comando di arresto del launcher può terminare un altro programma",
+      "condizione": "La porta configurata per CodeDB è occupata da un altro servizio locale e l’utente richiama il comando stop del launcher da sorgenti.",
+      "effetto": "Sia Windows sia Unix selezionano il processo dalla porta. Windows ne forza la terminazione. L’avvio può anche aprire nel browser il servizio estraneo e presentarlo come CodeDB.",
+      "correzione": "Registrare l’identità dell’istanza creata dal launcher e verificarla prima del riuso o dell’arresto. Ricorrere alla terminazione forzata solo dopo aver identificato il processo.",
+      "riferimenti": [
+        "CodeDB.cmd:19",
+        "CodeDB.cmd:30",
+        "codedb.sh:20",
+        "codedb.sh:31"
+      ]
+    },
+    {
+      "id": "CDB-20261117-18",
+      "gravita": "media",
+      "titolo": "La rinomina dei database MongoDB e MySQL si interrompe prima della richiesta",
+      "condizione": "Si usa Rinomina database dalla UI e si conferma un nuovo nome valido su uno di questi due motori.",
+      "effetto": "Il dialogo restituisce una stringa quando la casella opzionale è assente. Il chiamante legge input.testo, ottiene un nome vuoto e termina senza inviare la richiesta né mostrare un errore.",
+      "correzione": "Usare lo stesso contratto di risposta del dialogo su tutti i motori. Verificare dall’interfaccia l’invio del nuovo nome per ciascun tipo di connessione.",
+      "riferimenti": [
+        "public/js/schema-ops.js:80",
+        "public/js/schema-ops.js:83",
+        "ui/prompt.tsx:47"
+      ]
+    },
+    {
+      "id": "CDB-20261117-19",
+      "gravita": "media",
+      "titolo": "Una scrittura può lasciare la scheda bloccata dopo una disconnessione",
+      "condizione": "Un comando ordinario di inserimento, modifica o cancellazione è già stato trasmesso quando cade il socket, prima della conferma.",
+      "effetto": "Con le opzioni predefinite, la promessa attende una conferma senza scadenza. Il client elimina il callback alla disconnessione. Il contatore delle scritture rimane positivo e impedisce la normale chiusura della scheda anche dopo la riconnessione.",
+      "correzione": "Concludere l’attesa alla disconnessione o alla scadenza, rilasciare i contatori e mostrare un esito incerto da riconciliare prima di qualunque nuovo invio.",
+      "riferimenti": [
+        "public/js/trasporto.js:52",
+        "public/js/trasporto.js:79",
+        "public/js/trasporto.js:122",
+        "public/js/colltabs.js:23",
+        "public/js/insert.js:691"
+      ]
+    },
+    {
+      "id": "CDB-20261117-20",
+      "gravita": "media",
+      "titolo": "L’import per blocchi può superare il limite del trasporto",
+      "condizione": "Un file per una singola tabella o collection comincia con 50 righe brevi, seguite da 50 righe con testi da 110 kB ciascuno.",
+      "effetto": "Dopo il campione iniziale il client usa una media, con ricalibrazione ogni 200 elementi o quando la stima raggiunge metà budget. In questo caso il singolo blocco supera i 5 MB accettati dal server. Inoltre la misura usa la lunghezza della stringa invece dei byte UTF-8.",
+      "correzione": "Misurare i byte effettivi del messaggio prima dell’invio, suddividere i blocchi e dare un errore preciso se una singola riga supera il limite.",
+      "riferimenti": [
+        "public/js/exportimport.js:78",
+        "public/js/exportimport.js:85",
+        "public/js/exportimport.js:291",
+        "server/trasporto.js:129"
+      ]
+    },
+    {
+      "id": "CDB-20261117-21",
+      "gravita": "media",
+      "titolo": "Dopo un riavvio la UI offre una pulizia import che il server non può eseguire",
+      "condizione": "Un import ha conservato risorse di recupero o staging e il servizio viene riavviato prima che l’utente le elimini.",
+      "effetto": "Le operazioni concluse si possono ricaricare dal diario e il pulsante di pulizia torna visibile. Il gestore cleanup cerca però l’operazione soltanto nella mappa in memoria, ormai vuota, e lascia le risorse allocate.",
+      "correzione": "Conservare nel diario un inventario interno delle risorse e ricostruire una pulizia autorizzata e idempotente anche dopo il riavvio.",
+      "riferimenti": [
+        "db/importOperations.js:232",
+        "db/importOperations.js:266",
+        "public/js/exportimport.js:989"
+      ]
+    },
+    {
+      "id": "CDB-20261117-22",
+      "gravita": "media",
+      "titolo": "MCP indica import eseguito anche dopo rollback",
+      "condizione": "L’import passa la conferma iniziale ma fallisce durante l’applicazione, la verifica o la promozione.",
+      "effetto": "L’orchestratore può restituire ripristinato_dopo_errore o intervento_richiesto. L’handler aggiunge sempre executed=true. Due campi della risposta danno così indicazioni incompatibili a un client che deve decidere se proseguire.",
+      "correzione": "Derivare executed da status === 'completato', come fa già il restore, e controllare la risposta pubblica per ogni esito terminale.",
+      "riferimenti": [
+        "mcp/strumenti-artefatti.js:339",
+        "db/importPlan.js:189",
+        "db/importPlan.js:196",
+        "mcp/strumenti-artefatti.js:243"
+      ]
+    },
+    {
+      "id": "CDB-20261117-23",
+      "gravita": "media",
+      "titolo": "Dietro un reverse proxy la quota di 20 socket è condivisa da tutti i client",
+      "condizione": "Più di 20 socket UI passano dallo stesso proxy con lo stesso indirizzo TCP verso CodeDB.",
+      "effetto": "La quota usa l’indirizzo del peer Socket.IO anche se è stato configurato un proxy fidato per Express. La ventunesima connessione viene rifiutata anche se arriva da un altro utente e il budget globale è ancora disponibile.",
+      "correzione": "Condividere la risoluzione dell’indirizzo client per gli ingressi soggetti alla quota. Usare soltanto le informazioni inoltrate dai proxy configurati come fidati.",
+      "riferimenti": [
+        "server/socket.js:73",
+        "server/socket.js:82",
+        "server/budget.js:17",
+        "server/trasporto.js:39"
+      ]
+    },
+    {
+      "id": "CDB-20261117-24",
+      "gravita": "media",
+      "titolo": "Il modulo contatti può inserire email e messaggio nell’URL",
+      "condizione": "Il modulo viene inviato quando il gestore JavaScript è indisponibile, per esempio con gli script disattivati.",
+      "effetto": "Il form senza action o method usa una richiesta GET alla pagina corrente. Nome, email, oggetto e testo entrano nell’URL, nella cronologia e potenzialmente nel log Apache configurato per registrare le richieste. La composizione nel client di posta dipende da preventDefault.",
+      "correzione": "Lasciare un collegamento mailto utilizzabile senza JavaScript e attivare il modulo interattivo soltanto dopo aver collegato il gestore, evitando in ogni caso la trasmissione dei campi via GET.",
+      "riferimenti": [
+        "landing/src/pages/contact.html:419",
+        "landing/src/pages/contact.html:482",
+        "landing/codedb.conf:249"
+      ]
+    },
+    {
+      "id": "CDB-20261117-25",
+      "gravita": "media",
+      "titolo": "Il pulsante Riprova Android non recupera da un errore di avvio del runtime",
+      "condizione": "La preparazione iniziale del runtime fallisce, per esempio per spazio insufficiente durante l’estrazione. Lo spazio viene poi liberato mentre l’app è ancora nello stesso processo.",
+      "effetto": "Il pulsante richiama waitForServer, che trova ancora Runtime.error e mostra immediatamente lo stesso errore. Anche una nuova Activity trova il flag statico started già impostato.",
+      "correzione": "Distinguere errori di preparazione recuperabili ed errori che richiedono un nuovo processo Node. Ripetere davvero le fasi recuperabili e proporre un riavvio appropriato negli altri casi.",
+      "riferimenti": [
+        "android/app/src/main/java/com/codedb/android/MainActivity.java:91",
+        "android/app/src/main/java/com/codedb/android/MainActivity.java:146",
+        "android/app/src/main/java/com/codedb/android/Runtime.java:23"
+      ]
+    },
+    {
+      "id": "CDB-20261117-26",
+      "gravita": "media",
+      "titolo": "Il deploy della landing può accettare una dist incompleta",
+      "condizione": "Si usa -SkipBuild su una dist che ha ancora gli otto file obbligatori ma ha perso un bundle referenziato dalle pagine.",
+      "effetto": "Il comando verifica controlla le pagine generate nella directory sorgente. Il deploy controlla nomi obbligatori e tipi di file, ma non che le risorse collegate dalle pagine di dist esistano. La verifica HTTPS opzionale confronta il contenuto di alcune pagine HTML e può passare anche con il bundle assente.",
+      "correzione": "Verificare la directory che viene impacchettata, controllando i riferimenti alle risorse locali dentro HTML e manifest. Applicare lo stesso controllo ai deploy con e senza build.",
+      "riferimenti": [
+        "landing/deploy.ps1:121",
+        "landing/deploy.ps1:126",
+        "landing/tools/verifica-pagine.js:59",
+        "landing/tools/deploy-remoto.sh:205"
+      ]
+    },
+    {
+      "id": "CDB-20261117-27",
+      "gravita": "bassa",
+      "titolo": "Il banner e i controlli lingua della landing dipendono dall’accesso a localStorage",
+      "condizione": "Il browser rifiuta l’accesso allo storage per questo sito o impedisce il salvataggio della scelta.",
+      "effetto": "La lettura non protetta può interrompere lo script prima dell’inizializzazione dei controlli lingua. Se fallisce solo la scrittura, le azioni Accetta e Rifiuta non chiudono il banner. I collegamenti lingua statici restano utilizzabili.",
+      "correzione": "Gestire le eccezioni di lettura e scrittura e rendere operativi i pulsanti anche mantenendo la preferenza soltanto per la pagina corrente.",
+      "riferimenti": [
+        "landing/src/partials/scripts.html:27",
+        "landing/src/partials/scripts.html:32",
+        "landing/src/partials/scripts.html:37",
+        "landing/src/partials/scripts.html:44"
+      ]
+    }
+  ]
+}

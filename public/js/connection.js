@@ -8,7 +8,7 @@ import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
 import { startSchemaWatch } from './live.js';
 import { restoreSession, persistSession, restoreInProgress } from './session-restore.js';
 import { segnaTraguardo } from './onboarding-stato.js';
-import { riepilogoUri } from './riepilogo-uri.mjs';
+import { riepilogoUri, nomePredefinitoConnessione, nomeSalvataggioConnessione } from './riepilogo-uri.mjs';
 import { chiediConferma } from './conferma.js';
 import { startConnection } from '../arc/ui.js';
 
@@ -90,12 +90,13 @@ function updateWizardSummary() {
     const retained = savedSecrets[field] && (['sshPassphrase', 'sshSecurityKeyPin'].includes(field) ? sameSavedSshKey(cfg) : field !== 'sshPassword' || cfg.sshAuth === savedSshAuth);
     return cfg[field] ? '•••••• · Inserita' : retained ? 'Invariata · Già salvata' : 'Non impostata';
   };
+  const defaultPort = { mongodb: '27017', mysql: '3306', postgresql: '5432', postgres: '5432' }[cfg.dbType] || '27017';
   const rows = [];
   if (cfg.connectionMode === 'uri') {
     rows.push(['Modalità', 'URI completa'], ['URI', cfg.uri.trim() ? riepilogoUri(cfg.uri) : savedUriPreview || secret('uri')]);
   } else {
     rows.push(['Host', cfg.host.trim() || 'localhost'],
-      ['Porta', cfg.port || { mongodb: '27017', mysql: '3306', postgresql: '5432' }[cfg.dbType]],
+      ['Porta', cfg.port || defaultPort],
       ['Utente', cfg.username || 'Non impostato'], ['Password', secret('password')],
       cfg.dbType === 'mongodb' ? ['Auth source', cfg.authSource || 'admin'] : ['Database', cfg.database || 'Non specificato']);
   }
@@ -110,14 +111,15 @@ function updateWizardSummary() {
     ['Passphrase chiave', secret('sshPassphrase')]);
     if (cfg.sshAuth !== 'password' && sshKeyInfo?.securityKey) rows.push(['PIN dispositivo', secret('sshSecurityKeyPin')]);
     rows.push(['Impronta host SSH', cfg.sshHostKey || 'Da rilevare e confermare al collegamento']);
-    rows.push(['Forwarding locale', cfg.sshLocalPort ? `127.0.0.1:${cfg.sshLocalPort} → ${cfg.host || 'localhost'}:${cfg.port || { mongodb: '27017', mysql: '3306', postgresql: '5432' }[cfg.dbType]}` : 'Disattivato']);
+    rows.push(['Forwarding locale', cfg.sshLocalPort ? `127.0.0.1:${cfg.sshLocalPort} → ${cfg.host || 'localhost'}:${cfg.port || defaultPort}` : 'Disattivato']);
   }
   summaryBox.innerHTML = `<strong class="connection-summary-engine">${dbIcon} ${esc(dbTypeName)}</strong>
     <dl class="connection-summary-fields">${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>`;
-  const saved = cfg.saveAs && (cfg.saveAs === editingConn || elencoConnessioni().some(conn => conn.name === cfg.saveAs));
-  $('#conn-save-status').textContent = cfg.saveAs
-    ? `${saved ? 'La connessione salvata verrà aggiornata' : 'La connessione verrà salvata'} come “${cfg.saveAs}”${cfg.folder ? ` nella cartella “${cfg.folder}”` : ''}, solo se il collegamento riesce.`
-    : 'La connessione non verrà salvata. Sarà disponibile solo per questa sessione.';
+  const defaultName = nomePredefinitoConnessione(cfg, savedUriPreview);
+  const saveName = nomeSalvataggioConnessione(cfg, savedUriPreview);
+  $('#connect-form').elements.saveAs.placeholder = `(predefinito: ${defaultName})`;
+  const saved = saveName === editingConn || elencoConnessioni().some(conn => conn.name === saveName);
+  $('#conn-save-status').textContent = `${saved ? 'La connessione salvata verrà aggiornata' : 'La connessione verrà salvata'} come “${saveName}”${cfg.folder ? ` nella cartella “${cfg.folder}”` : ' senza cartella'}, solo se il collegamento riesce.`;
   refreshLucideIcons(summaryBox);
 }
 
@@ -410,6 +412,13 @@ async function conImprontaSsh(cfg, invia) {
 }
 
 export function connectAndOpenTab(cfg) {
+  if (!cfg.saved) {
+    cfg = {
+      ...cfg,
+      saveAs: nomeSalvataggioConnessione(cfg, savedUriPreview),
+      folder: String(cfg.folder || '').trim(),
+    };
+  }
   const current = activeTab();
   const reuse = current && !current.state.connected ? current : null;
   const tabId = reuse ? reuse.id : safeUUID();
@@ -544,6 +553,7 @@ function cancelEditConn() {
   form.elements.uri.placeholder = '';
   form.elements.sshPassword.placeholder = '';
   form.elements.sshPassphrase.placeholder = '(se la chiave è protetta)';
+  form.elements.saveAs.placeholder = '(predefinito: localhost:27017)';
   syncConnForm();
   setWizardStep(1);
   $('#conn-edit-banner').classList.add('hidden');
@@ -614,6 +624,8 @@ export function initConnection() {
     conCaricamento(btn, async () => {
       if (!await validateSshKey()) return null;
       const cfg = readConnForm();
+      cfg.saveAs = nomeSalvataggioConnessione(cfg, savedUriPreview);
+      cfg.folder = (cfg.folder || '').trim();
       if (editingConn) cfg.keepPasswordFrom = editingConn;
       return connectAndOpenTab(cfg);
     }, 'Connessione…').then((res) => {
@@ -646,8 +658,8 @@ export function initConnection() {
     conCaricamento($('#conn-save-btn'), async () => {
       if (!await validateSshKey(true)) return null;
       const cfg = readConnForm();
-      const name = (cfg.saveAs || '').trim();
-      if (!name) throw new Error('Indica un nome nel campo "Salva come".');
+      const name = nomeSalvataggioConnessione(cfg, savedUriPreview);
+      cfg.folder = (cfg.folder || '').trim();
       await emit('connections:save', { name, oldName: editingConn, cfg });
       return name;
     }, 'Salvo…').then((name) => {

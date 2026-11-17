@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 if (process.argv.includes('--mutant')) {
-  const Module = require('node:module'), file = require.resolve('../../backup/lib/restore');
+  const Module = require('node:module'), file = require.resolve('../../backup/lib/restore-oggetti');
   const source = fs.readFileSync(file, 'utf8');
   const changed = source.replace('await strategy.pool.query(`REFRESH MATERIALIZED VIEW ${pgQid(targetDb)}.${pgQid(v.name)}`);', 'await Promise.resolve();');
   assert.notEqual(changed, source);

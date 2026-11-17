@@ -25,7 +25,7 @@ if (mutant) {
       } };
     };
   } else if (mutant === 'lo-selettivo-invariato') {
-    const Module = require('node:module'), file = require.resolve('../../backup/lib/restore');
+    const Module = require('node:module'), file = require.resolve('../../backup/lib/restore-postgres');
     const source = fs.readFileSync(file, 'utf8');
     const needle = 'async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, onlyCollections, drop, log, problems, opts, explicitTarget, tracker }) {';
     assert.equal(source.split(needle).length, 2, 'Punto di mutazione LO univoco');

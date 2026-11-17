@@ -8,7 +8,8 @@ const { startTestServer } = require('./e2e-harness');
 const { scegliArc, spuntaArc } = require('./arc-controls');
 const mutant = process.argv.includes('--mutant');
 const mutantActions = process.argv.includes('--mutant-actions');
-const dir = `${process.env.CODEDB_REPORT_ROOT || 'test-reports'}/conferma-connessione-2026-10-11/${mutant ? 'mutante' : mutantActions ? 'mutante-azioni' : 'dopo'}`;
+const mutantDefaultSave = process.argv.includes('--mutant-default-save');
+const dir = `${process.env.CODEDB_REPORT_ROOT || 'test-reports'}/conferma-connessione-2026-10-11/${mutant ? 'mutante' : mutantActions ? 'mutante-azioni' : mutantDefaultSave ? 'mutante-salvataggio' : 'dopo'}`;
 fs.mkdirSync(dir, { recursive: true });
 
 (async () => {
@@ -24,12 +25,14 @@ fs.mkdirSync(dir, { recursive: true });
     await page.locator('#connect-overlay[data-arc-dialog="open"]').waitFor();
   };
   try {
-    if (mutant || mutantActions) await page.route('**/js/connection.js', async route => {
+    if (mutant || mutantActions || mutantDefaultSave) await page.route('**/js/connection.js', async route => {
       const response = await route.fetch();
       const source = await response.text();
       const body = mutantActions
         ? source.replace("currentStep !== 1 || !$('#conn-ssh-toggle').checked", 'currentStep === 3')
-        : source.replace(/    if \(currentStep !== 3\) \{[\s\S]*?      return;\n    \}/, '');
+        : mutantDefaultSave
+          ? source.replaceAll('nomeSalvataggioConnessione(cfg, savedUriPreview)', "(cfg.saveAs || '').trim()")
+          : source.replace(/    if \(currentStep !== 3\) \{[\s\S]*?      return;\n    \}/, '');
       assert.notEqual(body, source, 'Il mutante deve alterare il percorso del wizard');
       await route.fulfill({ response, body });
     });
@@ -117,9 +120,14 @@ fs.mkdirSync(dir, { recursive: true });
     const summary = await page.locator('#wizard-summary-box').textContent();
     for (const value of ['MongoDB', 'db.interno', '27017', 'analista', 'autenticazione', 'Disattivato']) assert(summary.includes(value), value);
     assert(!summary.includes('segreto-da-non-mostrare'));
-    assert.match(await page.locator('#conn-save-status').textContent(), /non verrà salvata/);
+    assert.equal(await field('saveAs').getAttribute('placeholder'), '(predefinito: db.interno:27017)');
+    assert.match(await page.locator('#conn-save-status').textContent(), /verrà salvata come “db\.interno:27017” senza cartella/);
     await field('saveAs').fill('   ');
-    assert.match(await page.locator('#conn-save-status').textContent(), /non verrà salvata/);
+    assert.match(await page.locator('#conn-save-status').textContent(), /verrà salvata come “db\.interno:27017” senza cartella/);
+    await field('folder').fill('  Reparto  ');
+    assert.match(await page.locator('#conn-save-status').textContent(), /verrà salvata come “db\.interno:27017” nella cartella “Reparto”/);
+    await field('folder').fill('   ');
+    assert.match(await page.locator('#conn-save-status').textContent(), /verrà salvata come “db\.interno:27017” senza cartella/);
     await page.evaluate(async () => {
       window.connectionTest.saved = [{ name: 'Nome esistente', dbType: 'mongodb', label: 'db.esistente' }];
       (await import('/js/connmanager.js')).loadSavedConnections();
@@ -134,7 +142,7 @@ fs.mkdirSync(dir, { recursive: true });
     assert.match(await page.locator('#wizard-summary-box').textContent(), /db.corretto/);
     await page.locator('#conn-cancel-btn').click();
     assert.equal((await requests()).length, 0, 'Annulla non invia la configurazione');
-    report.checks.push('Connetti e Invio aprono il riepilogo; nome esistente dichiarato; Indietro conserva i dati; Annulla non connette');
+    report.checks.push('Connetti e Invio aprono il riepilogo; predefinito host:porta senza cartella; Indietro conserva i dati; Annulla non connette');
 
     for (const type of ['mysql', 'postgresql']) {
       await open();
@@ -145,9 +153,10 @@ fs.mkdirSync(dir, { recursive: true });
       assert.match(await page.locator('#wizard-summary-box').textContent(), /applicazione/);
       await page.locator('#connect-btn').click();
       await page.locator('#connect-overlay').waitFor({ state: 'hidden' });
-      assert.equal((await requests()).at(-1).saveAs, '');
+      assert.equal((await requests()).at(-1).saveAs, type === 'mysql' ? 'localhost:3306' : 'localhost:5432');
+      assert.equal((await requests()).at(-1).folder, '');
     }
-    report.checks.push('MySQL e PostgreSQL: parametri e porte corretti, connessione non salvata dopo conferma');
+    report.checks.push('MySQL e PostgreSQL: parametri e porte corretti, connessione salvata come host:porta senza cartella dopo conferma');
 
     await open();
     await spuntaArc(page, '#conn-ssh-toggle', true);
@@ -192,8 +201,8 @@ fs.mkdirSync(dir, { recursive: true });
     }
     await page.evaluate(() => { window.connectionTest.fail = true; });
     await page.locator('#connect-btn').click();
-    await page.locator('#connect-error:not(.hidden)').waitFor();
-    assert.match(await page.locator('#connect-error').textContent(), /Errore di prova/);
+    await page.locator('#connect-form .feedback-message').waitFor();
+    assert.match(await page.locator('#connect-form .feedback-message').textContent(), /Errore di prova/);
     assert.equal(await field('saveAs').inputValue(), '  Produzione principale  ');
     assert.equal(await page.locator('#connect-btn').textContent(), 'Conferma e connetti');
     await page.evaluate(() => { window.connectionTest.fail = false; window.connectionTest.hold = true; });
@@ -213,8 +222,10 @@ fs.mkdirSync(dir, { recursive: true });
     const uriSummary = await page.locator('#wizard-summary-box').textContent();
     for (const value of ['utente:', 'host-a:27017,host-b:27018/app', 'authSource=admin', 'tls=true']) assert(uriSummary.includes(value), value);
     assert(!uriSummary.includes('p%40ssword') && !uriSummary.includes('segreto-token'));
+    assert.equal(await field('saveAs').getAttribute('placeholder'), '(predefinito: host-a:27017)');
+    assert.match(await page.locator('#conn-save-status').textContent(), /verrà salvata come “host-a:27017” senza cartella/);
     await page.keyboard.press('Escape');
-    report.checks.push('URI multi-host leggibile con password e opzioni sensibili mascherate');
+    report.checks.push('URI multi-host leggibile con password e opzioni sensibili mascherate e nome predefinito host:porta');
 
     await page.evaluate(async () => (await import('/js/connection.js')).startEditConn('Connessione esistente'));
     await page.locator('#connect-overlay[data-arc-dialog="open"]').waitFor();
@@ -222,12 +233,13 @@ fs.mkdirSync(dir, { recursive: true });
     assert.match(await page.locator('#conn-save-status').textContent(), /connessione salvata verrà aggiornata/);
     assert.equal((await page.locator('#wizard-summary-box').textContent()).match(/Invariata · Già salvata/g).length, 2);
     await field('saveAs').fill('');
-    assert.match(await page.locator('#conn-save-status').textContent(), /non verrà salvata/);
+    assert.match(await page.locator('#conn-save-status').textContent(), /verrà salvata come “db\.salvato:27017” senza cartella/);
     await page.locator('#connect-btn').click();
     await page.locator('#connect-overlay').waitFor({ state: 'hidden' });
     assert.equal((await requests()).at(-1).keepPasswordFrom, 'Connessione esistente');
-    assert.equal((await requests()).at(-1).saveAs, '');
-    report.checks.push('Modifica esistente: segreti mantenuti dichiarati, stato aggiornato se si cancella il nome');
+    assert.equal((await requests()).at(-1).saveAs, 'db.salvato:27017');
+    assert.equal((await requests()).at(-1).folder, '');
+    report.checks.push('Modifica esistente: segreti mantenuti dichiarati, ricaduta su host:porta senza cartella se si cancella il nome');
     assert.deepEqual(report.errors, []);
     console.log(`OK: ${report.checks.length} scenari conferma connessione e ${report.layouts.length} layout`);
   } catch (error) {

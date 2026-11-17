@@ -119,9 +119,16 @@ module.exports = (async () => {
     // elenco proprio, e nessuno deve più riconoscere il divieto guardando il
     // TESTO di un messaggio d'errore.
     const radice = path.join(__dirname, '..');
-    const file = ['server.js', 'auth/guardStrategy.js', 'mcp/McpGateway.js',
-      'db/MongoDbStrategy.js', 'db/MongoScript.js', 'db/MongoScriptRunner.js',
-      ...fs.readdirSync(path.join(radice, 'server')).filter(f => f.endsWith('.js')).map(f => 'server/' + f)];
+    const file = [
+      'server.js',
+      'auth/guardStrategy.js',
+      'db/MongoDbStrategy.js',
+      'db/MongoScript.js',
+      'db/MongoScriptRunner.js',
+      ...fs.readdirSync(path.join(radice, 'db')).filter((f) => f.startsWith('mongo-') && f.endsWith('.js')).map((f) => 'db/' + f),
+      ...fs.readdirSync(path.join(radice, 'mcp')).filter((f) => f.endsWith('.js')).map((f) => 'mcp/' + f),
+      ...fs.readdirSync(path.join(radice, 'server')).filter((f) => f.endsWith('.js')).map((f) => 'server/' + f),
+    ];
     const colpevoli = [];
     for (const f of file) {
       const testo = fs.readFileSync(path.join(radice, f), 'utf8');

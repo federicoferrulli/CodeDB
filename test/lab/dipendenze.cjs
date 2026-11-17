@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 if (process.argv.includes('--mutant')) {
-  const Module = require('node:module'), file = require.resolve('../../mcp/McpGateway');
+  const Module = require('node:module'), file = require.resolve('../../mcp/strumenti-scrittura');
   const source = fs.readFileSync(file, 'utf8');
   const broken = source.replaceAll('z.record(z.string(), z.unknown())', 'z.record(z.string(), z.string())');
   assert.notEqual(broken, source);

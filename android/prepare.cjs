@@ -47,10 +47,10 @@ async function prepara() {
   // Node 18 non deduce ESM dalla sintassi dei .js: estensione esplicita nella
   // sola copia Android del modulo foglia importato dal gateway MCP.
   fs.copyFileSync(path.join(DEST, 'public/js/schema-analisi.js'), path.join(DEST, 'public/js/schema-analisi.mjs'));
-  const gateway = path.join(DEST, 'mcp/McpGateway.js');
-  const gatewaySource = fs.readFileSync(gateway, 'utf8');
+  const moduloAnalisiMcp = path.join(DEST, 'mcp/risorse-e-prompt.js');
+  const gatewaySource = fs.readFileSync(moduloAnalisiMcp, 'utf8');
   if (!gatewaySource.includes("'schema-analisi.js'")) throw new Error('Aggiornare il percorso Android del modulo di analisi MCP.');
-  fs.writeFileSync(gateway, gatewaySource.replace("'schema-analisi.js'", "'schema-analisi.mjs'"));
+  fs.writeFileSync(moduloAnalisiMcp, gatewaySource.replace("'schema-analisi.js'", "'schema-analisi.mjs'"));
   // Nessun addon compilato per il runner dentro l'APK: ssh2 ha già il fallback JavaScript.
   const npm = process.env.npm_execpath || (process.platform === 'win32'
     ? path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js')

@@ -111,10 +111,23 @@ const dir = path.resolve('test-reports/modifica-connessione-2026-10-12', process
     assert.equal((await ack('connections:save', { name, oldName: name, cfg: { ssh: '' } })).ok, true);
     assert(!vault.loadConnections()[name].sshPrivateKey && !vault.loadConnections()[name].sshPassphrase, 'Disattivazione SSH esplicita rispettata');
     console.log('OK Aggiornamenti parziali, vuoti espliciti, password sostituita e cambio chiave SSH');
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.evaluate(async () => (await import('/js/connection.js')).startEditConn('Postgres alias'));
+    await page.locator('#connect-overlay[data-arc-dialog="open"]').waitFor();
+    await page.locator('#connect-btn').click();
+    await page.locator('#connect-form [name="saveAs"]').fill('');
+    await page.locator('#connect-form [name="folder"]').fill('');
+    await page.locator('#conn-save-btn').click();
+    await page.locator('#connect-overlay').waitFor({ state: 'hidden' });
+    const savedDefault = vault.loadConnections()['db.example.test:5544'];
+    assert(savedDefault && !savedDefault.folder, 'Senza nome e senza cartella viene salvata come host:porta e fuori dalle cartelle');
+    await page.locator('#conn-tree > li.conn-item[data-conn-name="db.example.test:5544"]').waitFor();
+    console.log('OK Salvataggio reale su disco come host:porta e fuori dalle cartelle nella sidebar');
     assert.deepEqual(errors, [], 'Nessun errore JavaScript');
     fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify({ failures, errors,
       checks: ['Cinque configurazioni salvate senza perdita di parametri o segreti', 'Porte personalizzate e alias postgres',
         'URI leggibile e mascherata', 'Aggiornamenti parziali e cancellazioni esplicite', 'Cambio password e chiave SSH',
+        'Salvataggio come host:porta senza cartella quando i campi vengono lasciati vuoti',
         'Screenshot desktop e mobile, salvataggio raggiungibile dopo scorrimento'] }, null, 2));
   } finally {
     await browser.close();

@@ -138,19 +138,8 @@ class DbStrategy {
    */
   async collectionCount(_db, _coll, _payload) { throw unsupported(); }
 
-  /** Pipeline di aggregazione (MongoDB) o query SQL libera (MySQL). */
+  /** Pipeline di aggregazione (MongoDB) o query SQL libera (MySQL/PostgreSQL). */
   async collectionAggregate(_db, _coll, _payload) { throw unsupported(); }
-
-  /** SELECT SQL su MongoDB, comprese le CTE eseguite per iterazioni. */
-  async mongoSqlRead(_db, _coll, _payload) { throw unsupported(); }
-
-  /** Scritture SQL MongoDB, con schema, sorgenti relazionali e transazioni. */
-  async mongoSqlReturning(_db, _coll, _payload) { throw unsupported(); }
-
-  async mongoSqlSchema(_db, _coll, _payload) { throw unsupported(); }
-
-  async mongoSqlProcedure(_db, _name, _payload) { throw unsupported(); }
-  async mongoSqlTrigger(_db, _coll, _payload) { throw unsupported(); }
 
   /**
    * Esegue più statement DML SQL in ordine sulla stessa connessione e dentro

@@ -31,6 +31,7 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-sql-integrita-righe');
   await require('./unit-insert-values');
   await require('./unit-server-modulare');
+  await require('./unit-architettura-modulare');
   await require('./unit-creazione-collection');
   await require('./unit-conteggi-navigatore');
   await require('./unit-ssh-keys');

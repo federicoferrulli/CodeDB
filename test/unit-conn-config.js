@@ -46,10 +46,21 @@ module.exports = (async () => {
   await assert.rejects(engine.establishConnection({ uri: uri.uri, ssh: 'true' }), /non con URI completa/,
     'SSH richiesto esplicitamente non deve essere ignorato per collegarsi direttamente');
 
-  const { riepilogoUri } = await import('../public/js/riepilogo-uri.mjs');
+  const { riepilogoUri, nomePredefinitoConnessione, nomeSalvataggioConnessione } = await import('../public/js/riepilogo-uri.mjs');
   const preview = riepilogoUri('mongodb://utente:segreto@a:27017,b:27018/app?authSource=admin&tls=true&authMechanismProperties=TOKEN:privato');
   assert(preview.includes('a:27017,b:27018/app') && preview.includes('authSource=admin') && preview.includes('tls=true'));
   assert(!preview.includes('segreto') && !preview.includes('privato'));
   assert(!riepilogoUri('formato sconosciuto con segreto').includes('con segreto'));
-  console.log('OK Configurazioni: aggiornamenti parziali, segreti, cambi modalità, Testa/Connetti e URI mascherata');
+
+  assert.equal(nomeSalvataggioConnessione({ dbType: 'mongodb', connectionMode: 'fields', host: 'db.interno', port: '27017', saveAs: '' }), 'db.interno:27017');
+  assert.equal(nomeSalvataggioConnessione({ dbType: 'mysql', connectionMode: 'fields', host: '  ', port: '', saveAs: '   ' }), 'localhost:3306');
+  assert.equal(nomeSalvataggioConnessione({ dbType: 'postgresql', connectionMode: 'fields', host: '10.0.0.8', port: '', saveAs: '' }), '10.0.0.8:5432');
+  assert.equal(nomeSalvataggioConnessione({ dbType: 'postgres', connectionMode: 'fields', host: '[::1]', port: '5433', saveAs: '' }), '::1:5433');
+  vault.assertConnName(nomeSalvataggioConnessione({ dbType: 'postgres', connectionMode: 'fields', host: '[::1]', port: '5433', saveAs: '' }));
+  assert.equal(nomeSalvataggioConnessione({ dbType: 'mongodb', connectionMode: 'uri', uri: 'mongodb://utente:segreto@mongo-a:27018,mongo-b:27019/app?tls=true', saveAs: '' }), 'mongo-a:27018');
+  assert.equal(nomeSalvataggioConnessione({ dbType: 'mongodb', connectionMode: 'uri', uri: 'mongodb://mongo.senza-porta/app', saveAs: '' }), 'mongo.senza-porta:27017');
+  assert.equal(nomeSalvataggioConnessione({ dbType: 'mongodb', connectionMode: 'uri', uri: '', saveAs: '' }, preview), 'a:27017');
+  assert.equal(nomeSalvataggioConnessione({ dbType: 'mongodb', connectionMode: 'fields', host: 'db.interno', port: '27017', saveAs: '  DB Produzione  ' }), 'DB Produzione');
+  assert.equal(nomePredefinitoConnessione({ dbType: 'mysql', connectionMode: 'fields', host: 'db.mysql', port: '3307', saveAs: 'Personalizzato' }), 'db.mysql:3307');
+  console.log('OK Configurazioni: aggiornamenti parziali, segreti, cambi modalità, Testa/Connetti, URI mascherata e nome predefinito host:porta');
 })();
