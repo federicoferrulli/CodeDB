@@ -300,6 +300,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--control-on); }
 :is(.modal, .palette) #feedback-container {
   position: static; flex: none; width: 100%; max-height: none; overflow: visible;
 }
+/* Nel drawer di connessione la notifica segue la parte visibile del foglio. */
+#connect-overlay .arc-dialog-sheet .arc-panel-slot { position: relative; }
+#connect-overlay .arc-dialog-sheet #feedback-container {
+  position: absolute; inset: auto var(--space-md) var(--space-md) auto;
+  max-width: calc(100% - 2 * var(--space-md));
+  max-height: calc(100% - 2 * var(--space-md));
+}
 .arc-settings { width: 100%; }
 .arc-settings > button { width: 100%; justify-content: flex-start; }
 /* I menu in portal devono stare anche sopra i dialoghi, mai dietro una mappa. */

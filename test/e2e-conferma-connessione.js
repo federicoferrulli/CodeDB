@@ -19,6 +19,7 @@ fs.mkdirSync(dir, { recursive: true });
   const report = { checks: [], layouts: [], errors: [] };
   page.on('pageerror', error => report.errors.push(error.message));
   const field = name => page.locator(`#connect-form [name="${name}"]`);
+  const errors = page.locator('#feedback-container').getByRole('alert');
   const requests = () => page.evaluate(() => window.connectionTest.requests);
   const open = async () => {
     await page.evaluate(async () => (await import('/js/connection.js')).openConnModal());
@@ -65,6 +66,10 @@ fs.mkdirSync(dir, { recursive: true });
               hasPassword: true, hasUri: false, hasSshPassword: true, hasSshPassphrase: true });
             return;
           }
+          if (name === 'connections:save') {
+            ack({ ok: false, error: 'Salvataggio di prova non riuscito.' });
+            return;
+          }
           ack?.({ ok: true, connections: test.saved, databases: [], collections: [], docs: [], fields: [] });
         },
       };
@@ -105,15 +110,16 @@ fs.mkdirSync(dir, { recursive: true });
     await page.evaluate(() => { window.connectionTest.failTest = true; });
     await testButton.click();
     await page.evaluate(() => window.connectionTest.answerTest());
-    await page.locator('#connect-error:not(.hidden)').waitFor();
+    await errors.filter({ hasText: 'Host di prova non raggiungibile' }).waitFor();
     assert(await testButton.isEnabled());
-    assert.match(await page.locator('#connect-error').textContent(), /Host di prova non raggiungibile/);
+    assert(await page.locator('#connect-error').isHidden());
     report.checks.push('Verifica distinta, attesa senza salti, esito annunciato e ripristino del pulsante dopo errore');
     await field('host').fill('db.interno');
     await field('username').fill('analista');
     await field('password').fill('segreto-da-non-mostrare');
     await field('authSource').fill('autenticazione');
     await page.locator('#connect-btn').click();
+    assert.equal(await errors.count(), 0, 'Il cambio di passo rimuove il precedente errore di verifica');
     assert.equal((await requests()).length, 0, 'Rivedi connessione non deve aprire né salvare la connessione');
     assert.equal(await page.locator('#connect-btn').textContent(), 'Conferma e connetti');
     assert(await page.locator('#wizard-summary-title').evaluate(el => el === document.activeElement));
@@ -201,13 +207,14 @@ fs.mkdirSync(dir, { recursive: true });
     }
     await page.evaluate(() => { window.connectionTest.fail = true; });
     await page.locator('#connect-btn').click();
-    await page.locator('#connect-form .feedback-message').waitFor();
-    assert.match(await page.locator('#connect-form .feedback-message').textContent(), /Errore di prova/);
+    await errors.filter({ hasText: 'Errore di prova' }).waitFor();
+    assert.equal(await page.locator('#connect-form .feedback-message').count(), 0);
     assert.equal(await field('saveAs').inputValue(), '  Produzione principale  ');
     assert.equal(await page.locator('#connect-btn').textContent(), 'Conferma e connetti');
     await page.evaluate(() => { window.connectionTest.fail = false; window.connectionTest.hold = true; });
-    await page.locator('#connect-btn').click();
+    await page.locator('#connect-btn').press('Enter');
     assert(await page.locator('#connect-btn').isDisabled());
+    assert.equal(await errors.count(), 0, 'La notifica viene rimossa mentre è in corso il nuovo tentativo');
     assert.equal((await requests()).at(-1).saveAs, 'Produzione principale');
     assert.equal((await requests()).at(-1).folder, 'Lavoro');
     await page.evaluate(() => { window.connectionTest.answer(); window.connectionTest.hold = false; });
@@ -229,7 +236,12 @@ fs.mkdirSync(dir, { recursive: true });
 
     await page.evaluate(async () => (await import('/js/connection.js')).startEditConn('Connessione esistente'));
     await page.locator('#connect-overlay[data-arc-dialog="open"]').waitFor();
+    await page.locator('#conn-save-btn').click();
+    await errors.filter({ hasText: 'Salvataggio di prova non riuscito' }).waitFor();
+    assert(await page.locator('#connect-error').isHidden());
+    assert.equal(await field('host').inputValue(), 'db.salvato');
     await page.locator('#connect-btn').click();
+    assert.equal(await errors.count(), 0);
     assert.match(await page.locator('#conn-save-status').textContent(), /connessione salvata verrà aggiornata/);
     assert.equal((await page.locator('#wizard-summary-box').textContent()).match(/Invariata · Già salvata/g).length, 2);
     await field('saveAs').fill('');

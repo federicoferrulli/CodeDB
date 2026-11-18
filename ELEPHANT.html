@@ -1,0 +1,897 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Atlante del codice · CodeDB</title>
+  <style>
+    :root {
+      --paper: #f6f7fa;
+      --surface: #fff;
+      --text: #20212b;
+      --muted: #596273;
+      --line: #dce0e7;
+      --accent: #5143bb;
+      --tint: #eeebff;
+      --stage: #181c2f;
+      --ink: #edf0fc;
+      --steel: #b9bfd5;
+      --mono: "JetBrains Mono", Consolas, ui-monospace, monospace;
+      --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: var(--sans);
+      color: var(--text);
+      background: var(--paper);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    a { color: inherit; }
+    button, input, select { font: inherit; color: inherit; }
+    button, select, summary { cursor: pointer; }
+    button { background: none; border: 0; }
+    button:disabled { opacity: .45; cursor: default; }
+    :focus-visible { outline: 3px solid #816ee9; outline-offset: 3px; }
+    [hidden] { display: none !important; }
+    .icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; flex: none; vertical-align: middle; }
+    .container { width: min(1570px, 100%); margin-inline: auto; padding-inline: clamp(16px, 3.5vw, 60px); }
+    .banner { background: var(--surface); border-bottom: 1px solid var(--line); }
+    .bar { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand, .header-actions, .action, .group-title, .tool, .mode, .kind, .file, .searchbox, .legend-item { display: inline-flex; align-items: center; }
+    .brand { gap: 10px; padding: 0; font-size: 21px; letter-spacing: -.035em; font-weight: 700; }
+    .brand img { width: 32px; height: 32px; }
+    .brand-group, .header-actions { display: flex; align-items: center; gap: 12px; }
+    .brand-group .divider { height: 19px; width: 1px; background: var(--line); margin: 0 3px; }
+    .doc-label { font-size: 13px; color: var(--muted); }
+    .action { gap: 8px; min-height: 36px; padding: 0 12px; border-radius: 7px; font-size: 13px; font-weight: 600; text-decoration: none; }
+    .action:hover { background: #eeeff4; }
+    .action.primary { background: var(--accent); color: #fff; }
+    .action.primary:hover { background: #3f329b; }
+    .intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 26px; padding-block: 34px 24px; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(32px, 3.1vw, 49px); letter-spacing: -.038em; line-height: 1.06; font-weight: 650; }
+    .intro p { margin-top: 10px; color: var(--muted); font-size: 15px; line-height: 1.5; }
+    .search-wrap { position: relative; min-width: 240px; width: 28%; max-width: 350px; z-index: 3; }
+    .searchbox { width: 100%; height: 42px; gap: 10px; padding: 0 12px; border: 1px solid #cbd0db; background: white; border-radius: 8px; color: var(--muted); }
+    .searchbox:focus-within { border-color: var(--accent); outline: 2px solid #cfc7ff; }
+    .searchbox input { width: 100%; min-width: 0; border: 0; padding: 0; outline: none; background: transparent; font-size: 14px; }
+    .searchbox input::placeholder { color: #636a78; }
+    kbd { font: 12px var(--mono); border: 1px solid var(--line); background: #f7f8fa; border-radius: 4px; padding: 2px 6px; }
+    .search-results { position: absolute; top: calc(100% + 6px); right: 0; width: max(100%, min(380px, 88vw)); max-height: 355px; overflow: auto; background: white; border: 1px solid var(--line); border-radius: 9px; box-shadow: 0 12px 26px #24263b1c; padding: 5px; }
+    .search-results button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; text-align: left; border-radius: 5px; }
+    .search-results button:hover, .search-results button[aria-selected=true] { background: var(--tint); }
+    .search-results small { font: 11px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+    .none { padding: 12px; font-size: 14px; color: var(--muted); }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 26%); gap: 18px; align-items: start; }
+    .map-card { background: var(--stage); color: var(--ink); border-radius: 12px; overflow: hidden; }
+    .map-head, .map-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .map-head { min-height: 58px; padding: 10px 17px; border-bottom: 1px solid #35394d; }
+    .group-title { min-width: 0; gap: 10px; font-size: 14px; font-weight: 600; }
+    .group-title .icon { color: #c1b3fc; }
+    #crumb-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .modes { display: flex; flex: none; gap: 2px; padding: 3px; background: #101425; border: 1px solid #31364a; border-radius: 6px; }
+    .mode { gap: 6px; padding: 5px 9px; border-radius: 4px; color: var(--steel); font-size: 12px; }
+    .mode[aria-pressed=true] { color: white; background: #393e55; }
+    .mode .icon { width: 14px; height: 14px; }
+    .stage { position: relative; background-color: var(--stage); background-image: radial-gradient(#3a3e56 0.85px, transparent 0.9px); background-size: 18px 18px; }
+    #map { display: block; width: 100%; height: clamp(408px, 33vw, 485px); }
+    .map-counts { display: flex; gap: 8px; align-items: center; position: absolute; top: 14px; left: 17px; font: 11px var(--mono); color: #c2c7dc; pointer-events: none; }
+    .map-counts span + span::before { content: "·"; margin-right: 8px; color: #969cb7; }
+    .zoom-bar { display: flex; align-items: center; gap: 2px; position: absolute; bottom: 12px; right: 13px; background: #1e2236; border: 1px solid #42465c; padding: 2px; border-radius: 7px; }
+    .tool { justify-content: center; color: var(--ink); width: 30px; height: 29px; border-radius: 4px; }
+    .tool .icon { width: 15px; height: 15px; }
+    .tool:hover { background: #373b53; }
+    #zoom-level { min-width: 35px; text-align: center; font: 11px var(--mono); color: var(--steel); }
+    #fit { border-left: 1px solid #484d62; border-radius: 0 4px 4px 0; margin-left: 3px; }
+    .map-foot { min-height: 43px; border-top: 1px solid #34384e; padding: 8px 15px; flex-wrap: wrap; }
+    .legend { display: flex; gap: 12px; flex-wrap: wrap; }
+    .legend-item { gap: 5px; padding: 3px 0; color: #d7daeb; font-size: 12px; }
+    .legend-item:hover { color: white; text-decoration: underline; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--dot, #ad98fa); }
+    .root-reset { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; color: var(--steel); font-size: 12px; padding: 0; }
+    .root-reset .icon { width: 14px; height: 14px; }
+    .root-reset:hover { color: white; }
+    .detail-jump { display: none; }
+    .inspector { background: white; border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; max-height: calc(clamp(408px, 33vw, 485px) + 102px); overflow: hidden; }
+    .inspector-label { display: flex; align-items: center; gap: 8px; padding: 0 18px; min-height: 47px; border-bottom: 1px solid var(--line); font-size: 13px; font-weight: 600; color: #515a69; }
+    .inspector-label .icon { width: 16px; height: 16px; }
+    #detail { padding: 20px 19px; overflow: auto; scrollbar-width: thin; scrollbar-color: #c6c8d3 transparent; }
+    .kind { gap: 6px; color: #5143a1; background: #f1edff; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 650; }
+    .kind .icon { width: 13px; height: 13px; }
+    #detail h2 { margin-top: 11px; font-size: 26px; line-height: 1.13; letter-spacing: -.032em; }
+    .summary { margin-top: 9px; color: #4f5766; line-height: 1.52; font-size: 14px; }
+    .detail-section { margin-top: 19px; padding-top: 15px; border-top: 1px solid #e4e6ed; }
+    .detail-section h3, details summary { font-size: 13px; font-weight: 650; }
+    .rules { margin: 8px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.48; color: #424a59; }
+    .rules li + li { margin-top: 6px; }
+    .rules li::marker { color: #8173c6; }
+    .rel-link { display: flex; align-items: center; gap: 9px; text-align: left; width: 100%; min-height: 35px; border-bottom: 1px solid #eef0f4; padding: 6px 0; font-size: 13px; }
+    .rel-link:hover { color: var(--accent); }
+    .rel-link .icon { width: 13px; height: 13px; margin-left: auto; color: var(--muted); }
+    .rel-link small { display: block; color: var(--muted); font-size: 11px; }
+    .refs { margin-top: 5px; }
+    .file { display: flex; gap: 7px; font: 11px/1.45 var(--mono); padding: 4px 0; text-decoration: none; color: #4b4782; overflow-wrap: anywhere; }
+    .file:hover { text-decoration: underline; }
+    .file .icon { width: 13px; height: 13px; }
+    .file span { min-width: 0; }
+    .paths { background: white; border: 1px solid var(--line); margin: 19px 0 32px; border-radius: 10px; padding: 17px 21px; }
+    .paths-head { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+    .paths h2 { display: flex; align-items: center; gap: 9px; font-size: 18px; letter-spacing: -.025em; }
+    .paths h2 .icon { color: var(--accent); width: 21px; height: 21px; }
+    #route { border: 1px solid #cdd1db; border-radius: 6px; background: white; padding: 6px 9px; font-size: 13px; max-width: 100%; }
+    #steps { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 7px; margin: 14px 0 0; padding: 0; list-style: none; }
+    #steps li { display: flex; align-items: center; gap: 7px; }
+    #steps .icon { width: 13px; height: 13px; color: #737a88; }
+    .step { display: inline-flex; align-items: center; gap: 7px; min-height: 31px; padding: 2px 5px; border-radius: 4px; font-size: 13px; }
+    .step:hover, .step[aria-current=true] { background: var(--tint); color: var(--accent); }
+    .ordinal { display: inline-grid; place-items: center; border: 1px solid #d6d5e3; border-radius: 50%; width: 19px; height: 19px; font: 11px var(--mono); color: #5b5871; }
+    #node-list { height: clamp(408px, 33vw, 485px); overflow: auto; padding: 12px 17px 20px; color: var(--ink); background: var(--stage); }
+    .list-group { margin: 4px 0 14px; }
+    .list-group h3 { color: #cac4e9; font-size: 13px; margin: 0 0 4px; padding: 6px 0; border-bottom: 1px solid #42445a; }
+    .list-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; }
+    .list-buttons button { text-align: left; padding: 8px 6px; border-radius: 4px; color: #eef0ff; font-size: 13px; }
+    .list-buttons button:hover, .list-buttons button[aria-current=true] { background: #39374e; }
+    .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+    @media (max-width: 1100px) { .workspace { grid-template-columns: minmax(0, 1fr) 265px; gap: 12px; } .container { padding-inline: 22px; } .legend { gap: 8px; } }
+    @media (max-width: 890px) { .workspace { grid-template-columns: 1fr; } .inspector { max-height: none; } #detail { overflow: visible; } .intro { align-items: center; } .legend { gap: 14px; } .detail-jump { display: inline-flex; } }
+    @media (max-width: 600px) {
+      .container { padding-inline: 13px; }
+      .bar { min-height: 55px; gap: 6px; }
+      .brand { font-size: 19px; gap: 6px; }
+      .brand img { width: 28px; height: 28px; }
+      .doc-label, .brand-group .divider { display: none; }
+      .header-actions { gap: 3px; }
+      .action { min-height: 39px; padding-inline: 9px; }
+      .intro { display: block; padding: 23px 0 15px; }
+      h1 { font-size: 33px; }
+      .intro p { margin-top: 6px; font-size: 14px; }
+      .search-wrap { margin-top: 14px; width: 100%; max-width: none; min-width: 0; }
+      .searchbox { height: 44px; }
+      .map-head { min-height: 49px; padding: 6px 10px; gap: 5px; }
+      .group-title { gap: 6px; }
+      .mode { padding: 6px 7px; }
+      #map, #node-list { height: 348px; }
+      .map-counts { top: 10px; left: 11px; }
+      .map-foot { padding-inline: 10px; gap: 6px; }
+      .legend { gap: 4px 10px; }
+      .root-reset { min-height: 32px; }
+      .tool { width: 35px; height: 34px; }
+      .inspector-label { min-height: 40px; }
+      #detail { padding: 14px 16px; }
+      .paths { padding: 15px; margin: 13px 0 20px; }
+      .paths-head { align-items: flex-start; flex-direction: column; gap: 9px; }
+      #route { width: 100%; min-height: 40px; }
+      .step { min-height: 35px; }
+    }
+  </style>
+</head>
+<body>
+  <svg aria-hidden="true" width="0" height="0" style="position:absolute"><defs>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M3 4.5c3.4-.7 6.3-.3 9 1.5 2.7-1.8 5.6-2.2 9-1.5v14c-3.4-.7-6.3-.3-9 1.5-2.7-1.8-5.6-2.2-9-1.5z"/><path d="M12 6v14"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+    <symbol id="i-topology" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="5" rx="1"/><path d="M12 7v5M5 16v-4h14v4"/><rect x="2" y="16" width="6" height="5" rx="1"/><rect x="16" y="16" width="6" height="5" rx="1"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14m-7-7v14"/></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 11 9-8 9 8m-15 0v10h12V11"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
+    <symbol id="i-route" viewBox="0 0 24 24"><circle cx="5" cy="17" r="2.3"/><circle cx="19" cy="7" r="2.3"/><path d="M7.5 17H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h5"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5zM14 3v6h5"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5m-18 4 9 5 9-5"/></symbol>
+  </defs></svg>
+  <header class="banner">
+    <div class="container bar">
+      <div class="brand-group">
+        <button type="button" class="brand" id="brand" aria-label="CodeDB, torna alla panoramica"><img alt="" src="data:image/x-icon;base64,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">CodeDB</button>
+        <span class="divider" aria-hidden="true"></span><span class="doc-label">Documentazione</span>
+      </div>
+      <nav class="header-actions" aria-label="File di documentazione">
+        <a class="action" href="ELEPHANT.md"><svg class="icon" aria-hidden="true"><use href="#i-book"/></svg> Guida</a>
+        <a class="action primary" download="ELEPHANT.json" href="ELEPHANT.json"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg> Scarica JSON</a>
+      </nav>
+    </div>
+  </header>
+  <main class="container">
+    <div class="intro">
+      <div>
+        <h1>Atlante del codice</h1>
+        <p>Esplora moduli, relazioni e regole di sviluppo di CodeDB.</p>
+      </div>
+      <div class="search-wrap" id="search-wrap">
+        <label class="searchbox"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+          <input id="search" type="search" autocomplete="off" placeholder="Cerca un nodo o un file…" aria-label="Cerca un nodo o un file" aria-controls="results" aria-expanded="false" aria-autocomplete="list" role="combobox">
+          <kbd aria-hidden="true">/</kbd>
+        </label>
+        <div id="results" class="search-results" role="listbox" aria-label="Risultati della ricerca" hidden></div>
+      </div>
+    </div>
+    <div class="workspace">
+      <section class="map-card" aria-label="Esploratore del grafo">
+        <div class="map-head">
+          <div class="group-title"><svg class="icon" aria-hidden="true"><use href="#i-topology"/></svg><span id="crumb-label">Mappa del sistema</span></div>
+          <div class="modes" role="group" aria-label="Visualizzazione">
+            <button id="graph-mode" class="mode" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="#i-topology"/></svg> Grafo</button>
+            <button id="list-mode" class="mode" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-list"/></svg> Elenco</button>
+          </div>
+        </div>
+        <div class="stage" id="stage">
+          <div class="map-counts" id="counts" aria-label="Dimensioni del grafo"></div>
+          <svg id="map" aria-label="Mappa interattiva. Seleziona un nodo per esplorare i collegamenti." role="group"></svg>
+          <div class="zoom-bar" role="group" aria-label="Scala della mappa">
+            <button id="zoom-out" class="tool" title="Riduci" aria-label="Riduci"><svg class="icon" aria-hidden="true"><use href="#i-minus"/></svg></button>
+            <output id="zoom-level" aria-label="Scala">100%</output>
+            <button id="zoom-in" class="tool" title="Ingrandisci" aria-label="Ingrandisci"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
+            <button id="fit" class="tool" title="Inquadra il grafo" aria-label="Inquadra il grafo"><svg class="icon" aria-hidden="true"><use href="#i-fit"/></svg></button>
+          </div>
+        </div>
+        <div id="node-list" aria-label="Elenco dei nodi" hidden></div>
+        <div class="map-foot"><div class="legend" id="legend" role="group" aria-label="Esplora per area"></div>
+          <button class="root-reset" id="root-reset"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg> Panoramica</button>
+          <button class="root-reset detail-jump" id="detail-jump">Leggi i dettagli ↓</button>
+        </div>
+      </section>
+      <aside class="inspector" id="inspector" aria-label="Dettaglio del nodo">
+        <div class="inspector-label"><svg class="icon" aria-hidden="true"><use href="#i-panel"/></svg> Dettaglio del nodo</div>
+        <div id="detail"></div>
+      </aside>
+    </div>
+    <section class="paths" aria-labelledby="paths-title">
+      <div class="paths-head"><h2 id="paths-title"><svg class="icon" aria-hidden="true"><use href="#i-route"/></svg> Percorsi di lettura</h2>
+        <select id="route" aria-label="Scegli un’attività"></select></div>
+      <ol id="steps"></ol>
+    </section>
+    <p id="announcement" class="sr" role="status"></p>
+    <noscript>Attiva JavaScript per navigare il grafo, oppure apri la guida o il file JSON.</noscript>
+  </main>
+  <script type="application/json" id="graph-data">{"schemaVersion":1,"language":"it","guide":"ELEPHANT.md","root":"codedb","agent":{"start":"Scegli in entrypoints un'attività vicina al problema e leggi soltanto i nodi indicati da steps, nell'ordine suggerito. Per una panoramica parti da nodes.codedb e attraversa contains.","lookup":"nodes è indicizzato per ID stabile. summary spiega la responsabilità, rules raccoglie gli invarianti, sources e tests sono percorsi relativi alla radice del repository. Ogni concept indica il capitolo in section, ogni section rimanda tramite anchor alla guida estesa.","traversal":"Un arco {from,rel,to} si legge dal soggetto all'oggetto. Per stimare l'impatto cerca anche gli archi entranti. I percorsi di lettura sono sequenze editoriali e possono attraversare più rami.","examples":{"percorsi":"jq '.entrypoints | map_values(.title)' ELEPHANT.json","contesto":"jq '. as $g | $g.entrypoints[\"edit-cell\"].steps[] as $id | {id:$id} + $g.nodes[$id]' ELEPHANT.json","vicini":"jq --arg id cell-write '.edges[] | select(.from == $id or .to == $id)' ELEPHANT.json","senzaJq":"node -p \"require('./ELEPHANT.json').nodes['cell-write']\""},"maintenance":"Aggiorna questa fonte JSON insieme alla guida quando cambia un contratto. Rigenera il modello incorporato con node tools/sincronizza-elephant.cjs e verifica la coerenza con --check."},"entrypoints":{"edit-cell":{"title":"Modificare una cella","steps":["cell-write","row-identity","exact-values","socket-request","uncertain-outcome"]},"diagnose-error":{"title":"Diagnosticare un errore","steps":["driver-diagnosis","query-error-range","dialog-feedback","partial-failure","test-selection"]},"new-event":{"title":"Aggiungere un evento socket","steps":["event-families","socket-request","strategy-authorization","activity-audit","change-contract"]},"slow-grid":{"title":"Indagare una griglia lenta","steps":["grid-page","typed-filter","data-grid","query-dispatch","live-monitoring"]},"query":{"title":"Estendere l’editor di query","steps":["editor-navigation","query-dispatch","native-sql-session","mongo-query-languages","script-runs"]},"permissions":{"title":"Verificare l’accesso ai dati","steps":["rbac-principal","strategy-authorization","sql-scope","vault-secrets","activity-audit"]},"restore":{"title":"Ripristinare un backup","steps":["backup-chain","source-consistency","transfer-plan","restore-promotion","test-isolation"]},"mcp-write":{"title":"Estendere una scrittura MCP","steps":["mcp-session","mcp-tools","mcp-confirmation","mcp-write-policy","strategy-authorization"]},"ui":{"title":"Aggiungere un controllo UI","steps":["workspace-state","arc-controls","dialog-feedback","theme-accessibility","split-panes"]},"package":{"title":"Verificare un pacchetto","steps":["release-packaging","docker-runtime","electron-runtime","android-runtime","test-selection"]},"tests":{"title":"Scegliere una prova di regressione","steps":["change-contract","test-selection","test-isolation","test-sensitivity","reliability-lab"]}},"relations":{"contains":"contiene","calls":"invoca","depends_on":"dipende da","guards":"protegge","reads":"legge","writes":"scrive","invalidates":"invalida","recovers":"recupera","verifies":"verifica"},"nodes":{"codedb":{"kind":"root","title":"CodeDB","summary":"Workbench per esplorare schemi, eseguire query e modificare dati su MongoDB, MySQL e PostgreSQL. Browser, Electron, Android e client MCP condividono i servizi del backend.","rules":["La sessione viva appartiene al tab. Database, identità del principal e ambito della richiesta determinano il bersaglio.","Un valore tipizzato e l’identità di una riga devono sopravvivere a lettura, modifica e trasferimento."],"sources":["ELEPHANT.md","CONTEXT.md","AGENTS.md"],"tests":[]},"core":{"kind":"area","title":"Fondamenta","summary":"Dal vocabolario del repository all’avvio delle sessioni, al protocollo e agli errori.","rules":[],"sources":[],"tests":[]},"data":{"kind":"area","title":"Dati e motori","summary":"Strategie DB, esecuzione delle query e fedeltà degli artefatti da esportare o ripristinare.","rules":[],"sources":[],"tests":[]},"client":{"kind":"area","title":"Interfaccia","summary":"Stato del workbench, interazioni e viste che condividono i dati del tab.","rules":[],"sources":[],"tests":[]},"ops":{"kind":"area","title":"Operatività","summary":"Autorizzazioni, accessi MCP, distribuzione e prove per il rilascio.","rules":[],"sources":[],"tests":[]},"repo":{"kind":"section","title":"Repository","summary":"Lessico, confini dei moduli e superfici che consumano i contratti di CodeDB.","rules":[],"sources":["server.js","server/createServer.js","server/socket.js","db/DbStrategy.js","db/DbFactory.js","db/","auth/AppStore.js","auth/permissions.js","server/vault.js","public/js/","ui/","public/css/","DESIGN.md","backup/lib/engine.js","server/eventi-import.js","docs/guida-export-import.md","server/mcp.js","docs/MCP.md","android/README.md","Dockerfile",".github/workflows/release.yml","package.json"],"tests":["test/","test/lab/README.md"],"area":"core","anchor":"orientarsi-nel-repository"},"domain-targets":{"kind":"concept","title":"Connessione, sessione e bersaglio","summary":"La connessione è una configurazione riutilizzabile. La sessione aperta appartiene a un tab di connessione. Tabelle, collezioni e documenti Query sono schede interne.","rules":["Su MongoDB il bersaglio è database e collezione. Su MySQL è database e tabella. Su PostgreSQL il «database» dell’albero è uno schema del database fisico della connessione.","Per cambiare database fisico PostgreSQL occorre un’altra connessione. Conserva schema e nome della tabella nei riferimenti qualificati e nei controlli di scope."],"sources":["CONTEXT.md","public/js/tabs.js","public/js/colltabs.js","db/PostgreSqlStrategy.js"],"tests":["test/e2e-postgres.js"],"section":"repo"},"application-surfaces":{"kind":"concept","title":"Punti di ingresso del workbench","summary":"Browser, Electron e WebView Android presentano lo stesso workbench. I client MCP accedono alle operazioni del server tramite un protocollo distinto.","rules":["Per un gesto UI parti da public/js/main.js e dal controller della vista. Per i controlli condivisi segui gli adattatori Arc in ui/main.tsx.","Una modifica di semantica del DBMS va verificata nei percorsi che usano la stessa strategia, inclusi UI, esecuzione query e MCP."],"sources":["public/index.html","public/js/main.js","ui/main.tsx","electron-main.js","android/mobile.cjs","mcp/McpGateway.js"],"tests":["test/e2e-avvio-ui.js","test/unit-architettura-modulare.js"],"section":"repo"},"shared-modules":{"kind":"concept","title":"Moduli condivisi e compatibilità","summary":"Il server usa prevalentemente CommonJS, i controller web sono ESM. Le regole pure necessarie ai due ambienti possono avere una sola implementazione.","rules":["Per quotare gli identificatori usa la regola di public/js/identificatori.mjs e il ponte db/identificatori.js. Verifica anche il caricamento dei moduli condivisi sul runtime mobile.","Conserva nomi e forme pubbliche di eventi, metodi e payload. UI, commenti e messaggi di errore sono in italiano."],"sources":["AGENTS.md","db/identificatori.js","public/js/identificatori.mjs","android/mobile.cjs"],"tests":["test/unit-identificatori.js","android/test-moduli.cjs"],"section":"repo"},"runtime":{"kind":"section","title":"Ciclo di vita","summary":"Avvio e arresto dell’istanza, configurazione isolata e proprietà delle sessioni.","rules":[],"sources":[".github/workflows/release.yml","backup/lib/policy.js"],"tests":[],"area":"core","anchor":"avvio-e-ciclo-di-vita"},"local-development":{"kind":"concept","title":"Avvio da sorgenti","summary":"Node 24 è la linea usata dalla CI e dall’immagine Docker. npm ci installa dal lockfile. npm run dev avvia il watcher server su 127.0.0.1:3030 per impostazione iniziale.","rules":["Gli ESM in public/js/ sono serviti direttamente. Per modifiche in ui/ compila con npm run build:ui o npm run dev:ui e usa npm run typecheck:ui.","npm run start:rbac carica .env. L’attivazione dipende da CODEDB_RBAC=on e richiede il control plane MongoDB configurato."],"sources":["package.json","tools/build-ui.mjs","Dockerfile","server/identita.js",".env.example"],"tests":["test/e2e-avvio-ui.js"],"section":"runtime"},"instance-config":{"kind":"concept","title":"Configurazione e isolamento","summary":"createServer({config, dependencies}) compone servizi per istanza. configurazione() fotografa l’ambiente, applica gli override e valida porta e URL pubblico.","rules":["Per una fixture usa PORT: 0 o una porta dedicata. Definisci percorsi distinti per INI/vault, connessioni per owner, backup, risultati script, log UI/MCP e impostazioni MCP.","Se RBAC è attivo isola anche il control plane. L’isolamento delle mappe e dei lock in memoria lascia indipendente la scelta di dove scrivere su disco."],"sources":["server/createServer.js","server/configurazione.js","server/dipendenze.js","docs/server-modulare.md"],"tests":["test/unit-server-modulare.js"],"section":"runtime"},"server-lifecycle":{"kind":"concept","title":"Avvio e arresto del server","summary":"Importare la facciata server.js è privo di ascolto su porte. start() inizializza rete, vault e identità. stop() drena il lavoro per istanza e rilascia le risorse.","rules":["Attendi start() prima di usare la porta. In caso di avvio fallito si rilasciano anche le risorse parzialmente inizializzate.","stop() è idempotente. Per riavviare costruisci una nuova istanza. I segnali e la terminazione del processo appartengono al launcher CLI."],"sources":["server.js","server/createServer.js","server/processo.js","bin/codedb.js"],"tests":["test/unit-server-modulare.js"],"section":"runtime"},"session-ownership":{"kind":"concept","title":"Proprietà delle sessioni e lease","summary":"Il socket conserva una Map per tabId con strategia, eventuale tunnel e operazioni in corso. Le sessioni vive usano la quota di connessioni DB condivisa con MCP.","rules":["mongo:connect e mongo:disconnect gestiscono tutti i motori. Serializza sullo stesso lock apertura e chiusura di un tab. Rilascia anche una connessione appena aperta se nel frattempo il client è scomparso.","Le operazioni che usano una lease, come uml:apply, la acquisiscono sul bersaglio e la rilasciano in finally. La chiusura differisce il teardown delle risorse ancora in uso."],"sources":["server/socket.js","server/eventi-connessioni.js","server/connessioni.js","server/eventi-dati.js","server/budget.js"],"tests":["test/unit-server-modulare.js","test/e2e-chiusura-query.js"],"section":"runtime"},"transport":{"kind":"section","title":"Trasporto","summary":"Un comando dalla UI arriva al socket, attraversa autorizzazione e strategia e torna al documento di origine.","rules":[],"sources":["server/connessioni.js","server/eventi-connessioni.js"],"tests":[],"area":"core","anchor":"dal-clic-alla-risposta"},"event-families":{"kind":"concept","title":"Famiglie di eventi Socket.IO","summary":"Le azioni sui dati passano da delegate, quelle amministrative da amministrativo e quelle lunghe da operazioneLunga. safeOn gestisce validazione, rivalidazione, errori e ack monouso.","rules":["Per una nuova azione sui dati classifica evento e metodo, recupera il bersaglio e restituisci il risultato della strategia. Per un’azione amministrativa dichiara la politica di audit e verifica il permesso nell’handler.","Per un’operazione lunga dichiara proprietà, avanzamento, cancellazione e termine. Aggiorna il catalogo degli eventi insieme alla registrazione. Alcune eccezioni usano safeOn direttamente."],"sources":["server/socket.js","server/eventi-dati.js","server/audit.js","auth/capabilities.js","docs/adr/0001-tre-famiglie-di-evento.md"],"tests":["test/unit-registrazione-eventi.js","test/server-eventi-attesi.json"],"section":"transport"},"socket-request":{"kind":"concept","title":"Richiesta, ack e tab di origine","summary":"emit() fissa il tabId alla partenza e associa _tab e _state alla risposta. Un tabId esplicito ha precedenza. Gli ack ordinari contengono ok e dati oppure ok:false ed error.","rules":["Scrivi sullo stato originario. Prima di ridisegnare verifica anche documento, bersaglio e identità della richiesta. Il solo tab attivo non distingue due ricerche consecutive nella stessa scheda.","Per richieste normali la chiusura del tab genera AbortError/TAB_CLOSED. bindTab:false è previsto per operazioni registrate con durata indipendente dal tab. Progresso e notifiche sono eventi push."],"sources":["public/js/trasporto.js","public/js/coerenza-richieste.js","server/socket.js","db/payloadEsecuzione.js"],"tests":["test/unit-trasporto.js","test/unit-coerenza-richieste.js","test/e2e-pagine-obsolete.js"],"section":"transport"},"grid-page":{"kind":"concept","title":"Lettura paginata e conteggio differito","summary":"runQuery() congela database, collezione, filtro e pagina. collection:find con deferCount restituisce subito le righe. collection:count usa poi lo stesso filtro.","rules":["Conserva le righe se scade il conteggio. total:null e timedOut:true significano totale sconosciuto. Distingui nella UI stima, totale esatto, conteggio pendente e timeout.","Le azioni massive e la fine della paginazione dipendono dall’affidabilità del totale. Una risposta di conteggio precedente non può aggiornare una ricerca successiva."],"sources":["public/js/grid.js","public/js/coerenza-richieste.js","server/eventi-dati.js","db/tetti.js"],"tests":["test/unit-tetti.js","test/e2e-pagine-obsolete.js"],"section":"transport"},"cell-write":{"kind":"concept","title":"Salvataggio di una cella","summary":"salvaCampi() invia doc:update con tabId, db, coll, idOf(doc) e set catturati dal contesto dell’editor. Il percorso di scrittura è riusato da griglia, geometrie e selettore FK.","rules":["Alla conferma dell’input inline elimina solo le bozze immutate dall’invio. Se l’utente ha cambiato vista, marca i dati originali da aggiornare o passa il refresh alla callback della vista.","Su un errore di validazione conserva l’input correggibile. Usa l’identità della risposta DB per la riga e i metadati delle colonne per l’editabilità."],"sources":["public/js/inlineEdit.js","public/js/righe.js","server/eventi-dati.js"],"tests":["test/e2e-arc-griglia.js","test/e2e-sql-integrita-ui.js"],"section":"transport"},"errors":{"kind":"section","title":"Errori","summary":"Traduzione degli errori dei driver, posizioni nell’editor e distinzione tra errore certo ed esito sconosciuto.","rules":[],"sources":[],"tests":[],"area":"core","anchor":"errori-e-diagnosi"},"driver-diagnosis":{"kind":"concept","title":"Errori del driver e messaggi italiani","summary":"errMsg() inoltra errore e contesto a spiegaErrore(). descriviErrore() riconosce, fra gli altri, codici del driver, SQLSTATE, errori di rete e di vincolo.","rules":["Propaga l’errore con codice e posizione. Il delegato può aggiungere err._ctx con dbType, db e coll. Per una diagnosi riconosciuta presenta causa, rimedio e dettaglio tecnico utile.","Per un messaggio sconosciuto conserva il testo depurato. redigiUri() oscura componenti riservate anche nel fallback. Testa l’idempotenza e il caso vicino che deve restare sconosciuto."],"sources":["server/errori.js","db/errors.js","server/socket.js","public/js/avvisi.js"],"tests":["test/unit-errors.js","test/unit-feedback-messaggi.js"],"section":"errors"},"query-error-range":{"kind":"concept","title":"Posizione degli errori nell’editor","summary":"queryError rappresenta un intervallo UTF-16 da zero, con fine esclusa. Il server e il browser usano la stessa regola per le posizioni supportate.","rules":["Converti i caratteri PostgreSQL contati da uno e nel caso di script riporta l’intervallo al documento originale. Verifica anche righe successive e un emoji precedente al token.","Se manca una posizione esplicita, evidenzia solo un frammento riconoscibile e univoco. Per un token ambiguo resta valido il messaggio senza evidenziazione."],"sources":["public/js/query-error.js","db/queryError.js","server/query.js","server/socket.js"],"tests":["test/unit-query-error.js","test/e2e-query-error-mark.js"],"section":"errors"},"uncertain-outcome":{"kind":"concept","title":"Riconnessione ed esito incerto","summary":"Una sessione dichiarata assente e una connessione caduta durante un comando hanno conseguenze diverse. executeWithReconnect() può ristabilire la sessione lasciando incerto l’esito precedente.","rules":["Se il server segnala assenza di sessione e il profilo è salvato, emit() può riconnettere per nome e ritentare una volta.","Se cade la connessione durante una scrittura, conserva il segnale operationOutcomeUnknown dove disponibile. Verifica i dati o il registro prima di ripetere. Una nuova connessione SQL perde lo stato transazionale della precedente."],"sources":["server/connessioni.js","public/js/trasporto.js","db/sqlSessione.js"],"tests":["test/unit-trasporto.js","test/unit-sql-sessioni.js"],"section":"errors"},"partial-failure":{"kind":"concept","title":"Fallback ed esiti parziali","summary":"Il recupero dipende dal lavoro già effettuato. Calcoli locali equivalenti possono sostituire un worker guasto. La verifica fallita dopo una promozione richiede un esito e il recupero.","rules":["Distingui indisponibilità dei metadati da zero relazioni e timeout da zero righe. Un ack iniziale in un’operazione lunga attesta accettazione, non completamento.","Su un import incompleto conserva fase, effetti e recupero. Se la copia originale non può essere verificata come ripristinata, riporta l’intervento richiesto."],"sources":["db/importPlan.js","public/js/calcoli.js","public/js/fk-cache.js"],"tests":["test/unit-import-conferma.js","test/unit-calcoli.js"],"section":"errors"},"strategies":{"kind":"section","title":"Strategie e tipi","summary":"Differenze fra DBMS, identità stabile e rappresentazioni esatte nei percorsi di lettura e scrittura.","rules":[],"sources":["db/MongoDbStrategy.js","db/MySqlStrategy.js","db/PostgreSqlStrategy.js"],"tests":[],"area":"data","anchor":"strategie-identità-e-tipi"},"guarded-strategy":{"kind":"concept","title":"Strategie, limiti e autorizzazione","summary":"DbFactory.getStrategy() crea MongoDbStrategy, MySqlStrategy o PostgreSqlStrategy e applica conTetti(). Il livello di connessione aggiunge guardStrategy per le operazioni della sessione.","rules":["Il tipo assente nelle connessioni storiche significa mongodb. postgres è alias di postgresql. Conserva nella classe comune soltanto le operazioni condivise.","I sottosistemi specifici si montano con definisciMetodi() sul prototipo del proprio motore. Mantieni i descrittori di classe e classifica ogni nuovo metodo pubblico nella tabella delle capability."],"sources":["db/DbFactory.js","db/DbStrategy.js","db/tetti.js","db/prototipoStrategia.js","server/connessioni.js","auth/guardStrategy.js"],"tests":["test/unit-architettura-modulare.js","test/unit-tabella-autorizzazioni.js","test/unit-tetti.js"],"section":"strategies"},"typed-filter":{"kind":"concept","title":"Filtri, identificatori e ricerca","summary":"I valori sono parametri del driver. Gli identificatori di schema, tabella e colonna seguono la quotatura del dialetto. I filtri strutturati hanno condizioni, operatore, valore e unione.","rules":["Invia contieneOvunque come intenzione. La strategia ricerca valori scalari nei campi rilevati, anche annidati e fuori dalla pagina visibile.","Su MongoDB un campo raro entra nel catalogo dopo osservazione o campionamento. Su PostgreSQL quotare il nome preserva maiuscole e minuscole."],"sources":["db/filtro.js","db/ricercaGlobale.js","public/js/identificatori.mjs","docs/adr/0002-la-ricerca-globale-appartiene-alle-strategie.md"],"tests":["test/unit-filtro.js","test/unit-identificatori.js","test/unit-ricerca-globale.js"],"section":"strategies"},"row-identity":{"kind":"concept","title":"Identità stabile di documenti e righe","summary":"preparaRighe() associa con WeakMap rowIds e columnMeta agli oggetti dei risultati. La chiave per aggiornare una riga può differire da una colonna visualizzata chiamata _id.","rules":["In SQL conserva tutti i componenti della PK. Escludi le colonne generate dalle scritture. Per i documenti MongoDB il riferimento è _id tipizzato.","Per delta e merge del backup scegli l’identità stabile dichiarata: _id MongoDB, PK o vincolo univoco interamente non nullo su SQL."],"sources":["public/js/righe.js","backup/lib/identity.js","public/js/inlineEdit.js","db/sqlTabellare.js"],"tests":["test/unit-sql-integrita-righe.js","test/e2e-sql-integrita-ui.js"],"section":"strategies"},"exact-values":{"kind":"concept","title":"Precisione BSON, EJSON e SQL","summary":"serializza() mantiene il wrapper $numberLong per un BSON Long fuori dall’intervallo Number sicuro. Le conversioni SQL usano i metadati per numeri esatti e binari.","rules":["Segui il tipo da DB a UI, editor, copia, scrittura e ripristino. Prova 9007199254740993, decimali, byte binari e la precisione delle date con una rilettura indipendente.","Campo assente, null, false e stringa vuota producono effetti distinti. Nel formatter JSON/BSON preserva i token originali per conservare precisione e sintassi shell."],"sources":["db/mongoEjson.js","db/sqlValori.js","db/insertValues.js","public/js/valori-esatti.js","public/js/json-bson.js","docs/matrice-fedelta-export-import.md"],"tests":["test/unit-valori-esatti.js","test/unit-sql-valori-esatti.js","test/unit-transfer-types.js","test/unit-json-bson.js"],"section":"strategies"},"spatial-types":{"kind":"concept","title":"Geometrie e riferimento spaziale","summary":"GeoJSON alimenta le viste cartografiche. MySQL spatial, PostGIS geometry/geography e i tipi geometrici nativi PostgreSQL usano conversioni specifiche.","rules":["modificaConSrid() legge il riferimento originale sotto lock nella transazione quando necessario. Se il riferimento è ambiguo, espone un errore prima di reinterpretare le coordinate.","Per una modifica o un trasferimento verifica separatamente coordinate e SRID nel database destinatario."],"sources":["db/geometry.js","db/sridModifica.js","db/pg-geo-nativo.js","public/js/geomap.js"],"tests":["test/unit-geometry.js","test/e2e-srid-modifiche.js"],"section":"strategies"},"queries":{"kind":"section","title":"Query e script","summary":"Esecuzione sul bersaglio, scelta dell’interprete, transazioni, limiti e annullamento dei run.","rules":[],"sources":["auth/capabilities.js","server/eventi-monitoraggio.js"],"tests":["test/e2e-sessions.js"],"area":"data","anchor":"query-script-e-annullamento"},"query-dispatch":{"kind":"concept","title":"Esecuzione e annullamento","summary":"query:execute passa dal contesto costruito sul server a executeQueryCode(). La sessione sceglie il bersaglio, runId e opHandle individuano il lavoro annullabile.","rules":["Registra l’handle nella sessione di origine e rimuovilo in finally, anche dopo un cambio di tab.","Una query libera accetta un LIMIT esplicito e segnala un errore se supera il budget di byte. La griglia può restituire truncated.","I limiti iniziali sono 32 MiB per il risultato e 30/120/5 secondi per find/aggregate/count. La scadenza del watchdog da sola non dimostra che il DBMS abbia fermato il lavoro."],"sources":["server/query.js","server/eventi-script.js","db/payloadEsecuzione.js","db/tetti.js","db/DbStrategy.js"],"tests":["test/unit-query-senza-limite.js","test/unit-tetti.js","test/e2e-query-cancel.js"],"section":"queries"},"native-sql-session":{"kind":"concept","title":"Sessioni SQL native","summary":"MySQL e PostgreSQL interpretano il testo tramite il proprio driver. Lo stato SQL dura tra esecuzioni singole dello stesso tab di connessione.","rules":["Serializza le istruzioni sullo stesso contesto per conservare transazioni, variabili e tabelle temporanee. Lo script usa un proprio contesto.","Conserva il comportamento del dialetto e il bersaglio scelto anche dopo comandi di sessione o rollback. Alla perdita della connessione lo stato transazionale precedente va considerato perso."],"sources":["db/sqlSessione.js","server/query.js","db/mysqlSessioneNativa.js","docs/sql-nativo.md"],"tests":["test/unit-sql-sessioni.js","test/e2e-sql-native-sessioni.js"],"section":"queries"},"mongo-query-languages":{"kind":"concept","title":"MQL, shell e SQL su MongoDB","summary":"Una connessione MongoDB gestisce filtri, pipeline, sintassi db.collezione e SQL tradotto da SqlToMql. La copertura SQL dipende dalle operazioni implementate nel traduttore e nel runtime.","rules":["Conserva i valori BSON tipizzati durante la traduzione. Classifica lettura o scrittura dall’effetto reale della pipeline.","Estendi insieme parser, runtime, catalogo di completamento e casi di prova. Il selettore di motore deve corrispondere alla connessione effettiva."],"sources":["db/MongoShell.js","db/SqlToMql.js","db/MongoSqlRuntime.js","server/query.js","docs/copertura-linguaggi-query.md"],"tests":["test/mongo-shell.js","test/unit-sql-mongo-runtime.js","test/e2e-query-languages.js"],"section":"queries"},"mongo-script-interpreter":{"kind":"concept","title":"Interprete MongoScript","summary":"MongoScript analizza il JavaScript supportato in un AST. MongoScriptRunner lo valuta nel processo del server e accede al DB tramite un host legato alla strategia autorizzata.","rules":["Fai passare ogni nuova operazione sul database attraverso l’host.","Conserva le quote di passi, iterazioni, ricorsione, tempo, chiamate al DB e output. Il superamento di un budget deve interrompere il run."],"sources":["db/MongoScript.js","db/MongoScriptRunner.js","server/query.js"],"tests":["test/unit-mongo-script.js","test/e2e-mongo-script.js"],"section":"queries"},"mongosh-process":{"kind":"concept","title":"Runtime mongosh esplicito","summary":"Il motore mongosh crea un processo figlio per la sessione MongoDB. Conserva variabili e change stream tra richieste e può accedere a Node e al filesystem del server.","rules":["Autorizza la creazione con isInstallAdmin. Il permesso di scrittura sul database da solo è insufficiente.","Reset, timeout o arresto del processo chiudono anche variabili, richieste e stream di quel runtime."],"sources":["db/mongoshRuntime.js","db/mongoshProcesso.cjs","server/query.js"],"tests":["test/unit-mongosh.js","test/e2e-mongosh-runtime.js"],"section":"queries"},"virtual-join":{"kind":"concept","title":"Virtual JOIN tra connessioni","summary":"VirtualJoinEngine risolve due sorgenti aperte di sola lettura, legge le chiavi dalla prima, interroga la seconda e unisce in memoria.","rules":["Applica scope e limiti a entrambe le sorgenti. Un riferimento ambiguo alla connessione richiede un bersaglio esplicito.","Per confrontare le chiavi normalizza i valori. Per interrogare MongoDB conserva il tipo EJSON nel filtro $in, per SQL passa le chiavi normalizzate come parametri."],"sources":["db/VirtualJoinEngine.js","server/query.js"],"tests":["test/unit.js","test/e2e-query-engine.js"],"section":"queries"},"script-runs":{"kind":"concept","title":"Run e risultati degli script","summary":"Il client sceglie il runId di script:execute. L’ack identifica il run accettato, script:progress aggiorna il client e script:state ne restituisce lo stato.","rules":["Dividi SQL con le regole del dialetto, rispettando blocchi, stringhe e commenti. Il JavaScript gestito arriva intero all’interprete.","ScriptRunner prosegue dopo un errore per impostazione predefinita. stopOnError cambia la politica di arresto.","script:result legge dal deposito su disco i risultati e gli errori conservati entro i limiti del run. I riepiloghi di scrittura restano nel resoconto. Se il deposito non si apre, lo script può proseguire."],"sources":["server/eventi-script.js","db/ScriptRunner.js","db/ScriptResults.js","db/sqlText.js"],"tests":["test/unit-script-runner.js","test/unit-script-results.js","test/e2e-script-risultati.js"],"section":"queries"},"security":{"kind":"section","title":"Identità e accessi","summary":"Permessi per tenant, connessione e bersaglio. Protezione dei segreti, verifica dell’host e traccia delle operazioni.","rules":[],"sources":[],"tests":[],"area":"ops","anchor":"autorizzazioni-vault-e-audit"},"rbac-principal":{"kind":"concept","title":"Identità e grant RBAC","summary":"Con CODEDB_RBAC=on il control plane MongoDB conserva utenti, ruoli, grant, API key e hash dei token. POST /auth/login restituisce il token opaco dell’handshake Socket.IO.","rules":["Rivalida il principal sulle connessioni attive dopo variazioni di ruolo, scope o revoche. L’eventuale scope della API key restringe le connessioni raggiungibili.","Scegli canWholeConnection per lavori nativi che coinvolgono tutta la connessione, canAdminTenant per il tenant e isInstallAdmin per risorse condivise dell’installazione."],"sources":["server/identita.js","auth/AppStore.js","auth/sessions.js","auth/principal.js","auth/permissions.js","server/eventi-backup.js"],"tests":["test/unit-rbac.js","test/e2e-rbac.js","test/e2e-rbac-mcp.js"],"section":"security"},"strategy-authorization":{"kind":"concept","title":"Capability di eventi e strategie","summary":"EVENT_CAPABILITY controlla la richiesta socket. guardStrategy applica METHOD_CAPABILITY alla strategia anche per query, JOIN e strumenti MCP.","rules":["Classifica ciascun nuovo metodo pubblico e verifica sia il permesso sul bersaglio sia la categoria dell’operazione.","Esercita un principal ammesso e uno fuori scope. Nel caso di accesso nativo al driver, verifica esplicitamente il permesso sull’intera connessione."],"sources":["auth/capabilities.js","auth/guardStrategy.js","auth/permissions.js","server/socket.js"],"tests":["test/unit-tabella-autorizzazioni.js","test/e2e-rbac.js","test/e2e-rbac-mcp.js"],"section":"security"},"sql-scope":{"kind":"concept","title":"Scope di query e clausole SQL","summary":"I riferimenti citati nell’istruzione determinano i bersagli della query SQL libera. I filtri e gli ordinamenti dei sottoutenti con scope vengono verificati come dati strutturati.","rules":["Verifica tutte le tabelle pertinenti, comprese le sorgenti annidate. Il nome nominale della tabella nella richiesta serve solo come parte del contesto.","Per le letture protette combina i controlli sull’istruzione con READ ONLY sul DBMS dove previsto. L’I/O di file richiede un controllo distinto."],"sources":["auth/sqlTables.js","auth/sqlClause.js","auth/capabilities.js","auth/guardStrategy.js"],"tests":["test/unit-filtro-autorizzazione.js","test/unit-rbac.js","test/e2e-rbac.js"],"section":"security"},"vault-secrets":{"kind":"concept","title":"Vault e connessioni salvate","summary":"Nel vault v2 una DEK casuale cifra i segreti con AES-256-GCM. La passphrase deriva con scrypt una KEK che protegge la DEK registrata in vault.json.","rules":["Il cambio di passphrase riavvolge la DEK. Conserva la lettura del formato v1, migrazione, sblocco, reset e indicazione dello stato senza cifratura.","Quando aggiungi una credenziale aggiorna SECRET_FIELDS, salvataggio, export/import e lettore CLI. URI e materiale SSH possono contenere segreti.","Gli INI RBAC sono per owner. Il browser riapre per nome con {saved: nome}, la CLI di backup legge il deposito e usa le stesse primitive."],"sources":["db/vault.js","server/vault.js","backup/lib/connstore.js","public/js/session-restore.js"],"tests":["test/unit-vault.js","test/unit-conn-config.js","test/e2e-vault-passphrase.js"],"section":"security"},"ssh-pinning":{"kind":"concept","title":"Host key e tunnel SSH","summary":"L’apertura della connessione DB può acquisire un tunnel SSH. Il pin della chiave host appartiene alla configurazione della connessione.","rules":["Verifica il pin prima delle credenziali. Per una connessione salvata il primo pin può essere persistito, per gli altri casi può servire approvare l’impronta. La modalità strict richiede un pin già configurato.","Se l’apertura del DB fallisce, rilascia anche il tunnel e la strategia parzialmente inizializzata."],"sources":["server/connessioni.js","db/SshTunnel.js","db/SshKey.js"],"tests":["test/unit-ssh-pinning.js","test/e2e-ssh-impronta.js","test/e2e-ssh-forward.js"],"section":"security"},"activity-audit":{"kind":"concept","title":"Audit delle azioni UI e MCP","summary":"L’audit annota attore, tenant, bersaglio, categoria, esito e conteggi pertinenti. UI e MCP hanno file separati, con rotazione e flush.","rules":["Usa auditActor() per mantenere il filtro ownerId/userId. Classifica l’effetto effettivo anche in caso di errore.","Distingui attività esplicita, refresh automatici e progressi di run. Registra i dettagli previsti dall’evento e redigi credenziali e URI."],"sources":["server/audit.js","db/AuditLog.js","mcp/Activity.js","db/errors.js"],"tests":["test/unit-audit-serializzato.js","test/unit-query-audit.js","test/e2e-query-audit.js"],"section":"security"},"frontend":{"kind":"section","title":"Stato e controlli","summary":"Proprietà dello stato tra tab, documento e pannello, controlli Arc e ciclo di vita dell’interazione.","rules":[],"sources":[],"tests":[],"area":"client","anchor":"stato-del-frontend-e-controlli"},"workspace-state":{"kind":"concept","title":"Tab, schede e documenti Query","summary":"Il tab di connessione possiede lo stato. Il proxy state segue il tab attivo. Le schede interne e i documenti Query mantengono snapshot, testo, esecuzione e risultati propri.","rules":["Salva gli input al cambio di contesto. Per risposte asincrone scrivi nello stato catturato all’invio e verifica identità e richiesta corrente prima del rendering.","Prova documenti concorrenti anche nella stessa connessione. Un tab ancora esistente non basta a identificare la scheda o il filtro originario."],"sources":["public/js/tabs.js","public/js/state.js","public/js/colltabs.js","public/js/query-document.js","public/js/workspace.js","public/js/coerenza-richieste.js"],"tests":["test/unit-coerenza-richieste.js","test/e2e-pagine-obsolete.js","test/e2e-chiusura-query.js"],"section":"frontend"},"browser-persistence":{"kind":"concept","title":"Ripristino e cronologia nel browser","summary":"Il layout recuperabile usa sessionStorage e riapre le connessioni salvate per nome. La cronologia Query usa localStorage, mentre le esecuzioni in sospeso hanno un registro in sessionStorage.","rules":["Il logout pulisce la cronologia. Dopo un refresh il registro delle query in sospeso marca come disconnessi i run che risultavano attivi.","Ripristina gli ID di tab e gestisci connessioni non più disponibili. I documenti UML usano IndexedDB con ambito utente/connessione/database e revisione di salvataggio."],"sources":["public/js/session-restore.js","public/js/query-history-store.js","public/js/pending-queries.js","public/js/auth.js","public/js/uml-store.js"],"tests":["test/e2e-session-restore-feedback.js","test/unit-query-history.js","test/pending-queries.js","test/e2e-uml-scenari.js"],"section":"frontend"},"split-panes":{"kind":"concept","title":"Stato e ciclo di vita dei pannelli","summary":"split-layout modella l’albero dei pannelli. splitview compone le viste e creaRuntimePane collega il workbench di un iframe al socket del padre fissando tabId e watchId.","rules":["La vista può nascondere un pannello mantenendone il runtime. Quando il pannello viene rimosso o sostituito, dispose() rilascia listener, osservazioni e run propri.","Preserva il bersaglio originario delle richieste. Prova due tabelle visibili e la chiusura di un riquadro con ack in volo."],"sources":["public/js/split-layout.js","public/js/splitview.js","public/js/pane-runtime.js"],"tests":["test/unit-split-layout.js","test/e2e-split-bersaglio-riquadro.js","test/e2e-split-completa.js"],"section":"frontend"},"arc-controls":{"kind":"concept","title":"Controller vanilla e componenti Arc","summary":"I controller ESM in public/js lavorano con controlli React/TypeScript in ui/. Esbuild genera i bundle JS e CSS in public/arc/ per browser, Electron e Android.","rules":["Modifica i sorgenti in ui/ e rigenera con npm run build:ui. initControls() monta i controlli prima dei listener vanilla.","Preserva ID, label, form.elements, validazione, valore, disabled e reset dei modelli DOM. Le modifiche programmatiche sincronizzano il controllo senza simulare un gesto utente."],"sources":["ui/main.tsx","ui/controls.tsx","ui/fields.tsx","public/js/main.js","tools/build-ui.mjs"],"tests":["test/e2e-arc-campi.js","test/e2e-arc-griglia.js"],"section":"frontend"},"dialog-feedback":{"kind":"concept","title":"Dialoghi, focus e feedback","summary":"I dialoghi Arc riutilizzano il pannello del form. Il controller sceglie l’avviso in base a campo, vista e azione, conservando il contesto dell’errore.","rules":["Controlla focus iniziale e di ritorno, Escape con popup annidato, Enter, annullamento e un solo invio anche al doppio clic.","Usa informazioni brevi per i successi, feedback contestuale per i dati correggibili e avviso persistente per una decisione. Conserva bozza e dettaglio tecnico."],"sources":["ui/dialogs.tsx","ui/notifiche.tsx","public/js/avvisi.js","public/js/utils.js"],"tests":["test/e2e-dialog-lifecycle.js","test/e2e-feedback-contesto.js"],"section":"frontend"},"theme-accessibility":{"kind":"concept","title":"Tema, viewport e interazioni accessibili","summary":"I token CSS condivisi e il ponte Arc descrivono colori e stati. index.html applica il tema prima dei moduli per mantenere stabile il primo rendering.","rules":["Verifica chiaro, scuro e personalizzato, contrasto, focus, tastiera e movimento ridotto. Su mobile usa il viewport utile e le aree sicure.","Per maniglie e separatori includi puntatore e tastiera. Navigator, sidebar ed editor usano maniglia.js, i divisori Split-View vivono in splitview.js."],"sources":["public/css/tokens.css","public/css/arc-theme.css","public/js/theme.js","public/index.html","public/js/viewport.js","public/js/maniglia.js"],"tests":["test/unit-tema.js","test/e2e-maniglie-tocco.js","test/e2e-tema-navigatore.js"],"section":"frontend"},"workspace":{"kind":"section","title":"Viste del workspace","summary":"Griglia, cataloghi, editor, grafici, mappe, diagrammi e monitoraggio del DBMS.","rules":[],"sources":[],"tests":[],"area":"client","anchor":"strumenti-del-workspace"},"data-grid":{"kind":"concept","title":"Griglia, selezione e modifiche","summary":"Il renderer virtualizza righe visibili e margine. Il modello conserva l’intera selezione e i metadati necessari a scrivere sul bersaglio originale.","rules":["Copia/incolla e statistiche devono includere le celle selezionate fuori dal DOM. Conserva le rappresentazioni esatte dei valori.","Per modificare o inserire rispetta identità della riga, metadati del campo e destinazione catturata. Prova le stesse azioni nel pannello split."],"sources":["public/js/griglia.js","public/js/grid.js","public/js/righe.js","public/js/cellselect.js","public/js/inlineEdit.js","public/js/insert.js"],"tests":["test/unit-griglia.js","test/e2e-selezione-celle-viste.js","test/e2e-arc-griglia.js"],"section":"workspace"},"schema-catalog":{"kind":"concept","title":"Catalogo progressivo, indici e relazioni","summary":"db:schema in modalità progressiva pagina oggetti, campi e relazioni in modo indipendente. Le viste Dettagli e FK consumano i metadati del database.","rules":["Lo snapshot è per sessione, database e impronta dei permessi. Se cambia la revisione durante la paginazione, riparti da una revisione coerente.","Il delegate invalida lo snapshot dopo un proprio evento ddl riuscito. Per SQL libero, script o modifiche esterne rileggi esplicitamente o alla scadenza.","Distingui zero FK da una lettura fallita. Per una FK composta conserva ordine e insieme dei campi nell’aggiornamento."],"sources":["db/schemaProgressivo.js","db/schemaSnapshot.js","server/eventi-dati.js","public/js/details.js","public/js/fk-cache.js","public/js/schema-ops.js"],"tests":["test/unit-schema-progressivo.js","test/unit-fk-relazioni.js","test/e2e-fk-inserimento.js"],"section":"workspace"},"editor-navigation":{"kind":"concept","title":"Editor, IntelliSense e scorciatoie","summary":"IntelliSense legge l’istruzione al cursore, risolve sorgenti, alias e vocabolario del dialetto. Palette, editor e snippet usano il contesto del documento e il catalogo delle scorciatoie.","rules":["Riconosci SQL anche su una connessione MongoDB. Dopo FROM/JOIN proponi sorgenti, dopo un alias le colonne pertinenti. Quota gli identificatori secondo il motore.","autocomplete.js conserva lo schema per tab e database. Le operazioni DDL della UI e schema:changed invalidano la cache.","Le azioni globali passano dalla palette, quelle locali dagli editor. Con RBAC le preferenze dei tasti usano il control plane, in modalità locale lo storage del browser."],"sources":["public/js/query-editor.js","public/js/intellisense.js","public/js/autocomplete.js","public/js/sql-dialetti.js","public/js/scorciatoie.js","public/js/palette.js","public/js/snippet-manager.js"],"tests":["test/unit-intellisense.js","test/e2e-richieste-intellisense.js","test/e2e-scorciatoie.js"],"section":"workspace"},"selection-analytics":{"kind":"concept","title":"Statistiche, worker e grafici","summary":"Le statistiche della selezione e la costruzione delle serie ECharts operano sui valori del modello. Il costo della copia dei dati determina quali calcoli spostare su un worker.","rules":["A partire da 50.000 celle le statistiche possono inviare al module worker i valori selezionati. Worker e ripiego locale usano eseguiCompito().","Scansione dei campi, precalcolo dei grafici e disegno rimangono sul thread chiamante. sequenziatore() scarta risposte obsolete durante richieste ravvicinate."],"sources":["public/js/cell-stats.js","public/js/cell-chart.js","public/js/calcoli.js","public/js/calcoli-protocollo.js","public/js/chart-option.js","public/js/chart-runtime.js"],"tests":["test/unit-calcoli.js","test/unit-cell-chart.js"],"section":"workspace"},"geospatial-views":{"kind":"concept","title":"Mappe di risultati e selezioni","summary":"geo-risultati riconosce GeoJSON nelle righe, nei sottodocumenti e negli array entro limiti espliciti. geo-vista disegna sia la mappa Query sia quella della selezione.","rules":["Mantieni layer, selezione e smontaggio indipendenti per ogni istanza. La vista Query e la modale possono convivere.","Comunica il troncamento per le voci escluse dai limiti. L’editor conserva il contesto di scrittura e i riferimenti spaziali del dato."],"sources":["public/js/geo-risultati.js","public/js/geo-vista.js","public/js/query-map.js","public/js/geomulti.js","public/js/geomap.js"],"tests":["test/unit-geo-risultati.js","test/e2e-geometrie-viste.js","test/e2e-editor-geometrico.js"],"section":"workspace"},"schema-diagrams":{"kind":"concept","title":"UML, progettazione SQL e grafo 3D","summary":"Il modello UML conserva nodi e differenze fra vincoli dichiarati, relazioni inferite e relazioni logiche del disegno. JointJS e il grafo 3D offrono viste specializzate.","rules":["Per cambiare lo schema dal diagramma, richiedi anteprima e token, poi verifica sessione, bersaglio e permessi al momento dell’applicazione.","Salva il documento con la revisione di partenza nel proprio ambito. Drena il catalogo secondo i cursori separati e rispetta i limiti di visualizzazione."],"sources":["public/js/uml-modello.js","public/js/uml-paper.js","public/js/uml-store.js","db/umlProgetto.js","public/js/graph3d.js"],"tests":["test/e2e-uml-modalita.js","test/e2e-uml-progetto-db.js","test/unit-grafo-budget.js"],"section":"workspace"},"live-monitoring":{"kind":"concept","title":"Aggiornamento live, salute e sessioni DB","summary":"I change stream propagano i cambiamenti dove supportati e la UI può proporre il polling. I pannelli distinguono la salute del collegamento dalle sessioni e dai lock dentro il DBMS.","rules":["Il polling automatico rispetta tab attivo, documento visibile ed editing in corso. schema:changed invalida i metadati del completamento.","Nel monitor, prima di annullare o terminare un backend ricontrolla l’identità osservata. Un identificativo di processo può essere riutilizzato."],"sources":["public/js/live.js","public/js/health.js","public/js/sessions.js","db/sessioni.js","server/eventi-monitoraggio.js"],"tests":["test/unit-sessioni-identita.js","test/e2e-sessions.js"],"section":"workspace"},"transfer":{"kind":"section","title":"Export e backup","summary":"Formati, coerenza della sorgente, trasferimento dei byte e recupero dopo applicazione parziale.","rules":[],"sources":[],"tests":["test/lab/INTEGRITA.md"],"area":"data","anchor":"export-backup-e-recupero"},"export-formats":{"kind":"concept","title":"Formati di esportazione","summary":"L’export dalla scheda Query produce JSON delle righe caricate. L’export del database dalla sidebar può includere dati, schema e oggetti selezionati.","rules":["Usa .codedb.json per i tre motori o .sql per i motori SQL. Il formato completo conserva il BSON MongoDB grezzo in base64.","Per un dato tipizzato verifica il formato scelto e la rilettura dei byte o del valore sul DBMS di destinazione."],"sources":["public/js/export-json.js","db/exportPlan.js","db/databaseExport.js","db/exportFile.js","docs/matrice-fedelta-export-import.md"],"tests":["test/unit-query-export-json.js","test/e2e-export-formati.js"],"section":"transfer"},"transfer-plan":{"kind":"concept","title":"Piano e impronta","summary":"Il piano identifica connessione, destinazione, oggetti e opzioni della singola operazione.","rules":["I wizard di export e import verificano l’impronta dell’anteprima confermata. Cambi di destinazione o selezione richiedono un’altra anteprima.","La CLI restore stampa l’impronta e procede nella stessa invocazione. L’evento backup:restore usa l’impronta nel registro dell’operazione.","Verifica separatamente checksum dei file e ammissibilità della DDL prima di applicarla."],"sources":["db/pianoComune.js","server/eventi-import.js","server/eventi-backup.js","backup/cli.js","backup/lib/restore-catena.js"],"tests":["test/unit-piano-export-evento.js","test/unit-piano-import.js","test/unit-backup-validator.js"],"section":"transfer"},"artifact-transport":{"kind":"concept","title":"Trasporto degli artefatti","summary":"Gli eventi socket governano l’operazione. Il servizio HTTP trasferisce blocchi e file finalizzati, mentre il wizard import possiede anche un proprio protocollo socket.","rules":["Ogni ticket HTTP è breve e vincolato a risorsa, attore e tenant. Verifica offset e SHA-256 del blocco, gestisci una ripetizione identica e conserva ETag e Range sul download.","database:import:upload:* verifica ordine e dimensione dei blocchi, proprietario e quote. Considera la dimensione massima accettata dall’import anche per file prodotti localmente."],"sources":["server/http-artefatti.js","db/artefatti.js","db/importUploads.js","server/eventi-import.js","docs/guida-export-import.md"],"tests":["test/unit-http-artefatti.js","test/unit-import-uploads.js","test/e2e-import-upload-ui.js"],"section":"transfer"},"source-consistency":{"kind":"concept","title":"Coerenza della sorgente","summary":"La coerenza temporale della copia dipende dai motori e dalla topologia dell’origine.","rules":["I percorsi SQL transazionali usano repeatable-read. Le tabelle MySQL non transazionali richiedono scritture sospese per una copia coerente.","Sulle topologie MongoDB compatibili la snapshot copre i documenti. Mantieni stabile il catalogo durante la copia. Su standalone la coerenza globale richiede scritture sospese."],"sources":["db/mongoTopologia.js","db/databaseExport.js","docs/guida-export-import.md"],"tests":["test/e2e-dbexport.js","test/e2e-export-formati.js"],"section":"transfer"},"backup-chain":{"kind":"concept","title":"Catena di backup","summary":"Il full stabilisce la base. Un differenziale si riferisce al full, un incrementale al predecessore previsto.","rules":["Identifica le righe con identità stabile e registra le cancellazioni come tombstone. Senza identità stabile è possibile ricorrere alla snapshot completa.","Risolvi baseId e valida tutti i layer prima del primo effetto. Un file storico privo di checksum rimane UNVERIFIABLE.","La CLI legge le connessioni salvate e condivide vault e motore. verify controlla il disco. Un round trip su motore reale verifica anche tipi e schema. S3, GCS e Azure usano adattatori opzionali."],"sources":["backup/lib/engine.js","backup/lib/identity.js","backup/lib/restore-catena.js","backup/lib/storage.js","backup/cli.js"],"tests":["test/unit-tombstone-backup.js","test/lab/backup-incrementali.cjs","test/e2e-backup.js"],"section":"transfer"},"restore-promotion":{"kind":"concept","title":"Staging e recupero","summary":"Il percorso protetto valida il piano e verifica lo staging prima di promuovere i dati alla destinazione.","rules":["Se la destinazione esiste, richiedi una copia di recupero verificata. Dopo la promozione confronta dati e schema prima della finalizzazione.","PostgreSQL può scambiare gli schemi atomicamente. Per MySQL e MongoDB considera la finestra di promozione e le scritture concorrenti.","Conserva gli esiti completato, ripristinato_dopo_errore e intervento_richiesto. Il diario rende riconoscibile un’interruzione dopo il riavvio."],"sources":["db/importPlan.js","db/diarioOperazioni.js","backup/lib/restore.js","db/pg-restore-transaction.js"],"tests":["test/unit-import-conferma.js","test/lab/backup-promozione-postgres.cjs","test/e2e-integrita-import.js"],"section":"transfer"},"mcp":{"kind":"section","title":"Gateway MCP","summary":"Sessioni di protocollo, strumenti, limiti di sola lettura e conferma delle mutazioni.","rules":[],"sources":[],"tests":[],"area":"ops","anchor":"gateway-mcp"},"mcp-session":{"kind":"concept","title":"Sessione e identità MCP","summary":"Il gateway /mcp usa Streamable HTTP. Una sessione del protocollo può aprire più connessioni DB nominate con connect_database.","rules":["Con RBAC attivo autentica l’API key, confronta identità e impronta della credenziale anche sulle richieste successive e aggiorna i permessi correnti. In locale con RBAC spento il principal è root locale.","Il limite configurabile delle sessioni MCP è distinto dal budget di 100 sessioni DB per istanza condiviso con la UI."],"sources":["mcp/McpGateway.js","server/mcp.js","mcp/Settings.js","server/budget.js","docs/MCP.md"],"tests":["test/unit-mcp-auth.js","test/e2e-rbac-mcp.js","test/e2e-mcp-states.js"],"section":"mcp"},"mcp-tools":{"kind":"concept","title":"Strumenti, risorse e prompt","summary":"Il gateway registra separatamente strumenti di lettura, scrittura, artefatti, risorse e prompt.","rules":["Usa gli strumenti di lettura per get_schema, execute_query, get_shortest_path e analyze_pii. Mantieni validazione, forma MCP degli errori, attività e impostazioni del wrapper comune.","Colloca execute_write ed execute_ddl nel modulo di scrittura, backup_database e restore_backup in quello degli artefatti. Per categorie nuove verifica anche audit e pannello di amministrazione."],"sources":["mcp/McpGateway.js","mcp/strumenti-lettura.js","mcp/strumenti-scrittura.js","mcp/strumenti-artefatti.js","mcp/risorse-e-prompt.js","public/js/mcp-panel.js"],"tests":["test/e2e-mcp.js","test/e2e-mcp-control.js","test/unit-mcp-payload.js"],"section":"mcp"},"mcp-confirmation":{"kind":"concept","title":"Conferma delle mutazioni","summary":"execute_write prepara l’anteprima, memorizza la proposta nella sessione e prenota un confirm_token monouso.","rules":["Mostra l’anteprima all’utente. Dopo approvazione esplicita presenta il token con connection_id. Il server verifica tipo e connessione e applica la proposta originale con i permessi correnti.","Esercita consenso scaduto, seconda conferma concorrente e revoca tra le due chiamate. Consumo e scadenza liberano la quota prenotata."],"sources":["mcp/conferma.js","mcp/ConfirmQuota.js","mcp/strumenti-scrittura.js"],"tests":["test/unit-mcp-conferme-quota.js","test/e2e-rbac-mcp.js"],"section":"mcp"},"mcp-write-policy":{"kind":"concept","title":"Politica di scrittura MCP","summary":"Il wrapper combina le impostazioni globali del gateway con il flag della connessione e i permessi dell’attore.","rules":["La connessione salvata deve consentire esplicitamente le scritture con readOnly=false. Rileggi questo flag prima dell’esecuzione.","Verifica anche i controlli globali separati per DDL, backup e import. Una modifica delle impostazioni può intervenire dopo l’anteprima."],"sources":["mcp/McpGateway.js","mcp/Settings.js","mcp/strumenti-scrittura.js","mcp/strumenti-artefatti.js"],"tests":["test/unit-mcp-settings.js","test/unit-mcp-execute-ddl.js","test/e2e-mcp-control.js"],"section":"mcp"},"delivery":{"kind":"section","title":"Distribuzione","summary":"Esecuzione e pacchetti per web, Docker, Electron e Android con i rispettivi confini di rete e filesystem.","rules":[],"sources":[".env.example"],"tests":[],"area":"ops","anchor":"distribuzione"},"web-network":{"kind":"concept","title":"Web e pubblicazione di rete","summary":"Express serve public/. Il trasporto Socket.IO controlla Origin e Host prima di aprire una sessione DB.","rules":["Avvia con npm start oppure npm run dev. Per un handshake rifiutato usa GET /handshake-check, poi verifica separatamente login applicativo, tunnel e credenziali DB.","Per la condivisione ordinaria fuori dal loopback usa un reverse proxy che termini realmente HTTPS, CODEDB_TRUST_PROXY_TLS=1 e RBAC attivo. Cifratura e autenticazione hanno controlli separati."],"sources":["server/trasporto.js","server/createServer.js","package.json"],"tests":["test/unit-avvio-rete.js","test/unit-server-modulare.js"],"section":"delivery"},"docker-runtime":{"kind":"concept","title":"Runtime Docker Compose","summary":"Lo stack principale ospita CodeDB, MongoDB e MySQL. L’immagine di produzione copia i bundle statici già costruiti e i moduli runtime selezionati.","rules":["Usa docker compose up -d --build dopo aver configurato le credenziali di sviluppo. Il bind pubblicato della GUI e quello dei DBMS sono separati.","Mantieni dati e backup su volumi persistenti. Verifica che un nuovo modulo runtime o asset sia incluso nell’immagine finale."],"sources":["docker-compose.yml","Dockerfile","server/trasporto.js"],"tests":["test/unit-avvio-rete.js"],"section":"delivery"},"electron-runtime":{"kind":"concept","title":"Applicazione Electron","summary":"Il desktop ospita il server Node in-process, con lock di singola istanza e verifica del server locale.","rules":["npm run electron:start avvia da sorgenti. Se la porta predefinita è occupata il processo principale può sceglierne una disponibile. Nella distribuzione i dati risiedono in userData.","Conserva sandbox, contextIsolation e integrazione Node disattivata nella finestra. Verifica la chiusura con lavoro pendente e la build pacchettizzata."],"sources":["electron-main.js","electron-server-auth.js","electron-chiusura.js","electron-aggiornamenti.js"],"tests":["test/unit-electron-server-auth-process.js","test/e2e-mongosh-electron.cjs"],"section":"delivery"},"android-runtime":{"kind":"concept","title":"Applicazione Android","summary":"Una WebView visualizza il workbench del server Node Mobile in esecuzione sul telefono.","rules":["Usa npm run prepare:android e npm run build:android. Il filtro di preparazione parte dai file tracciati da Git.","localhost è il telefono. Mantieni la protezione con cookie privato anche sul loopback. Distingui il controllo del contenuto dell’APK dal test sul dispositivo."],"sources":["android/prepare.cjs","android/mobile.cjs","android/README.md"],"tests":["android/test.cjs","test/e2e-mobile-android.js"],"section":"delivery"},"release-packaging":{"kind":"concept","title":"Packaging e aggiornamenti","summary":"Gli script build:win, build:mac e build:linux producono i pacchetti di piattaforma. Gli script dist:* creano le distribuzioni portatili.","rules":["Il workflow verifica versione, test, build della UI e artefatti in bozza. Firma e aggiornamenti seguono le procedure del target.","Controlla l’inclusione dei moduli nativi ed escludi vault, configurazioni personali, log e backup. Esegui il pacchetto per rilevare file disponibili soltanto nel checkout."],"sources":["package.json",".github/workflows/release.yml","tools/verifica-mongosh-nativi.cjs","docs/CODE_SIGNING.md","docs/WINDOWS_DISTRIBUTION.md"],"tests":["test/unit-release-bozza.js","test/unit-release-gpg.cjs"],"section":"delivery"},"testing":{"kind":"section","title":"Verifica","summary":"Dalla modifica osservabile alla prova che rileva la regressione su una fixture isolata.","rules":[],"sources":[".github/workflows/release.yml","android/test.cjs","docs/adr/"],"tests":["test/e2e-import-volume.js"],"area":"ops","anchor":"sviluppare-e-verificare-una-modifica"},"change-contract":{"kind":"concept","title":"Contratto della modifica","summary":"Definisci un esito osservabile indicando motore, bersaglio, tipo di dato, azione e superficie. Segui il percorso esistente dal chiamante al DBMS.","rules":["Prova casi pertinenti come chiave composta, tab cambiato durante la lettura, formato storico o ack perso dopo una scrittura. Verifica anche il caso fuori scope per una modifica ai permessi.","Allinea contratto, chiamanti, test e guida. Per il lessico consulta il glossario e per le ragioni architetturali gli ADR."],"sources":["AGENTS.md","CONTEXT.md","CONTRIBUTING.md","docs/adr/0001-tre-famiglie-di-evento.md"],"tests":["test/unit-tabella-autorizzazioni.js","test/unit-registrazione-eventi.js"],"section":"testing"},"test-selection":{"kind":"concept","title":"Scelta delle prove","summary":"Collega ogni asserzione al livello che può dimostrarla. Un test di protocollo verifica un ack, mentre la lettura dal driver dimostra l’effetto sul database.","rules":["npm test aggrega i test unitari. Per Socket.IO e permessi usa unit-registrazione-eventi, unit-tabella-autorizzazioni e unit-server-modulare.","Per controlli Arc esegui npm run typecheck:ui, npm run build:ui e npm run test:e2e:arc. Verifica anche il documento originario se la richiesta termina dopo un cambio scheda.","Per il trasferimento ricontrolla dati, tipi, schema e vincoli su un DBMS di prova. e2e-export-formati richiede EXPORT_MYSQL_PORT, EXPORT_PG_PORT e EXPORT_MONGO_PORT esplicite."],"sources":["package.json","test/server-fixture.js","docs/sql-nativo.md","docs/matrice-fedelta-export-import.md"],"tests":["test/unit.js","test/e2e-arc-griglia.js","test/e2e-pagine-obsolete.js","test/e2e-export-formati.js"],"section":"testing"},"test-isolation":{"kind":"concept","title":"Isolamento delle fixture","summary":"startTestServer apre una porta dedicata e isola connessioni salvate, vault, audit e backup dell’istanza E2E.","rules":["Una porta già occupata viene rifiutata. Il motore DB indicato dalla suite resta reale, quindi usa database e schemi posseduti dalla fixture.","Il cleanup distruttivo di createE2eTargetRegistry richiede ownership del bersaglio, destructive: true e CODEDB_E2E_DESTRUCTIVE=1."],"sources":["test/e2e-harness.js","test/all-e2e.js","test/lab/README.md"],"tests":["test/e2e-dbexport.js","test/e2e-rbac.js"],"section":"testing"},"test-sensitivity":{"kind":"concept","title":"Sensibilità delle regressioni","summary":"Una nuova prova va eseguita sul codice corretto e su un difetto deliberato o sulla versione originaria difettosa.","rules":["node test/unit-import-conferma.js verifica la finalizzazione dopo la verifica della destinazione. Con --mutant la finalizzazione viene saltata in memoria e deve fallire l’asserzione pertinente.","Nel rapporto annota comando, ambiente, esito osservato e perimetro ancora aperto."],"sources":["AGENTS.md","db/importPlan.js","test/lab/README.md"],"tests":["test/unit-import-conferma.js","test/lab/unit-sensitivity.cjs"],"section":"testing"},"reliability-lab":{"kind":"concept","title":"Laboratorio di affidabilità","summary":"Il laboratorio Docker avvia DBMS usa e getta e usa riletture indipendenti con driver nativi o osservazioni nel browser.","rules":["Con Docker Linux, Compose, Node e Git usa npm run lab:prepara. lab:nuovi esegue le prove dedicate, lab:test le suite compatibili e lab:rapporti raccoglie gli esiti.","Le campagne condividono porte e fixture nello stesso runner. Riporta separatamente timeout, fallimenti, casi saltati e prerequisiti del profilo."],"sources":["test/lab/README.md","test/lab/INTEGRITA.md","tools/laboratorio.cjs",".github/workflows/laboratorio.yml"],"tests":["test/lab/integrita.cjs","test/lab/runner.cjs","test/lab/native.cjs"],"section":"testing"}},"edges":[{"from":"codedb","rel":"contains","to":"core"},{"from":"codedb","rel":"contains","to":"data"},{"from":"codedb","rel":"contains","to":"client"},{"from":"codedb","rel":"contains","to":"ops"},{"from":"core","rel":"contains","to":"repo"},{"from":"repo","rel":"contains","to":"domain-targets"},{"from":"repo","rel":"contains","to":"application-surfaces"},{"from":"repo","rel":"contains","to":"shared-modules"},{"from":"core","rel":"contains","to":"runtime"},{"from":"runtime","rel":"contains","to":"local-development"},{"from":"runtime","rel":"contains","to":"instance-config"},{"from":"runtime","rel":"contains","to":"server-lifecycle"},{"from":"runtime","rel":"contains","to":"session-ownership"},{"from":"core","rel":"contains","to":"transport"},{"from":"transport","rel":"contains","to":"event-families"},{"from":"transport","rel":"contains","to":"socket-request"},{"from":"transport","rel":"contains","to":"grid-page"},{"from":"transport","rel":"contains","to":"cell-write"},{"from":"core","rel":"contains","to":"errors"},{"from":"errors","rel":"contains","to":"driver-diagnosis"},{"from":"errors","rel":"contains","to":"query-error-range"},{"from":"errors","rel":"contains","to":"uncertain-outcome"},{"from":"errors","rel":"contains","to":"partial-failure"},{"from":"data","rel":"contains","to":"strategies"},{"from":"strategies","rel":"contains","to":"guarded-strategy"},{"from":"strategies","rel":"contains","to":"typed-filter"},{"from":"strategies","rel":"contains","to":"row-identity"},{"from":"strategies","rel":"contains","to":"exact-values"},{"from":"strategies","rel":"contains","to":"spatial-types"},{"from":"data","rel":"contains","to":"queries"},{"from":"queries","rel":"contains","to":"query-dispatch"},{"from":"queries","rel":"contains","to":"native-sql-session"},{"from":"queries","rel":"contains","to":"mongo-query-languages"},{"from":"queries","rel":"contains","to":"mongo-script-interpreter"},{"from":"queries","rel":"contains","to":"mongosh-process"},{"from":"queries","rel":"contains","to":"virtual-join"},{"from":"queries","rel":"contains","to":"script-runs"},{"from":"ops","rel":"contains","to":"security"},{"from":"security","rel":"contains","to":"rbac-principal"},{"from":"security","rel":"contains","to":"strategy-authorization"},{"from":"security","rel":"contains","to":"sql-scope"},{"from":"security","rel":"contains","to":"vault-secrets"},{"from":"security","rel":"contains","to":"ssh-pinning"},{"from":"security","rel":"contains","to":"activity-audit"},{"from":"client","rel":"contains","to":"frontend"},{"from":"frontend","rel":"contains","to":"workspace-state"},{"from":"frontend","rel":"contains","to":"browser-persistence"},{"from":"frontend","rel":"contains","to":"split-panes"},{"from":"frontend","rel":"contains","to":"arc-controls"},{"from":"frontend","rel":"contains","to":"dialog-feedback"},{"from":"frontend","rel":"contains","to":"theme-accessibility"},{"from":"client","rel":"contains","to":"workspace"},{"from":"workspace","rel":"contains","to":"data-grid"},{"from":"workspace","rel":"contains","to":"schema-catalog"},{"from":"workspace","rel":"contains","to":"editor-navigation"},{"from":"workspace","rel":"contains","to":"selection-analytics"},{"from":"workspace","rel":"contains","to":"geospatial-views"},{"from":"workspace","rel":"contains","to":"schema-diagrams"},{"from":"workspace","rel":"contains","to":"live-monitoring"},{"from":"data","rel":"contains","to":"transfer"},{"from":"transfer","rel":"contains","to":"export-formats"},{"from":"transfer","rel":"contains","to":"transfer-plan"},{"from":"transfer","rel":"contains","to":"artifact-transport"},{"from":"transfer","rel":"contains","to":"source-consistency"},{"from":"transfer","rel":"contains","to":"backup-chain"},{"from":"transfer","rel":"contains","to":"restore-promotion"},{"from":"ops","rel":"contains","to":"mcp"},{"from":"mcp","rel":"contains","to":"mcp-session"},{"from":"mcp","rel":"contains","to":"mcp-tools"},{"from":"mcp","rel":"contains","to":"mcp-confirmation"},{"from":"mcp","rel":"contains","to":"mcp-write-policy"},{"from":"ops","rel":"contains","to":"delivery"},{"from":"delivery","rel":"contains","to":"web-network"},{"from":"delivery","rel":"contains","to":"docker-runtime"},{"from":"delivery","rel":"contains","to":"electron-runtime"},{"from":"delivery","rel":"contains","to":"android-runtime"},{"from":"delivery","rel":"contains","to":"release-packaging"},{"from":"ops","rel":"contains","to":"testing"},{"from":"testing","rel":"contains","to":"change-contract"},{"from":"testing","rel":"contains","to":"test-selection"},{"from":"testing","rel":"contains","to":"test-isolation"},{"from":"testing","rel":"contains","to":"test-sensitivity"},{"from":"testing","rel":"contains","to":"reliability-lab"},{"from":"application-surfaces","rel":"depends_on","to":"guarded-strategy"},{"from":"session-ownership","rel":"depends_on","to":"domain-targets"},{"from":"local-development","rel":"depends_on","to":"instance-config"},{"from":"local-development","rel":"calls","to":"server-lifecycle"},{"from":"local-development","rel":"depends_on","to":"shared-modules"},{"from":"server-lifecycle","rel":"depends_on","to":"instance-config"},{"from":"server-lifecycle","rel":"calls","to":"session-ownership"},{"from":"session-ownership","rel":"calls","to":"guarded-strategy"},{"from":"session-ownership","rel":"depends_on","to":"security"},{"from":"socket-request","rel":"calls","to":"event-families"},{"from":"event-families","rel":"depends_on","to":"session-ownership"},{"from":"event-families","rel":"calls","to":"guarded-strategy"},{"from":"event-families","rel":"calls","to":"driver-diagnosis"},{"from":"event-families","rel":"depends_on","to":"security"},{"from":"grid-page","rel":"calls","to":"socket-request"},{"from":"grid-page","rel":"depends_on","to":"typed-filter"},{"from":"grid-page","rel":"reads","to":"row-identity"},{"from":"cell-write","rel":"calls","to":"socket-request"},{"from":"cell-write","rel":"reads","to":"row-identity"},{"from":"cell-write","rel":"depends_on","to":"exact-values"},{"from":"cell-write","rel":"depends_on","to":"domain-targets"},{"from":"uncertain-outcome","rel":"recovers","to":"session-ownership"},{"from":"socket-request","rel":"depends_on","to":"uncertain-outcome"},{"from":"query-error-range","rel":"depends_on","to":"driver-diagnosis"},{"from":"partial-failure","rel":"depends_on","to":"transfer"},{"from":"typed-filter","rel":"depends_on","to":"shared-modules"},{"from":"typed-filter","rel":"depends_on","to":"domain-targets"},{"from":"row-identity","rel":"depends_on","to":"exact-values"},{"from":"spatial-types","rel":"depends_on","to":"guarded-strategy"},{"from":"delivery","rel":"depends_on","to":"shared-modules"},{"from":"mcp","rel":"depends_on","to":"guarded-strategy"},{"from":"queries","rel":"depends_on","to":"query-error-range"},{"from":"transfer","rel":"depends_on","to":"row-identity"},{"from":"workspace","rel":"depends_on","to":"spatial-types"},{"from":"frontend","rel":"calls","to":"socket-request"},{"from":"query-dispatch","rel":"calls","to":"native-sql-session"},{"from":"query-dispatch","rel":"calls","to":"mongo-query-languages"},{"from":"query-dispatch","rel":"calls","to":"mongo-script-interpreter"},{"from":"query-dispatch","rel":"calls","to":"mongosh-process"},{"from":"query-dispatch","rel":"calls","to":"virtual-join"},{"from":"script-runs","rel":"calls","to":"query-dispatch"},{"from":"script-runs","rel":"depends_on","to":"native-sql-session"},{"from":"virtual-join","rel":"reads","to":"strategies"},{"from":"mongo-query-languages","rel":"depends_on","to":"strategies"},{"from":"native-sql-session","rel":"depends_on","to":"strategies"},{"from":"mongo-script-interpreter","rel":"depends_on","to":"strategy-authorization"},{"from":"mongosh-process","rel":"depends_on","to":"rbac-principal"},{"from":"strategy-authorization","rel":"guards","to":"native-sql-session"},{"from":"strategy-authorization","rel":"guards","to":"mongo-query-languages"},{"from":"strategy-authorization","rel":"guards","to":"virtual-join"},{"from":"strategy-authorization","rel":"guards","to":"mcp"},{"from":"strategy-authorization","rel":"depends_on","to":"rbac-principal"},{"from":"strategy-authorization","rel":"depends_on","to":"sql-scope"},{"from":"rbac-principal","rel":"guards","to":"vault-secrets"},{"from":"rbac-principal","rel":"guards","to":"mongosh-process"},{"from":"activity-audit","rel":"reads","to":"rbac-principal"},{"from":"script-runs","rel":"writes","to":"activity-audit"},{"from":"ssh-pinning","rel":"depends_on","to":"vault-secrets"},{"from":"workspace-state","rel":"calls","to":"transport"},{"from":"browser-persistence","rel":"recovers","to":"workspace-state"},{"from":"split-panes","rel":"depends_on","to":"workspace-state"},{"from":"split-panes","rel":"depends_on","to":"transport"},{"from":"arc-controls","rel":"depends_on","to":"theme-accessibility"},{"from":"dialog-feedback","rel":"depends_on","to":"arc-controls"},{"from":"dialog-feedback","rel":"reads","to":"errors"},{"from":"data-grid","rel":"depends_on","to":"workspace-state"},{"from":"data-grid","rel":"reads","to":"schema-catalog"},{"from":"editor-navigation","rel":"reads","to":"schema-catalog"},{"from":"editor-navigation","rel":"depends_on","to":"workspace-state"},{"from":"selection-analytics","rel":"reads","to":"data-grid"},{"from":"geospatial-views","rel":"reads","to":"data-grid"},{"from":"schema-diagrams","rel":"reads","to":"schema-catalog"},{"from":"schema-diagrams","rel":"writes","to":"browser-persistence"},{"from":"live-monitoring","rel":"invalidates","to":"editor-navigation"},{"from":"live-monitoring","rel":"recovers","to":"data-grid"},{"from":"export-formats","rel":"depends_on","to":"transfer-plan"},{"from":"export-formats","rel":"depends_on","to":"source-consistency"},{"from":"export-formats","rel":"writes","to":"artifact-transport"},{"from":"transfer-plan","rel":"guards","to":"restore-promotion"},{"from":"artifact-transport","rel":"depends_on","to":"security"},{"from":"backup-chain","rel":"depends_on","to":"source-consistency"},{"from":"restore-promotion","rel":"reads","to":"backup-chain"},{"from":"restore-promotion","rel":"depends_on","to":"strategies"},{"from":"mcp-session","rel":"depends_on","to":"security"},{"from":"mcp-tools","rel":"depends_on","to":"mcp-session"},{"from":"mcp-tools","rel":"calls","to":"mcp-confirmation"},{"from":"mcp-tools","rel":"calls","to":"restore-promotion"},{"from":"mcp-tools","rel":"reads","to":"backup-chain"},{"from":"mcp-write-policy","rel":"guards","to":"mcp-confirmation"},{"from":"mcp-write-policy","rel":"depends_on","to":"security"},{"from":"mcp-confirmation","rel":"depends_on","to":"mcp-session"},{"from":"web-network","rel":"guards","to":"transport"},{"from":"docker-runtime","rel":"depends_on","to":"web-network"},{"from":"electron-runtime","rel":"calls","to":"runtime"},{"from":"android-runtime","rel":"calls","to":"runtime"},{"from":"release-packaging","rel":"reads","to":"frontend"},{"from":"test-selection","rel":"depends_on","to":"change-contract"},{"from":"test-selection","rel":"verifies","to":"transport"},{"from":"test-selection","rel":"verifies","to":"workspace"},{"from":"test-sensitivity","rel":"verifies","to":"restore-promotion"},{"from":"reliability-lab","rel":"depends_on","to":"test-isolation"},{"from":"reliability-lab","rel":"verifies","to":"backup-chain"},{"from":"reliability-lab","rel":"verifies","to":"mcp-tools"},{"from":"reliability-lab","rel":"verifies","to":"queries"},{"from":"cell-write","rel":"depends_on","to":"workspace-state"},{"from":"data-grid","rel":"reads","to":"grid-page"},{"from":"dialog-feedback","rel":"reads","to":"driver-diagnosis"},{"from":"geospatial-views","rel":"depends_on","to":"spatial-types"},{"from":"virtual-join","rel":"depends_on","to":"exact-values"},{"from":"query-dispatch","rel":"depends_on","to":"session-ownership"},{"from":"mcp-write-policy","rel":"depends_on","to":"strategy-authorization"},{"from":"mcp-session","rel":"depends_on","to":"rbac-principal"},{"from":"source-consistency","rel":"depends_on","to":"guarded-strategy"},{"from":"release-packaging","rel":"depends_on","to":"arc-controls"},{"from":"backup-chain","rel":"depends_on","to":"row-identity"},{"from":"uncertain-outcome","rel":"depends_on","to":"session-ownership"}]}</script>
+  <script>
+    'use strict';
+    function createMap(svg, model, selectNode, onZoom) {
+      const ns = 'http://www.w3.org/2000/svg';
+      const palette = colors;
+      const labels = {
+        repo: 'Repository', runtime: 'Avvio', transport: 'Trasporto', errors: 'Errori',
+        strategies: 'Strategie', queries: 'Query e script', transfer: 'Trasferimenti',
+        frontend: 'Frontend', workspace: 'Workspace', security: 'Sicurezza',
+        mcp: 'Gateway MCP', delivery: 'Distribuzione', testing: 'Verifica'
+      };
+      const phrases = model.relations;
+      const adjacency = new Map();
+      function connections(id) {
+        if (!adjacency.has(id)) adjacency.set(id, []);
+        return adjacency.get(id);
+      }
+      for (const edge of model.edges) {
+        connections(edge.from).push(edge);
+        if (edge.from !== edge.to) connections(edge.to).push(edge);
+      }
+      function sectionArea(id) {
+        const node = model.nodes[id];
+        if (palette[id]) return id;
+        if (node?.area) return node.area;
+        return model.nodes[node?.section]?.area;
+      }
+      function colorOf(id) {
+        return palette[sectionArea(id)] || '#c1afff';
+      }
+      function el(tag, attrs = {}) {
+        const item = document.createElementNS(ns, tag);
+        for (const [name, value] of Object.entries(attrs)) item.setAttribute(name, String(value));
+        return item;
+      }
+      function child(parent, tag, attrs, value) {
+        const item = el(tag, attrs);
+        if (value !== undefined) item.textContent = value;
+        parent.append(item);
+        return item;
+      }
+
+      const defs = el('defs');
+      const world = el('g');
+      const wires = el('g', { 'aria-hidden': 'true' });
+      const vertices = el('g');
+      world.append(wires, vertices);
+      svg.replaceChildren(defs, world);
+      svg.style.touchAction = 'none';
+      svg.style.userSelect = 'none';
+      svg.style.cursor = 'grab';
+      svg.setAttribute('role', 'group');
+      svg.setAttribute('aria-label', 'Mappa interattiva delle relazioni');
+      const prefix = (svg.id || 'elephant-map') + '-freccia-';
+      for (const [name, color] of Object.entries({ ...palette, root: '#c1afff' })) {
+        const marker = child(defs, 'marker', {
+          id: prefix + name, viewBox: '0 0 8 8', refX: 7, refY: 4,
+          markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse', markerUnits: 'userSpaceOnUse'
+        });
+        child(marker, 'path', { d: 'M1.2 1.3 6.7 4 1.2 6.7', fill: 'none', stroke: color, 'stroke-width': 1.35, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
+      }
+      child(defs, 'style', {}, [
+        '.em-node{cursor:pointer;outline:none}',
+        '.em-node .em-hit{fill:transparent;pointer-events:all}',
+        '.em-node .em-focus{opacity:0;pointer-events:none}',
+        '.em-node:hover .em-focus,.em-node:focus-visible .em-focus{opacity:1}',
+        '.em-node:hover text,.em-node:focus-visible text{fill:#fff}',
+        '.em-node:focus-visible .em-focus{stroke:#fff;stroke-width:2}',
+        '.em-node text{pointer-events:none;paint-order:stroke;stroke:#15171d;stroke-width:3;stroke-linejoin:round}'
+      ].join('\n'));
+
+      const glyphs = {
+        root: ['M-9 -6c0-4.5 18-4.5 18 0s-18 4.5-18 0Z','M-9 -6V6c0 4.5 18 4.5 18 0V-6','M-9 0c0 4.5 18 4.5 18 0'],
+        core: ['M0 -6.5 7  -3 0 .5 -7 -3Z','M-7 .2 0 3.7 7 .2','M-7 3.5 0 7 7 3.5'],
+        data: ['M-6 -4c0-3.2 12-3.2 12 0s-12 3.2-12 0Z','M-6 -4v8c0 3.2 12 3.2 12 0v-8','M-6 0c0 3.2 12 3.2 12 0'],
+        client: ['M-6.5 -5.5H6.5V5.5H-6.5Z','M-2.5 -5.5V5.5'],
+        ops: ['M-7 0h3l2-5 3.4 10L4 0h3']
+      };
+      const meter = document.createElement('canvas').getContext('2d');
+      const font = 'Inter, system-ui, sans-serif';
+      function textLines(value, max, size, weight, maxLines = 2) {
+        const words = value.trim().split(/\s+/u);
+        meter.font = weight + ' ' + size + 'px ' + font;
+        const fits = str => meter.measureText(str).width <= max;
+        const lines = [];
+        let current = '';
+        let omitted = false;
+        for (const word of words) {
+          const next = current ? current + ' ' + word : word;
+          if (fits(next)) { current = next; continue; }
+          if (current) {
+            lines.push(current);
+            current = '';
+            if (lines.length === maxLines) { omitted = true; break; }
+          }
+          if (fits(word)) { current = word; continue; }
+          let part = word;
+          while (part.length > 1 && !fits(part + '…')) part = part.slice(0, -1);
+          current = part + '…';
+        }
+        if (current && lines.length < maxLines) lines.push(current);
+        if (omitted) {
+          let last = lines[lines.length - 1];
+          while (last.length && !fits(last + '…')) last = last.slice(0, -1);
+          lines[lines.length - 1] = last + '…';
+        }
+        return lines;
+      }
+      function vertex(id, point, options = {}) {
+        const item = model.nodes[id];
+        const { x, y, r } = point;
+        const accent = colorOf(id);
+        const center = options.center === true;
+        const group = item.kind === 'area';
+        const large = center || group;
+        const direction = options.label || 'below';
+        const max = options.max || 116;
+        const size = center ? (id === model.root ? 17 : 14) : group ? 13 : 12;
+        const weight = large ? 600 : 500;
+        const caption = options.short && labels[id] || item.title;
+        const lines = textLines(caption, max, size, weight);
+        const step = size + 3;
+        const right = direction === 'right';
+        const side = right || direction === 'left';
+        const tx = side ? (r + 8) * (right ? 1 : -1) : 0;
+        const ty = side ? 4 - (lines.length - 1) * step / 2 : direction === 'above' ? -r - 9 - (lines.length - 1)*step : r + size + 6;
+        const anchor = side ? (right ? 'start' : 'end') : 'middle';
+        const boxWidth = Math.max(2*r + 10, ...lines.map(line => meter.measureText(line).width + 8));
+        const left = Math.min(-r - 6, tx + (right ? -4 : direction === 'left' ? -boxWidth : -boxWidth/2));
+        const extreme = Math.max(r + 6, tx + (right ? boxWidth : direction === 'left' ? 4 : boxWidth/2));
+        const top = Math.min(-r - 5, ty - size);
+        const bottom = Math.max(r + 5, ty + (lines.length - 1) * step + 4);
+        const node = child(vertices,'g',{
+          class:'em-node', 'data-id':id, transform:'translate('+x+' '+y+')',
+          role:'button', tabindex:0, 'aria-label':item.title, 'aria-current':id === selected ? 'true' : 'false'
+        });
+        child(node,'title',{},item.title);
+        child(node,'rect',{class:'em-hit',x:left,y:top,width:extreme-left,height:bottom-top,rx:4});
+        child(node,'circle',{class:'em-focus',r:r+4,stroke:accent,fill:'none','stroke-width':1.4});
+        if (large) {
+          child(node,'circle',{r,fill:center?'#282538':'#1c222a',stroke:accent,'stroke-width':center?1.8:1.4});
+          const symbol = id === model.root ? glyphs.root : group ? glyphs[id] : null;
+          if (symbol) for (const d of symbol) child(node,'path',{d, fill:'none',stroke:accent,'stroke-width':1.5,'stroke-linecap':'round','stroke-linejoin':'round'});
+          else {
+            child(node,'path',{d:'M-6 0 0-6 6 0 0 6Z',fill:'none',stroke:accent,'stroke-width':1.5});
+            child(node,'circle',{r:1.7,fill:accent});
+          }
+        } else {
+          child(node,'circle',{r,fill:'#1a1c23',stroke:accent,'stroke-width':1.7});
+          if (item.kind === 'section') child(node,'circle',{r:1.4,fill:accent});
+        }
+        const label = child(node,'text',{x:tx,y:ty,'text-anchor':anchor,'font-size':size,'font-family':font,'font-weight':weight,fill:large?'#edeef5':'#ced0db'});
+        lines.forEach((line,i)=>child(label,'tspan',{x:tx,dy:i?step:0},line));
+      }
+
+      function wire(a,b,colorId,axis='x',twoWays=false) {
+        const xAxis = axis === 'x';
+        const sign = Math.sign(xAxis ? b.x-a.x : b.y-a.y) || 1;
+        const ax = a.x + (xAxis ? sign*(a.r+2) : 0);
+        const ay = a.y + (xAxis ? 0 : sign*(a.r+2));
+        const bx = b.x - (xAxis ? sign*(b.r+3) : 0);
+        const by = b.y - (xAxis ? 0 : sign*(b.r+3));
+        const mid = xAxis ? (ax+bx)/2 : (ay+by)/2;
+        const path = xAxis ? 'M'+ax+','+ay+' C'+mid+','+ay+' '+mid+','+by+' '+bx+','+by
+          : 'M'+ax+','+ay+' C'+ax+','+mid+' '+bx+','+mid+' '+bx+','+by;
+        const marker = 'url(#'+prefix+(sectionArea(colorId)||'root')+')';
+        const attrs = {d:path, fill:'none',stroke:colorOf(colorId),'stroke-opacity':.59,'stroke-width':1.3,'marker-end':marker};
+        if (twoWays) attrs['marker-start'] = marker;
+        return child(wires,'path',attrs);
+      }
+
+      let selected = model.root, width = 0, height = 0;
+      let scale = 1, offsetX = 0, offsetY = 0, reported = 0;
+      function updateCamera() {
+        world.setAttribute('transform','translate('+offsetX+' '+offsetY+') scale('+scale+')');
+        const pct = Math.round(scale*100);
+        if (reported !== pct) { reported = pct; onZoom(pct); }
+      }
+      function fit() {
+        scale = 1; offsetX = 0; offsetY = 0; updateCamera();
+      }
+      function zoom(factor, x = width/2, y = height/2) {
+        if (!Number.isFinite(factor) || factor <= 0) return;
+        const next = Math.max(.45,Math.min(3.5,scale*factor));
+        offsetX = x - (x-offsetX)*next/scale; offsetY = y - (y-offsetY)*next/scale;
+        scale = next; updateCamera();
+      }
+      function overview() {
+        const small = width < 560;
+        const origin = {x:width/2, y:height*.47, r:small?20:25};
+        const items = [['core',-1,-1],['data',1,-1],['client',-1,1],['ops',1,1]];
+        for (const [id,side,row] of items) {
+          if (!model.nodes[id]) continue;
+          const hub = {x:width*(.5+side*(small?.29:.19)),y:height*(row<0?.26:.70),r:small?13:14};
+          wire(origin,hub,id);
+          if (!small) {
+            const children = connections(id).filter(edge=>edge.from===id && edge.rel==='contains').map(edge=>edge.to);
+            const dotX = side<0 ? Math.min(125,width*.17) : width-Math.min(125,width*.17);
+            const spacing = Math.min(31,height*.065);
+            children.forEach((childId,i)=>{
+              const dot = {x:dotX,y:hub.y+(i-(children.length-1)/2)*spacing,r:4};
+              wire(hub,dot,id);
+              vertex(childId,dot,{short:true,label:side<0?'left':'right',max:Math.min(dotX,width-dotX)-16});
+            });
+          }
+          vertex(id,hub,{max:Math.min(140,width*.34)});
+        }
+        vertex(model.root,origin,{center:true,max:142});
+      }
+      function neighborhood() {
+        const small = width < 560;
+        const root = {x:width/2,y:height*(small?.46:.47),r:18};
+        const neighbors = new Map();
+        for (const edge of connections(selected)) {
+          const incoming = edge.to === selected;
+          const id = incoming ? edge.from : edge.to;
+          if (id === selected || !model.nodes[id]) continue;
+          if (!neighbors.has(id)) neighbors.set(id,{id,ins:[],outs:[]});
+          neighbors.get(id)[incoming?'ins':'outs'].push(edge);
+        }
+        const near = [...neighbors.values()].sort((a,b)=>{
+          const isFamily = peer => peer.ins.concat(peer.outs).some(edge=>edge.rel==='contains');
+          return Number(isFamily(b))-Number(isFamily(a));
+        });
+        const sides = [[],[]];
+        for (const peer of near) {
+          const left = peer.ins.length && (!peer.outs.length || sides[0].length <= sides[1].length);
+          sides[left?0:1].push(peer);
+        }
+        sides.forEach((list,i)=>{
+          const side = i===0?-1:1;
+          const limit = small ? (width<335?2:3) : Math.min(7,Math.max(3,Math.floor((height-38)/53)));
+          const shown = list.slice(0,limit);
+          shown.forEach((peer,index)=>{
+            const interval = height/(shown.length+1);
+            const delta = Math.min(interval,67);
+            const x = small ? (index+.5)*width/shown.length : width*(side<0?.31:.69);
+            const y = small ? height*(side<0?.28:.71) : root.y+(index-(shown.length-1)/2)*delta;
+            const group = model.nodes[peer.id].kind==='area';
+            const end = {x,y,r:group?11:4.5};
+            const goesOut = Boolean(peer.outs.length);
+            const path = wire(goesOut?root:end,goesOut?end:root,peer.id,small?'y':'x',Boolean(peer.ins.length && peer.outs.length));
+            const describe = edge => model.nodes[edge.from].title+' '+(phrases[edge.rel]||edge.rel)+' '+model.nodes[edge.to].title;
+            child(path,'title',{},peer.ins.concat(peer.outs).map(describe).join('\n'));
+            const max = small ? Math.min(150,width/shown.length-10) : Math.min(217,width*.31-end.r-17);
+            vertex(peer.id,end,{max,label:small?(side<0?'above':'below'):(side<0?'left':'right')});
+          });
+        });
+        vertex(selected,root,{center:true,max:small?Math.max(110,width*.43):Math.min(170,width*.30)});
+      }
+      function draw() {
+        if (!width || !height) return;
+        wires.replaceChildren();
+        vertices.replaceChildren();
+        if (selected===model.root) overview(); else neighborhood();
+      }
+      function resize() {
+        const rect = svg.getBoundingClientRect();
+        const w = Math.round(rect.width), h = Math.round(rect.height);
+        if (!w || !h || (width===w && height===h)) return;
+        width=w; height=h;
+        svg.setAttribute('viewBox','0 0 '+w+' '+h);
+        draw(); fit();
+      }
+      function show(id) {
+        if (!Object.hasOwn(model.nodes,id)) return;
+        const hadFocus = vertices.contains(document.activeElement);
+        selected=id; resize(); draw(); fit();
+        if (hadFocus) {
+          [...vertices.children].find(node=>node.dataset.id===id)?.focus({preventScroll:true});
+        }
+      }
+      function activate(target) {
+        const node = target.closest?.('g[data-id]');
+        if (node && vertices.contains(node)) selectNode(node.dataset.id);
+      }
+      svg.addEventListener('keydown',event=>{
+        if (event.key==='Enter' || event.key===' ') { event.preventDefault(); activate(event.target); }
+      });
+      let drag = null, suppressClick = false;
+      svg.addEventListener('pointerdown',event=>{
+        if (drag || !event.isPrimary || event.button!==0) return;
+        drag={id:event.pointerId,x:event.clientX,y:event.clientY,ox:offsetX,oy:offsetY,moved:false};
+        suppressClick=false;
+      });
+      svg.addEventListener('pointermove',event=>{
+        if (!drag || event.pointerId!==drag.id) return;
+        const dx=event.clientX-drag.x, dy=event.clientY-drag.y;
+        if (!drag.moved && Math.hypot(dx,dy)<5) return;
+        if (!drag.moved) {
+          svg.setPointerCapture(event.pointerId); drag.moved=true; svg.style.cursor='grabbing';
+        }
+        offsetX=drag.ox+dx; offsetY=drag.oy+dy; updateCamera();
+      });
+      function endDrag(event) {
+        if (!drag || event.pointerId!==drag.id) return;
+        suppressClick=drag.moved;
+        if (svg.hasPointerCapture(drag.id)) svg.releasePointerCapture(drag.id);
+        drag=null; svg.style.cursor='grab';
+      }
+      svg.addEventListener('pointerup',endDrag);
+      svg.addEventListener('pointercancel',endDrag);
+      svg.addEventListener('pointerleave',event=>{ if (drag && !drag.moved) endDrag(event); });
+      svg.addEventListener('click',event=>{ if(!suppressClick)activate(event.target); suppressClick=false; });
+      svg.addEventListener('wheel',event=>{
+        if (!event.deltaY) return;
+        event.preventDefault();
+        const point=svg.getBoundingClientRect();
+        zoom(event.deltaY<0?1.12:1/1.12,event.clientX-point.left,event.clientY-point.top);
+      },{passive:false});
+      resize();
+      return {show,zoom,fit,resize};
+    }
+
+    const model = JSON.parse(document.getElementById('graph-data').textContent);
+    const byId = id => document.getElementById(id);
+    const names = { root: 'Applicazione', area: 'Area', section: 'Capitolo', concept: 'Concetto' };
+    const colors = { core: '#b6a4fa', data: '#64d4bd', client: '#ecb779', ops: '#83bdfa' };
+    const entries = Object.entries(model.nodes);
+    const search = byId('search');
+    const results = byId('results');
+    const detail = byId('detail');
+    const list = byId('node-list');
+    const steps = byId('steps');
+    const route = byId('route');
+    let selected = null;
+    let matchIndex = -1;
+
+    function element(tag, className, value) {
+      const item = document.createElement(tag);
+      if (className) item.className = className;
+      if (value !== undefined) item.textContent = value;
+      return item;
+    }
+    function icon(name) {
+      const ns = 'http://www.w3.org/2000/svg';
+      const img = document.createElementNS(ns, 'svg');
+      img.setAttribute('class', 'icon');
+      img.setAttribute('aria-hidden', 'true');
+      const use = document.createElementNS(ns, 'use');
+      use.setAttribute('href', '#i-' + name);
+      img.append(use);
+      return img;
+    }
+    function nodeButton(id, className) {
+      const button = element('button', className, model.nodes[id].title);
+      button.type = 'button';
+      button.dataset.id = id;
+      return button;
+    }
+    function areaOf(id) {
+      const node = model.nodes[id];
+      if (node.kind === 'area') return id;
+      if (node.kind === 'concept') return model.nodes[node.section].area;
+      return node.area;
+    }
+    function dot(id) {
+      const mark = element('span', 'dot');
+      mark.style.setProperty('--dot', colors[areaOf(id)] || '#a391ee');
+      mark.setAttribute('aria-hidden', 'true');
+      return mark;
+    }
+    function normalized(value) {
+      return value.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('it');
+    }
+    const catalogue = entries.map(([id, node]) => ({
+      id, title: normalized(node.title), paths: normalized([...node.sources, ...node.tests].join(' ')),
+      text: normalized([node.summary, ...node.rules].join(' '))
+    }));
+    const graph = createMap(byId('map'), model, navigate, percent => {
+      byId('zoom-level').textContent = percent + '%';
+    });
+
+    function hideSearch() {
+      results.hidden = true;
+      search.setAttribute('aria-expanded', 'false');
+      search.removeAttribute('aria-activedescendant');
+      matchIndex = -1;
+    }
+    function showSearch() {
+      const query = normalized(search.value.trim());
+      results.replaceChildren();
+      hideSearch();
+      if (!query) return;
+      const words = query.split(/\s+/);
+      const score = item => {
+        if (query === item.id || query === item.title) return 10;
+        if (item.title.startsWith(query) || item.id.startsWith(query)) return 8;
+        if (item.title.includes(query) || item.id.includes(query)) return 6;
+        if (item.paths.includes(query)) return 4;
+        const all = [item.id, item.title, item.paths, item.text].join(' ');
+        return words.every(w => all.includes(w)) ? 1 : 0;
+      };
+      const matches = catalogue.map(item => ({ id: item.id, score: score(item) }))
+        .filter(match => match.score > 0).sort((a, b) => b.score - a.score);
+      for (const { id } of matches) {
+        const choice = nodeButton(id);
+        choice.id = 'match-' + id;
+        choice.setAttribute('role', 'option');
+        choice.setAttribute('aria-selected', 'false');
+        choice.tabIndex = -1;
+        choice.append(element('small', '', id));
+        results.append(choice);
+      }
+      if (!matches.length) results.append(element('p', 'none', 'Nessun nodo trovato. Prova con il nome di un modulo o di un file.'));
+      results.hidden = false;
+      search.setAttribute('aria-expanded', 'true');
+    }
+    function revealMatch(index) {
+      const options = [...results.querySelectorAll('button')];
+      if (!options.length) return;
+      matchIndex = (index + options.length) % options.length;
+      for (const [i, option] of options.entries()) option.setAttribute('aria-selected', i === matchIndex);
+      search.setAttribute('aria-activedescendant', options[matchIndex].id);
+      options[matchIndex].scrollIntoView({ block: 'nearest' });
+    }
+    function chooseMatch(id) {
+      hideSearch();
+      search.value = '';
+      navigate(id);
+      search.focus({ preventScroll: true });
+    }
+
+    function fileLink(file, label = file) {
+      const a = element('a', 'file');
+      const [path, anchor] = file.split('#');
+      a.href = path.split('/').map(encodeURIComponent).join('/') + (anchor ? '#' + encodeURIComponent(anchor) : '');
+      a.append(icon('file'), element('span', '', label));
+      return a;
+    }
+    function section(title) {
+      const block = element('section', 'detail-section');
+      block.append(element('h3', '', title));
+      detail.append(block);
+      return block;
+    }
+    function references(title, files) {
+      if (!files.length) return;
+      const block = element('details', 'detail-section');
+      block.open = files.length <= 4;
+      block.append(element('summary', '', `${title} (${files.length})`));
+      const refs = element('div', 'refs');
+      for (const path of files) refs.append(fileLink(path));
+      block.append(refs);
+      detail.append(block);
+    }
+    function renderDetail(id) {
+      const node = model.nodes[id];
+      detail.replaceChildren();
+      const kind = element('span', 'kind');
+      kind.append(icon('layers'), names[node.kind]);
+      const heading = element('h2', '', node.title);
+      heading.tabIndex = -1;
+      detail.append(kind, heading, element('p', 'summary', node.summary));
+      const adjacent = model.edges.filter(e => e.from === id || e.to === id);
+      const children = adjacent.filter(e => e.rel === 'contains' && e.from === id);
+      const links = adjacent.filter(e => e.rel !== 'contains');
+      function linked(block, other, relation = '') {
+        const button = nodeButton(other, 'rel-link');
+        button.replaceChildren();
+        const label = element('span', '', model.nodes[other].title);
+        if (relation) label.append(element('small', '', relation));
+        button.append(dot(other), label, icon('chevron'));
+        block.append(button);
+      }
+      if (children.length) {
+        const title = { root: 'Aree del sistema', area: 'Capitoli', section: 'Concetti' }[node.kind];
+        const block = section(title + ` (${children.length})`);
+        for (const e of children) linked(block, e.to);
+      }
+      if (node.rules.length) {
+        const rules = element('ul', 'rules');
+        for (const rule of node.rules) rules.append(element('li', '', rule));
+        section('Regole di sviluppo').append(rules);
+      }
+      if (links.length) {
+        const block = section(`Relazioni (${links.length})`);
+        for (const e of links) {
+          const outgoing = e.from === id;
+          const a = outgoing ? node.title : model.nodes[e.from].title;
+          const b = outgoing ? model.nodes[e.to].title : node.title;
+          linked(block, outgoing ? e.to : e.from, `${a} ${model.relations[e.rel]} ${b}`);
+        }
+      }
+      const parent = adjacent.find(e => e.rel === 'contains' && e.to === id);
+      if (parent) linked(section('Appartiene a'), parent.from);
+      references('Sorgenti', node.sources);
+      references('Test', node.tests);
+      const chapter = node.kind === 'concept' ? model.nodes[node.section] : node;
+      if (chapter.anchor) section('Guida').append(fileLink(model.guide + '#' + chapter.anchor, 'Leggi il capitolo in ELEPHANT.md'));
+      detail.scrollTop = 0;
+    }
+
+    function buildList() {
+      for (const [area, group] of entries.filter(([, node]) => node.kind === 'area')) {
+        const block = element('section', 'list-group');
+        const heading = nodeButton(area);
+        const h3 = element('h3');
+        h3.append(heading);
+        block.append(h3);
+        const buttons = element('div', 'list-buttons');
+        for (const [id, chapter] of entries.filter(([, node]) => node.kind === 'section' && node.area === area)) {
+          const item = nodeButton(id);
+          item.title = `${group.title} / ${chapter.title}`;
+          buttons.append(item);
+          for (const [key] of entries.filter(([, node]) => node.section === id)) buttons.append(nodeButton(key));
+        }
+        block.append(buttons);
+        list.append(block);
+      }
+    }
+    function setView(asList) {
+      byId('stage').hidden = asList;
+      list.hidden = !asList;
+      byId('graph-mode').setAttribute('aria-pressed', !asList);
+      byId('list-mode').setAttribute('aria-pressed', asList);
+      if (!asList) graph.resize();
+    }
+    function renderSteps() {
+      steps.replaceChildren();
+      model.entrypoints[route.value].steps.forEach((id, i) => {
+        const li = element('li');
+        if (i > 0) li.append(icon('arrow'));
+        const button = nodeButton(id, 'step');
+        button.prepend(element('span', 'ordinal', i + 1));
+        button.setAttribute('aria-current', selected === id);
+        li.append(button);
+        steps.append(li);
+      });
+    }
+    function select(id) {
+      if (selected === id) return;
+      const moveFocus = byId('map').contains(document.activeElement);
+      selected = id;
+      renderDetail(id);
+      graph.show(id);
+      byId('crumb-label').textContent = id === model.root ? 'Mappa del sistema' : model.nodes[id].title;
+      byId('announcement').textContent = `Nodo selezionato. ${model.nodes[id].title}`;
+      for (const button of document.querySelectorAll('#node-list [data-id], #steps [data-id], #legend [data-id]')) {
+        button.setAttribute('aria-current', button.dataset.id === id);
+      }
+      if (moveFocus) {
+        const next = byId('map').querySelector(`g[data-id="${CSS.escape(id)}"]`);
+        (next || detail.querySelector('h2')).focus({ preventScroll: true });
+      }
+    }
+    function fromHash() {
+      const id = new URLSearchParams(location.hash.slice(1)).get('node');
+      return Object.hasOwn(model.nodes, id) ? id : model.root;
+    }
+    function navigate(id) {
+      if (!Object.hasOwn(model.nodes, id)) return;
+      if (id !== selected) {
+        location.hash = 'node=' + encodeURIComponent(id);
+        select(id);
+      }
+    }
+
+    for (const [id] of entries.filter(([, node]) => node.kind === 'area')) {
+      const button = nodeButton(id, 'legend-item');
+      button.prepend(dot(id));
+      byId('legend').append(button);
+    }
+    byId('counts').append(element('span', '', `${entries.length} nodi totali`),
+      element('span', '', `${model.edges.length} relazioni`));
+    for (const [id, path] of Object.entries(model.entrypoints)) {
+      const option = element('option', '', path.title);
+      option.value = id;
+      route.append(option);
+    }
+    buildList();
+    renderSteps();
+    select(fromHash());
+
+    for (const host of [list, steps, detail, byId('legend')]) {
+      host.addEventListener('click', event => {
+        const button = event.target.closest('button[data-id]');
+        if (button) navigate(button.dataset.id);
+      });
+    }
+    results.addEventListener('click', event => {
+      const choice = event.target.closest('button[data-id]');
+      if (choice) chooseMatch(choice.dataset.id);
+    });
+    search.addEventListener('input', showSearch);
+    search.addEventListener('focus', showSearch);
+    search.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { hideSearch(); return; }
+      if (results.hidden) return;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const dir = event.key === 'ArrowDown' ? 1 : -1;
+        revealMatch(matchIndex < 0 && dir < 0 ? -1 : matchIndex + dir);
+      } else if (event.key === 'Enter') {
+        const choices = results.querySelectorAll('button');
+        const choice = choices[Math.max(0, matchIndex)];
+        if (choice) { event.preventDefault(); chooseMatch(choice.dataset.id); }
+      }
+    });
+    document.addEventListener('pointerdown', event => {
+      if (!byId('search-wrap').contains(event.target)) hideSearch();
+    });
+    byId('search-wrap').addEventListener('focusout', event => {
+      if (!byId('search-wrap').contains(event.relatedTarget)) hideSearch();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey &&
+          !event.target.closest('input,textarea,select,[contenteditable="true"]')) {
+        event.preventDefault();
+        search.focus();
+      }
+    });
+    route.addEventListener('change', renderSteps);
+    byId('list-mode').addEventListener('click', () => setView(true));
+    byId('graph-mode').addEventListener('click', () => setView(false));
+    // Anche da file:// il browser deve scaricare il modello, incluso in questa pagina.
+    document.querySelector('a[download]').addEventListener('click', event => {
+      event.preventDefault();
+      const bytes = new Blob([JSON.stringify(model, null, 2), '\n'], { type: 'application/json' });
+      const url = URL.createObjectURL(bytes);
+      const link = element('a');
+      link.href = url;
+      link.download = 'ELEPHANT.json';
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+    byId('zoom-in').addEventListener('click', () => graph.zoom(1.25));
+    byId('zoom-out').addEventListener('click', () => graph.zoom(1 / 1.25));
+    byId('fit').addEventListener('click', () => graph.fit());
+    function overview() {
+      setView(false);
+      navigate(model.root);
+      graph.fit();
+    }
+    byId('root-reset').addEventListener('click', overview);
+    byId('detail-jump').addEventListener('click', () => {
+      const heading = detail.querySelector('h2');
+      heading.focus({ preventScroll: true });
+      heading.scrollIntoView({ block: 'start' });
+    });
+    byId('brand').addEventListener('click', overview);
+    window.addEventListener('hashchange', () => select(fromHash()));
+    new ResizeObserver(() => { if (!byId('stage').hidden) graph.resize(); }).observe(byId('stage'));
+  </script>
+</body>
+</html>

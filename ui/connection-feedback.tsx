@@ -31,16 +31,16 @@ export function startProgress(label: string) {
   };
 }
 
-export function startConnection(name: string, onEdit?: () => void, inline = false) {
+export function startConnection(name: string, onEdit?: () => void, id?: string) {
   const finish = startProgress('Connessione in corso');
   return (error?: string) => {
     if (!finish()) return;
     if (error) {
       document.dispatchEvent(new CustomEvent('codedb:feedback', { detail: {
-        tipo: inline ? 'inline' : 'errore', target: '#connect-form',
+        tipo: 'errore', id,
         titolo: `Connessione a “${name}” non riuscita`, message: error,
-        hint: 'Controlla host, porta e credenziali della connessione.',
-        actionLabel: 'Modifica connessione', onAction: inline ? undefined : onEdit,
+        hint: error.includes('Cosa fare:') ? undefined : 'Controlla host, porta e credenziali della connessione.',
+        actionLabel: 'Modifica connessione', onAction: onEdit,
       } }));
       return true;
     }

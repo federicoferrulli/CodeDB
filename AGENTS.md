@@ -37,6 +37,10 @@ In pratica:
 
 ---
 
+## Contesto del codice
+
+Per orientarti in una modifica che attraversa più moduli, scegli l’attività in `entrypoints` di [ELEPHANT.json](ELEPHANT.json), leggi i relativi ID in `nodes` e segui `sources` e `tests`. La [guida estesa](ELEPHANT.md) spiega i contratti dei singoli capitoli.
+
 ## Comandi Principali
 
 ```bash

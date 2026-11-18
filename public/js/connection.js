@@ -1,7 +1,7 @@
 import { initCollegamento } from './collegamento.js';
 import { socket } from './socket.js';
 import { tabs, activeTab, createTab, closeAllTabs } from './tabs.js';
-import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc, dbTypeIcon, lucideIconHtml as ICO, refreshLucideIcons, chiediTesto, scaricaFile, notifica } from './utils.js';
+import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc, dbTypeIcon, lucideIconHtml as ICO, refreshLucideIcons, chiediTesto, scaricaFile, notifica, chiudiNotifica } from './utils.js';
 import { loadSavedConnections, elencoConnessioni } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
@@ -32,6 +32,17 @@ let sshKeyCheck = null;
 let sshKeyInfo = null;
 let connFormGeneration = 0;
 let currentStep = 1;
+const wizardErrorId = 'connessione-wizard';
+
+function clearWizardFeedback() {
+  chiudiNotifica(wizardErrorId);
+  $('#connect-error').classList.add('hidden');
+  $('#connect-test-msg').classList.add('hidden');
+}
+
+function notifyWizardError(error, titolo) {
+  notifica(error.message, { tipo: 'errore', titolo, id: wizardErrorId });
+}
 
 export function setWizardStep(step) {
   const sshOn = $('#conn-ssh-toggle')?.checked;
@@ -62,8 +73,7 @@ export function setWizardStep(step) {
 
   updateWizardActions();
 
-  $('#connect-error')?.classList.add('hidden');
-  $('#connect-test-msg')?.classList.add('hidden');
+  clearWizardFeedback();
 
   if (currentStep === 3) {
     updateWizardSummary();
@@ -203,8 +213,7 @@ function scheduleSshKeyValidation(event) {
     $('#connect-form').elements.sshSecurityKeyPin.value = '';
   }
   resetSshKeyValidation();
-  $('#connect-test-msg').classList.add('hidden');
-  $('#connect-error').classList.add('hidden');
+  clearWizardFeedback();
   syncSshAuth();
   const cfg = readConnForm();
   if (cfg.ssh !== 'true' || cfg.sshAuth === 'password' || sshKeyLoading || cfg.sshAuth === 'upload' && sshKeyError) return;
@@ -349,9 +358,6 @@ function readConnForm() {
 
 export function openConnModal() {
   cancelEditConn();
-  setWizardStep(1);
-  $('#connect-error').classList.add('hidden');
-  $('#connect-test-msg').classList.add('hidden');
   $('#connect-overlay').classList.remove('hidden');
 }
 
@@ -426,7 +432,7 @@ export function connectAndOpenTab(cfg) {
   const request = { ...cfg, tabId };
   const saved = cfg.saved;
   const feedbackConnection = startConnection(saved || cfg.saveAs || cfg.host || 'database',
-    () => saved ? startEditConn(saved) : openConnModal(), !saved);
+    saved ? () => startEditConn(saved) : undefined, saved ? undefined : wizardErrorId);
   if (!feedbackConnection && cfg.saved) toast(`Connessione a "${cfg.saved}"…`);
   return conImprontaSsh(request, () => new Promise((resolve, reject) => {
     socket.emit('mongo:connect', request, res => res.ok ? resolve(res)
@@ -518,8 +524,6 @@ export function startEditConn(name) {
     $('#conn-edit-banner').classList.remove('hidden');
     $('#conn-edit-hint').classList.remove('hidden');
     $('#conn-save-btn').classList.remove('hidden');
-    $('#connect-error').classList.add('hidden');
-    $('#connect-test-msg').classList.add('hidden');
     $('#connect-overlay').classList.remove('hidden');
     if (savedSecrets.sshSecurityKeyPin) scheduleSshKeyValidation();
   }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Connessioni" }));
@@ -581,14 +585,14 @@ export function initConnection() {
   $('#conn-ssh-key-select').addEventListener('click', () => $('#conn-ssh-key-upload').click());
   $('#conn-ssh-key-upload').addEventListener('change', () => { sshKeyReadPromise = readSshKeyFile(); });
   $('#connect-form').addEventListener('input', event => {
+    chiudiNotifica(wizardErrorId);
     if (['sshKeyFile', 'sshPassphrase', 'sshSecurityKeyPin'].includes(event.target.name)) scheduleSshKeyValidation(event);
     if (currentStep === 3) updateWizardSummary();
   });
 
   $('#conn-test-btn')?.addEventListener('click', () => {
     const btn = $('#conn-test-btn');
-    $('#connect-error').classList.add('hidden');
-    $('#connect-test-msg').classList.add('hidden');
+    clearWizardFeedback();
 
     // Etichetta salvata e ripristinata da `conCaricamento`: prima "⚡ Testa
     // Connessione" era una stringa letterale ripetuta in tre punti, e bastava
@@ -605,11 +609,7 @@ export function initConnection() {
         msg.textContent = `✓ Connessione riuscita! (${res.dbType.toUpperCase()}, ${res.databases} DB trovati)`;
         msg.classList.remove('hidden');
       })
-      .catch((err) => {
-        const errorEl = $('#connect-error');
-        errorEl.textContent = `Errore di connessione: ${err.message}`;
-        errorEl.classList.remove('hidden');
-      });
+      .catch((err) => notifyWizardError(err, 'Test di connessione non riuscito'));
   });
 
   $('#connect-form').addEventListener('submit', (e) => {
@@ -620,7 +620,7 @@ export function initConnection() {
       return;
     }
     const btn = $('#connect-btn');
-    $('#connect-error').classList.add('hidden');
+    clearWizardFeedback();
     conCaricamento(btn, async () => {
       if (!await validateSshKey()) return null;
       const cfg = readConnForm();
@@ -633,10 +633,7 @@ export function initConnection() {
       cancelEditConn();
       closeConnModal();
     }).catch((err) => {
-      if (err.connectionFeedback) return;
-      const errorEl = $('#connect-error');
-      errorEl.textContent = err.message;
-      errorEl.classList.remove('hidden');
+      if (!err.connectionFeedback) notifyWizardError(err, 'Connessione non riuscita');
     });
   });
 
@@ -655,6 +652,7 @@ export function initConnection() {
   });
 
   $('#conn-save-btn').addEventListener('click', () => {
+    clearWizardFeedback();
     conCaricamento($('#conn-save-btn'), async () => {
       if (!await validateSshKey(true)) return null;
       const cfg = readConnForm();
@@ -668,11 +666,7 @@ export function initConnection() {
       cancelEditConn();
       closeConnModal();
       loadSavedConnections();
-    }).catch((err) => {
-      const errorEl = $('#connect-error');
-      errorEl.textContent = err.message;
-      errorEl.classList.remove('hidden');
-    });
+    }).catch((err) => notifyWizardError(err, 'Salvataggio della connessione non riuscito'));
   });
 
   // L'export apre una modale: si può indicare la passphrase con cui cifrare i

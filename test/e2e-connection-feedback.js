@@ -36,10 +36,10 @@ const { startTestServer } = require('./e2e-harness');
           const { connectAndOpenTab } = await import('/js/connection.js');
           connectAndOpenTab({ saved: name }).then(() => window.cf.results.push('ok')).catch(() => window.cf.results.push('error'));
         };
-        window.cf.answer = ok => {
+        window.cf.answer = (ok, error = 'Il server non risponde. Controlla host e porta.') => {
           const request = window.cf.queue.shift();
           request.ack(ok ? { ok: true, databases: [], dbType: 'mongodb', label: request.payload.saved }
-            : { ok: false, error: 'Il server non risponde. Controlla host e porta.' });
+            : { ok: false, error });
         };
       });
       await page.evaluate(() => { window.cf.start('Prima'); window.cf.start('Seconda'); });
@@ -61,17 +61,37 @@ const { startTestServer } = require('./e2e-harness');
       await page.evaluate(() => window.cf.answer(true));
       await progress.waitFor({ state: 'detached' });
       assert.equal(await page.locator('#feedback-container .feedback-message').count(), 0, 'Il successo non produce un errore');
-      // Lo stesso errore dal wizard resta vicino ai campi, senza coprire il form.
-      await page.evaluate(async () => {
-        (await import('/js/connection.js')).openConnModal();
-        const { startConnection } = await import('/arc/ui.js');
-        startConnection('Nuova', undefined, true)('Credenziali non valide.');
-      });
-      await page.locator('#connect-form .feedback-message').waitFor();
-      assert.equal(await page.locator('#feedback-container .feedback-message').count(), 0);
+      await page.evaluate(async () => (await import('/js/connection.js')).openConnModal());
+      const confirm = page.locator('#connect-btn');
+      await confirm.click();
+      await page.locator('#connect-form [name="saveAs"]').fill('Nuova');
+      await confirm.click();
+      await page.waitForFunction(() => window.cf.queue.length === 1);
+      const panel = page.locator('#connect-overlay .modal');
+      const height = await panel.evaluate(el => el.scrollHeight);
+      await page.evaluate(() => window.cf.answer(false, 'Connessione rifiutata su localhost:27017. Cosa fare: verifica che il database sia avviato e che host e porta siano corretti. (dettaglio tecnico: ECONNREFUSED)'));
+      await progress.waitFor({ state: 'detached' });
+      const wizardError = page.locator('#feedback-container [role="alert"]').filter({ hasText: 'Nuova' });
+      await wizardError.waitFor({ timeout: 4000 });
+      assert.equal(await panel.evaluate(el => el.scrollHeight), height, 'L’errore non allunga il pannello');
+      assert.equal(await page.locator('#connect-form [role="alert"]:visible').count(), 0);
+      assert.equal(await wizardError.getByRole('button', { name: 'Modifica connessione' }).count(), 0);
+      assert.equal(await wizardError.locator('.feedback-hint').count(), 0, 'Il rimedio del server è già nel messaggio');
+      const dismiss = wizardError.getByRole('button', { name: 'Chiudi messaggio' });
+      assert(await dismiss.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        return el.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+      }), 'Il messaggio è subito visibile e raggiungibile senza scorrere');
+      await wizardError.getByText('Mostra altro', { exact: true }).click();
+      assert(await wizardError.getByText('ECONNREFUSED', { exact: true }).isVisible());
+      assert(await wizardError.getByRole('button', { name: 'Copia errore' }).isVisible());
+      assert.equal(await panel.evaluate(el => el.scrollHeight), height);
+      await dismiss.click();
+      assert.equal(await page.locator('#connect-form [name="saveAs"]').inputValue(), 'Nuova');
+      assert(await confirm.isEnabled());
       assert.deepEqual(errors, []);
       await page.close();
-      console.log(`OK connessioni ${width}px: concorrenza, successo, snackbar con azione, errore inline nel wizard`);
+      console.log(`OK connessioni ${width}px: concorrenza, successo, notifica fuori dal form e riepilogo conservato`);
     }
   } finally { await browser.close(); await server.stop(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
