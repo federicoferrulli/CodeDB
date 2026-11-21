@@ -20,6 +20,7 @@
 
 const { tipoDb } = require('./artefatti');
 const { readSchemaObjects } = require('./schemaObjects');
+const { collectionDiSistema } = require('./DbStrategy');
 
 const id = (tipo, nome) => `${tipo}:${nome}`;
 
@@ -73,6 +74,7 @@ async function catalogoMySql(q, db) {
  */
 async function vistePerMySql(q, db, viste) {
   if (!viste.length) return { dipendenze: [], nonDeducibili: [] };
+  const visteLocali = new Set(viste);
   try {
     const righe = await q(
       `SELECT VIEW_NAME AS view_name, TABLE_SCHEMA AS ref_schema, TABLE_NAME AS ref
@@ -84,7 +86,7 @@ async function vistePerMySql(q, db, viste) {
     return {
       dipendenze: righe.map((r) => ({
         da: id('vista', r.view_name),
-        a: id('tabella', r.ref),
+        a: id(r.ref_schema === db && visteLocali.has(r.ref) ? 'vista' : 'tabella', r.ref),
         tipo: 'vista',
         esterna: !!r.ref_schema && r.ref_schema !== db,
         db: r.ref_schema && r.ref_schema !== db ? r.ref_schema : null,
@@ -109,10 +111,13 @@ async function catalogoPostgres(q, schema) {
   const dipendenze = [];
 
   const tabelle = await q(
-    `SELECT c.relname AS name,
+    `SELECT c.relname AS name, parent.relname AS parent, pn.nspname AS parent_schema,
             CASE WHEN c.reltuples < 0 THEN NULL ELSE c.reltuples::bigint END AS rows_approx
        FROM pg_catalog.pg_class c
        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       LEFT JOIN pg_catalog.pg_inherits h ON h.inhrelid=c.oid AND c.relispartition
+       LEFT JOIN pg_catalog.pg_class parent ON parent.oid=h.inhparent
+       LEFT JOIN pg_catalog.pg_namespace pn ON pn.oid=parent.relnamespace
       WHERE n.nspname = $1 AND c.relkind IN ('r', 'p')
    ORDER BY c.relname`,
     [schema],
@@ -122,6 +127,8 @@ async function catalogoPostgres(q, schema) {
     // traduce in NULL, e nascondere una tabella piena sarebbe molto peggio che
     // mostrarne una vuota.
     oggetti.push({ tipo: 'tabella', nome: r.name, righeStimate: r.rows_approx == null ? null : Number(r.rows_approx) });
+    if (r.parent) dipendenze.push({ da: id('tabella', r.name), a: id('tabella', r.parent), tipo: 'partizione',
+      esterna: r.parent_schema !== schema, db: r.parent_schema === schema ? null : r.parent_schema });
   }
 
   const fk = await q(
@@ -192,14 +199,18 @@ async function catalogoPostgres(q, schema) {
 function catalogoMongo(infos, conteggi) {
   const oggetti = [];
   const dipendenze = [];
+  const viste = new Set(infos.filter(info => info.type === 'view').map(info => info.name));
+  const nomi = new Set(infos.filter(info => !collectionDiSistema('mongodb', info.name)).map(info => info.name));
   for (const info of infos) {
+    if (collectionDiSistema('mongodb', info.name)) continue;
     if (info.type === 'view') {
       oggetti.push({ tipo: 'vista', nome: info.name });
       const su = info.options && info.options.viewOn;
       // Una view MongoDB dichiara la propria sorgente: è una dipendenza reale,
       // non un'ipotesi. La pipeline può però leggere altre collection con
       // `$lookup`, e quello il catalogo non lo dice.
-      if (su) dipendenze.push({ da: id('vista', info.name), a: id('collection', su), tipo: 'vista' });
+      // MongoDB ammette una vista anche se la collection di origine manca.
+      if (su) dipendenze.push({ da: id('vista', info.name), a: id(viste.has(su) ? 'vista' : 'collection', su), tipo: 'vista', esterna: !nomi.has(su) });
       const lookup = JSON.stringify((info.options && info.options.pipeline) || []).includes('"$lookup"');
       if (lookup) {
         dipendenze.push({
@@ -253,7 +264,7 @@ async function leggiCatalogoExport(strategy, dbType, db) {
     const infos = await strategy.client.db(db).listCollections().toArray();
     const conteggi = new Map();
     for (const info of infos) {
-      if (info.type === 'view') continue;
+      if (info.type === 'view' || collectionDiSistema(tipo, info.name)) continue;
       // Stima, non conteggio: `estimatedDocumentCount` legge i metadati e non
       // scorre la collection. In «solo struttura» il piano non la userà
       // nemmeno, ma il catalogo si legge una volta sola.
@@ -290,7 +301,8 @@ async function leggiCatalogoExport(strategy, dbType, db) {
   for (const trigger of oggettiSchema.triggers || []) {
     oggetti.push({ tipo: 'trigger', nome: trigger.name, tabella: trigger.table || null });
     if (trigger.table) {
-      dipendenze.push({ da: id('trigger', trigger.name), a: id('tabella', trigger.table), tipo: 'trigger' });
+      const suVista = oggettiSchema.views?.some(v => v.name === trigger.table);
+      dipendenze.push({ da: id('trigger', trigger.name), a: id(suVista ? 'vista' : 'tabella', trigger.table), tipo: 'trigger' });
     }
   }
   for (const evento of oggettiSchema.events || []) {

@@ -4,7 +4,7 @@
   "guide": "ELEPHANT.md",
   "root": "codedb",
   "agent": {
-    "start": "Scegli in entrypoints un'attività vicina al problema e leggi soltanto i nodi indicati da steps, nell'ordine suggerito. Per una panoramica parti da nodes.codedb e attraversa contains.",
+    "start": "Per seguire un flusso, parti dai nodi indicati in entrypoints per l'attività pertinente, nell'ordine di steps. Se conosci già il file, cerca il suo percorso in sources. Dal nodo trovato segui gli archi pertinenti al problema. Per una panoramica parti da nodes.codedb e attraversa contains.",
     "lookup": "nodes è indicizzato per ID stabile. summary spiega la responsabilità, rules raccoglie gli invarianti, sources e tests sono percorsi relativi alla radice del repository. Ogni concept indica il capitolo in section, ogni section rimanda tramite anchor alla guida estesa.",
     "traversal": "Un arco {from,rel,to} si legge dal soggetto all'oggetto. Per stimare l'impatto cerca anche gli archi entranti. I percorsi di lettura sono sequenze editoriali e possono attraversare più rami.",
     "examples": {
@@ -360,18 +360,22 @@
       "summary": "Il socket conserva una Map per tabId con strategia, eventuale tunnel e operazioni in corso. Le sessioni vive usano la quota di connessioni DB condivisa con MCP.",
       "rules": [
         "mongo:connect e mongo:disconnect gestiscono tutti i motori. Serializza sullo stesso lock apertura e chiusura di un tab. Rilascia anche una connessione appena aperta se nel frattempo il client è scomparso.",
+        "Dopo una caduta del trasporto la pagina ha dieci minuti per ritrovare le sessioni con la propria chiave in memoria e lo stesso login. session:recovery ne conferma la continuità. Scadenza, revoca e chiusura esplicita rilasciano le sessioni.",
         "Le operazioni che usano una lease, come uml:apply, la acquisiscono sul bersaglio e la rilasciano in finally. La chiusura differisce il teardown delle risorse ancora in uso."
       ],
       "sources": [
         "server/socket.js",
         "server/eventi-connessioni.js",
+        "public/js/socket.js",
+        "public/js/connection.js",
         "server/connessioni.js",
         "server/eventi-dati.js",
         "server/budget.js"
       ],
       "tests": [
         "test/unit-server-modulare.js",
-        "test/e2e-chiusura-query.js"
+        "test/e2e-chiusura-query.js",
+        "test/e2e-ripresa-query.js"
       ],
       "section": "runtime"
     },
@@ -700,12 +704,16 @@
       "summary": "query:execute passa dal contesto costruito sul server a executeQueryCode(). La sessione sceglie il bersaglio, runId e opHandle individuano il lavoro annullabile.",
       "rules": [
         "Registra l’handle nella sessione di origine e rimuovilo in finally, anche dopo un cambio di tab.",
+        "Una query recuperabile lega runId e dbSessionId alla sessione originale. Se cade il socket, query:state restituisce l’esito della stessa esecuzione. Il browser ne conferma la ricezione per liberarlo.",
+        "Anche una singola istruzione dell’editor può arrivare tramite script:upload. query:execute la ricompone nella sessione SQL del tab dopo il controllo del runId.",
         "Una query libera accetta un LIMIT esplicito e segnala un errore se supera il budget di byte. La griglia può restituire truncated.",
         "I limiti iniziali sono 32 MiB per il risultato e 30/120/5 secondi per find/aggregate/count. La scadenza del watchdog da sola non dimostra che il DBMS abbia fermato il lavoro."
       ],
       "sources": [
         "server/query.js",
         "server/eventi-script.js",
+        "public/js/script-upload.js",
+        "public/js/trasporto.js",
         "db/payloadEsecuzione.js",
         "db/tetti.js",
         "db/DbStrategy.js"
@@ -713,7 +721,8 @@
       "tests": [
         "test/unit-query-senza-limite.js",
         "test/unit-tetti.js",
-        "test/e2e-query-cancel.js"
+        "test/e2e-query-cancel.js",
+        "test/e2e-ripresa-query.js"
       ],
       "section": "queries"
     },
@@ -723,6 +732,7 @@
       "summary": "MySQL e PostgreSQL interpretano il testo tramite il proprio driver. Lo stato SQL dura tra esecuzioni singole dello stesso tab di connessione.",
       "rules": [
         "Serializza le istruzioni sullo stesso contesto per conservare transazioni, variabili e tabelle temporanee. Lo script usa un proprio contesto.",
+        "I blocchi di un file condividono sessione e database scelto con USE. Un errore recuperabile lascia raggiungibile il COMMIT esplicito. In una transazione PostgreSQL il runner isola con savepoint le istruzioni ordinarie del file. La perdita della transazione interrompe la sequenza.",
         "Conserva il comportamento del dialetto e il bersaglio scelto anche dopo comandi di sessione o rollback. Alla perdita della connessione lo stato transazionale precedente va considerato perso."
       ],
       "sources": [
@@ -733,7 +743,8 @@
       ],
       "tests": [
         "test/unit-sql-sessioni.js",
-        "test/e2e-sql-native-sessioni.js"
+        "test/e2e-sql-native-sessioni.js",
+        "test/e2e-preproduzione.js"
       ],
       "section": "queries"
     },
@@ -822,18 +833,36 @@
       "rules": [
         "Dividi SQL con le regole del dialetto, rispettando blocchi, stringhe e commenti. Il JavaScript gestito arriva intero all’interprete.",
         "ScriptRunner prosegue dopo un errore per impostazione predefinita. stopOnError cambia la politica di arresto.",
+        "L’editor indicizza i file SQL su richiesta e conserva gli offset in byte. Per un’istruzione che supera il singolo messaggio socket, script:upload raccoglie i frammenti nella sessione e script:execute consuma il testo completo una volta. Il limite per istruzione è 64 MiB.",
+        "L’apertura mostra il blocco in lettura e l’invio frammentato mostra i byte confermati dal server. La ripresa riutilizza runId, upload e sessione del database. script:state restituisce anche il risultato terminale perso durante la disconnessione.",
+        "Il registro conserva un’anteprima e l’intervallo nel file originale. In pausa il blocco attende ripresa o annullamento. Alla fine di una sequenza, lo stato indica se il database ha annullato la transazione rimasta aperta.",
         "script:result legge dal deposito su disco i risultati e gli errori conservati entro i limiti del run. I riepiloghi di scrittura restano nel resoconto. Se il deposito non si apre, lo script può proseguire."
       ],
       "sources": [
         "server/eventi-script.js",
         "db/ScriptRunner.js",
         "db/ScriptResults.js",
+        "public/js/sql-chunker.js",
+        "public/js/sql-chunker-worker.js",
+        "public/js/sql-split.js",
+        "public/js/sql-file-limits.mjs",
+        "public/js/script-upload.js",
+        "public/js/script-run.js",
+        "public/js/query-tab.js",
+        "public/js/pending-queries.js",
+        "db/importUploads.js",
         "db/sqlText.js"
       ],
       "tests": [
         "test/unit-script-runner.js",
         "test/unit-script-results.js",
-        "test/e2e-script-risultati.js"
+        "test/e2e-script-risultati.js",
+        "test/unit-operazioni-lunghe.js",
+        "test/unit-sql-chunking.js",
+        "test/e2e-import-upload-ui.js",
+        "test/e2e-workbench.js",
+        "test/e2e-file-sql.js",
+        "test/e2e-ripresa-query.js"
       ],
       "section": "queries"
     },
@@ -1078,17 +1107,21 @@
       "summary": "I dialoghi Arc riutilizzano il pannello del form. Il controller sceglie l’avviso in base a campo, vista e azione, conservando il contesto dell’errore.",
       "rules": [
         "Controlla focus iniziale e di ritorno, Escape con popup annidato, Enter, annullamento e un solo invio anche al doppio clic.",
-        "Usa informazioni brevi per i successi, feedback contestuale per i dati correggibili e avviso persistente per una decisione. Conserva bozza e dettaglio tecnico."
+        "Usa informazioni brevi per i successi, feedback contestuale per i dati correggibili e avviso persistente per una decisione. Conserva bozza e dettaglio tecnico.",
+        "Le notifiche globali restano sovrapposte al workspace. Usa l’altezza del messaggio per lasciare raggiungibile con lo scorrimento l’ultima riga, anche a dettagli aperti."
       ],
       "sources": [
         "ui/dialogs.tsx",
         "ui/notifiche.tsx",
+        "public/css/arc-theme.css",
         "public/js/avvisi.js",
         "public/js/utils.js"
       ],
       "tests": [
         "test/e2e-dialog-lifecycle.js",
-        "test/e2e-feedback-contesto.js"
+        "test/e2e-feedback-contesto.js",
+        "test/e2e-connection-feedback.js",
+        "test/e2e-uscita-editing.js"
       ],
       "section": "frontend"
     },
@@ -1301,18 +1334,35 @@
       "title": "Formati di esportazione",
       "summary": "L’export dalla scheda Query produce JSON delle righe caricate. L’export del database dalla sidebar può includere dati, schema e oggetti selezionati.",
       "rules": [
-        "Usa .codedb.json per i tre motori o .sql per i motori SQL. Il formato completo conserva il BSON MongoDB grezzo in base64.",
+        "Usa .codedb.json sui tre motori, .sql sui motori SQL o .mongosh.js su MongoDB. Il formato completo conserva il BSON MongoDB grezzo in base64.",
+        "Per mongosh il piano firma la politica su collection e viste e la scrittura per _id. La ricreazione conserva gli oggetti inclusi soltanto per dipendenza. Il generatore verifica la rappresentazione BSON prima del download.",
+        "La copia diretta MongoDB richiede una destinazione esplicita. L’evento database:export:execute consuma il piano confermato, lega le due sessioni e restituisce i conteggi delle operazioni confermate anche in caso di errore parziale.",
+        "Negli script .sql il piano firma le opzioni per creare, conservare o ricreare le tabelle e per inserire, aggiornare o ignorare i duplicati. Solo MySQL offre anche REPLACE. DROP TABLE riguarda le tabelle di cui si è scelta la struttura.",
+        "Una vista si esporta con la sua definizione, anche da sola. Il catalogo distingue le viste dalle tabelle o collection di cui dipendono. Su MongoDB conserva le definizioni delle viste ed esclude la collection interna system.views.",
         "Per un dato tipizzato verifica il formato scelto e la rilettura dei byte o del valore sul DBMS di destinazione."
       ],
       "sources": [
         "public/js/export-json.js",
+        "public/js/exportimport.js",
+        "db/exportCatalogo.js",
         "db/exportPlan.js",
         "db/databaseExport.js",
+        "db/exportSqlTabelle.js",
+        "db/exportMongoScript.js",
+        "db/exportMongoStruttura.js",
+        "db/eseguiExportMongo.js",
+        "server/eventi-import.js",
+        "db/pg-partizioni.js",
         "db/exportFile.js",
         "docs/matrice-fedelta-export-import.md"
       ],
       "tests": [
         "test/unit-query-export-json.js",
+        "test/e2e-export-opzioni-sql-ui.js",
+        "test/e2e-export-mongosh.js",
+        "test/e2e-export-mongo-diretto.js",
+        "test/e2e-esegui-export-mongo.js",
+        "test/e2e-export-regressioni.js",
         "test/e2e-export-formati.js"
       ],
       "section": "transfer"
@@ -1323,11 +1373,14 @@
       "summary": "Il piano identifica connessione, destinazione, oggetti e opzioni della singola operazione.",
       "rules": [
         "I wizard di export e import verificano l’impronta dell’anteprima confermata. Cambi di destinazione o selezione richiedono un’altra anteprima.",
+        "L’anteprima di import espone i nomi delle viste. Il lettore SQL riconosce sia i dump di sole viste sia le tabelle segnaposto sostituite dalla definizione finale.",
         "La CLI restore stampa l’impronta e procede nella stessa invocazione. L’evento backup:restore usa l’impronta nel registro dell’operazione.",
         "Verifica separatamente checksum dei file e ammissibilità della DDL prima di applicarla."
       ],
       "sources": [
         "db/pianoComune.js",
+        "db/importSql.js",
+        "db/importPlan.js",
         "server/eventi-import.js",
         "server/eventi-backup.js",
         "backup/cli.js",
@@ -1386,7 +1439,7 @@
       "title": "Catena di backup",
       "summary": "Il full stabilisce la base. Un differenziale si riferisce al full, un incrementale al predecessore previsto.",
       "rules": [
-        "Identifica le righe con identità stabile e registra le cancellazioni come tombstone. Senza identità stabile è possibile ricorrere alla snapshot completa.",
+        "Il manifest v6 dichiara la copertura della copia e le entità rimosse. Le cancellazioni di righe usano tombstone di identità. Senza identità stabile si salva una snapshot completa.",
         "Risolvi baseId e valida tutti i layer prima del primo effetto. Un file storico privo di checksum rimane UNVERIFIABLE.",
         "La CLI legge le connessioni salvate e condivide vault e motore. verify controlla il disco. Un round trip su motore reale verifica anche tipi e schema. S3, GCS e Azure usano adattatori opzionali."
       ],
@@ -1411,11 +1464,13 @@
       "rules": [
         "Se la destinazione esiste, richiedi una copia di recupero verificata. Dopo la promozione confronta dati e schema prima della finalizzazione.",
         "PostgreSQL può scambiare gli schemi atomicamente. Per MySQL e MongoDB considera la finestra di promozione e le scritture concorrenti.",
-        "Conserva gli esiti completato, ripristinato_dopo_errore e intervento_richiesto. Il diario rende riconoscibile un’interruzione dopo il riavvio."
+        "Conserva gli esiti completato, ripristinato_dopo_errore e intervento_richiesto. Il diario conserva per tenant i riferimenti privati e l’avanzamento della pulizia. Dopo un riavvio verifica identità e stato prima di rimuovere ciascuna risorsa."
       ],
       "sources": [
         "db/importPlan.js",
         "db/diarioOperazioni.js",
+        "db/importCleanup.js",
+        "db/promozioneMerge.js",
         "backup/lib/restore.js",
         "db/pg-restore-transaction.js"
       ],
@@ -1595,7 +1650,7 @@
       "title": "Applicazione Android",
       "summary": "Una WebView visualizza il workbench del server Node Mobile in esecuzione sul telefono.",
       "rules": [
-        "Usa npm run prepare:android e npm run build:android. Il filtro di preparazione parte dai file tracciati da Git.",
+        "Usa npm run prepare:android e npm run build:android. La preparazione include anche i nuovi moduli del runtime e gli asset statici ammessi dal filtro, rispettando gli ignore di Git.",
         "localhost è il telefono. Mantieni la protezione con cookie privato anche sul loopback. Distingui il controllo del contenuto dell’APK dal test sul dispositivo."
       ],
       "sources": [
@@ -2554,6 +2609,16 @@
       "from": "export-formats",
       "rel": "writes",
       "to": "artifact-transport"
+    },
+    {
+      "from": "export-formats",
+      "rel": "depends_on",
+      "to": "strategy-authorization"
+    },
+    {
+      "from": "export-formats",
+      "rel": "writes",
+      "to": "activity-audit"
     },
     {
       "from": "transfer-plan",

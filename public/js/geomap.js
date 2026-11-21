@@ -61,7 +61,7 @@ let manigliePerPercorso = new Map(); // percorso serializzato → marker (lookup
 let numVertici = 0;        // quanti vertici ha la geometria disegnata
 let timerTesto = 0;        // debounce del JSON digitato a mano
 let trascinando = false;   // trascinamento di un vertice in corso
-let fineTrascinamento = 0; // istante dell'ultimo rilascio (vedi aggiungiPunto)
+let fineTrascinamento = 0;
 const vistaMobile = window.matchMedia('(max-width: 900px)');
 const movimentoRidotto = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -689,6 +689,8 @@ function creaMappa() {
   gruppoForma = L.layerGroup().addTo(mappa);
   gruppoManiglie = L.layerGroup().addTo(mappa);
   applicaTile();
+  // La pressione successiva inizia un nuovo gesto, anche subito dopo il rilascio.
+  mappa.getContainer().addEventListener('pointerdown', () => { fineTrascinamento = 0; }, true);
   mappa.on('click', (e) => { if (!vistaMobile.matches) aggiungiPunto(e.latlng); });
   // Le maniglie visibili cambiano quando cambia il riquadro. Si ricalcolano a
   // movimento FINITO (non durante il pan, che deve restare fluido) e mai in

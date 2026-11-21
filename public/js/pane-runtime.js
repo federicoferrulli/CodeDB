@@ -1,9 +1,10 @@
-import { socket } from './socket.js';
+import { socket, statoRipresaSocket } from './socket.js';
 import { tabs, createTab } from './tabs.js';
 import { safeUUID } from './valori.js';
 import * as pending from './pending-queries.js';
 import { azioneDiEvento } from './scorciatoie.js';
 import { getCurrentUser } from './auth.js';
+import { scritturaRighe } from './trasporto.js';
 
 export const contestoIncorporato = typeof window !== 'undefined' ? window.frameElement?.codedbPanel : null;
 
@@ -23,6 +24,7 @@ export function creaRuntimePane(pane, slot, onFocus, onClose, onContext) {
   let disposed = false;
   let writes = 0;
   const bridge = {
+    get id() { return socket.id; },
     get connected() { return socket.connected; },
     on(event, fn) {
       const wrapped = data => {
@@ -45,16 +47,27 @@ export function creaRuntimePane(pane, slot, onFocus, onClose, onContext) {
       if (disposed || !tabs.list.includes(tab)) { ack?.({ ok: false, error: 'La connessione di questo pannello è stata chiusa.' }); return bridge; }
       if (event === 'mongo:disconnect') { ack?.({ ok: false, error: 'Chiudi la connessione dalla barra delle connessioni.' }); return bridge; }
       if (payload?.runId && ['query:execute', 'script:execute', 'collection:find', 'collection:aggregate'].includes(event)) runs.set(payload.runId, event);
-      const scrittura = /^(doc:|column:|index:|collection:(create|drop|rename)|db:(create|drop|rename)|import:)/.test(event);
+      const scrittura = scritturaRighe(event) || /^(column:|index:|collection:(create|drop|rename)|db:(create|drop|rename)|import:)/.test(event);
       if (scrittura) { writes++; tab.state.writesInFlight = (tab.state.writesInFlight || 0) + 1; }
       if (event === 'collection:watch' || event === 'collection:unwatch') payload = { ...payload, watchId: pane.id };
       const message = { ...payload, tabId: pane.tabId };
+      let conclusa = false;
+      const interrotta = () => done({ ok: false, error: 'Collegamento interrotto: esito da verificare prima di ripetere la scrittura.' });
       const done = res => {
-        if (scrittura) { writes--; tab.state.writesInFlight--; }
-        if (event !== 'script:execute') runs.delete(payload?.runId);
+        if (conclusa) return;
+        conclusa = true;
+        if (scrittura) { socket.off('disconnect', interrotta); writes--; tab.state.writesInFlight--; }
+        if (event === 'script:execute' && res?.ok && payload.previousRunId) runs.delete(payload.previousRunId);
+        const finita = event === 'script:abort' || (event === 'query:state' && payload.received)
+          || (event !== 'script:execute' && event === runs.get(payload?.runId));
+        if (finita) runs.delete(payload?.runId);
         if (!disposed) ack?.(res);
       };
-      if (timeoutMs) socket.timeout(timeoutMs).emit(event, message, (err, res) => done(err ? { ok: false, error: 'Risposta non ricevuta: esito da verificare.' } : res));
+      if (scrittura) {
+        socket.on('disconnect', interrotta);
+        if (socket.connected === false) { interrotta(); return bridge; }
+      }
+      if (timeoutMs && typeof socket.timeout === 'function') socket.timeout(timeoutMs).emit(event, message, (err, res) => done(err ? { ok: false, error: 'Risposta non ricevuta: esito da verificare.' } : res));
       else socket.emit(event, message, done);
       return bridge;
     },
@@ -68,7 +81,9 @@ export function creaRuntimePane(pane, slot, onFocus, onClose, onContext) {
     id: safeUUID(), tabId: pane.tabId, db: pane.db, coll: pane.coll,
     label: tab.label, dbType: tab.dbType, databases: tab.state.databases,
     query: pane.query || null, data: pane.data || pane, socket: bridge, onFocus, pending,
-    paneId: pane.id, getUser: getCurrentUser,
+    paneId: pane.id, getUser: getCurrentUser, statoRipresaSocket,
+    get dbSessionId() { return tab.state.dbSessionId; },
+    set dbSessionId(id) { tab.state.dbSessionId = id; },
     onContext(db, coll, view) {
       if (!descriptor.ready) return;
       const changed = pane.db !== db || pane.coll !== coll || pane.view !== view;
@@ -154,6 +169,9 @@ export function preparaPannelloIncorporato() {
   if (!ctx) return;
   document.documentElement.classList.add('embedded-panel');
   const tab = createTab({ id: ctx.tabId });
+  Object.defineProperty(tab.state, 'dbSessionId', {
+    configurable: true, get: () => ctx.dbSessionId, set: id => { ctx.dbSessionId = id; },
+  });
   tab.label = ctx.label; tab.dbType = ctx.dbType;
   const d = ctx.data || {};
   const data = {};

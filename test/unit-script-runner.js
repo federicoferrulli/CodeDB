@@ -42,6 +42,22 @@ const stmts = (n) => Array.from({ length: n }, (_, i) => ({ sql: `SELECT ${i}`, 
     assert.strictEqual(st.results[2].line, 3);
   });
 
+  await prova('Le istruzioni grandi arrivano intere al motore, i push e lo stato trasportano un estratto', async () => {
+    const sql = "SELECT '" + 'x'.repeat(1024 * 1024) + "'";
+    const eventi = [];
+    const run = createScriptRun({ id: 'grande', statements: [{ sql }, { sql }], onProgress: ev => eventi.push(ev) });
+    const st = await run.start(async (stmt, i) => {
+      assert.strictEqual(stmt.sql, sql);
+      if (i) throw new Error('Valore non valido: ' + stmt.sql);
+      return {};
+    });
+    assert.equal(st.falliti, 1);
+    for (const res of [...st.results, ...eventi.filter(ev => ev.result).map(ev => ev.result)]) {
+      assert(res.sql.startsWith("SELECT '") && res.sql.endsWith('…') && res.sql.length <= 1024, 'anteprima SQL limitata');
+      if (!res.ok) assert(res.error.startsWith('Valore non valido') && res.error.length <= 4096, 'diagnostica del driver limitata');
+    }
+  });
+
   await prova('Continua e riporta: un errore non ferma lo script', async () => {
     const run = createScriptRun({ id: 'r2', statements: stmts(4) });
     const st = await run.start(async (s, i) => {

@@ -14,10 +14,7 @@ console.log('--- Test Unitari SqlChunker & USE Statement ---');
     }
     slice(start, end) {
       const sliced = this.buffer.subarray(start, end);
-      return {
-        size: sliced.length,
-        text: async () => sliced.toString('utf8')
-      };
+      return new Blob([sliced]);
     }
   }
 
@@ -51,6 +48,7 @@ console.log('--- Test Unitari SqlChunker & USE Statement ---');
   const chunkSize = 20 * 1024; // 20 KB chunk
   const largeChunker = new SqlChunker(largeFile, chunkSize);
   await largeChunker.init();
+  while (!largeChunker.complete) await largeChunker.ensureChunk(largeChunker.getChunkCount());
 
   const count = largeChunker.getChunkCount();
   assert.ok(count > 1, `File grande deve essere suddiviso in più chunk (trovati ${count})`);
@@ -65,6 +63,60 @@ console.log('--- Test Unitari SqlChunker & USE Statement ---');
     }
   }
   console.log(`  OK   SqlChunker file grande (${count} chunk, allineamento ';') superato`);
+
+  // La coda del file da 6 GiB è volutamente inaccessibile. La prima lettura
+  // deve riuscire e il costo iniziale deve rimanere indipendente dal totale.
+  const bytes = Buffer.from("SELECT 'à🦊';\n".repeat(18000));
+  let maxRead = 0;
+  const enorme = { name: '6g.sql', size: 6 * 1024 ** 3, slice(start, end) {
+    assert(end <= bytes.length, 'Il primo blocco attende la lettura del resto del file');
+    maxRead = Math.max(maxRead, end);
+    return new Blob([bytes.subarray(start, end)]);
+  } };
+  const progressivo = new SqlChunker(enorme, 1024 * 1024, 'mysql');
+  const [primo, stesso] = await Promise.all([progressivo.readChunk(0), progressivo.readChunk(0), progressivo.init()]);
+  assert.deepEqual(primo, stesso);
+  assert.equal(maxRead, 64 * 1024);
+  assert.equal(progressivo.getChunkCount(), 1);
+  assert.equal(primo.totalChunks, null);
+  assert.equal(primo.text, bytes.subarray(0, primo.endByte).toString('utf8'));
+  console.log(`  OK   Prima anteprima di 6 GiB con letture entro ${formatBytes(maxRead)}`);
+
+  const { splitStatementsDetailed } = require('../db/sqlText');
+  const varianti = [
+    ['mysql', "DELIMITER //\n" + "SELECT 'x'//\n".repeat(8200) + "DELIMITER ;\n" +
+      "CREATE PROCEDURE proc() BEGIN SELECT 'a;b'; SELECT 2; END;\n" +
+      "INSERT INTO t VALUES ('" + "è🦊;\n".repeat(18000) + "'); /*!40101 SET @v=1 */;"],
+    ['postgresql', "\uFEFFSELECT 1;\nCREATE FUNCTION f() RETURNS text LANGUAGE sql AS $tag$ SELECT '" +
+      "à🦊;\n".repeat(18000) + "' $tag$;\n/* annidato /* ; */ ; */\nSELECT 2"],
+  ];
+  for (const [dbms, sql] of varianti) {
+    const opts = { dbms, backslashEscape: dbms === 'mysql' };
+    const file = new SqlChunker(new NodeFakeFile(sql, dbms + '.sql'), 64 * 1024, dbms);
+    const righe = [], parti = [];
+    for (let i = 0; await file.ensureChunk(i); i++) {
+      const data = await file.readChunk(i);
+      parti.push(data.text);
+      if (!data.statements) continue;
+      const prefix = data.delimiter !== ';' ? `DELIMITER ${data.delimiter}\n` : '';
+      righe.push(...splitStatementsDetailed(prefix + data.text, opts).map(s => s.sql));
+    }
+    assert.equal(parti.join(''), sql, 'Nessun byte perso o duplicato ai confini UTF-8');
+    assert.deepEqual(righe, splitStatementsDetailed(sql, opts).map(s => s.sql),
+      'Il driver deve ricevere le stesse istruzioni del file intero');
+  }
+  const denso = new SqlChunker(new Blob(['SELECT 1;'.repeat(24001)]), 1024 * 1024, 'mysql');
+  while (!denso.complete) await denso.ensureChunk(denso.getChunkCount());
+  for (const c of denso.chunks) assert(splitStatementsDetailed((await denso.readChunk(c.index)).text).length <= 10000);
+  const soloCommenti = new SqlChunker(new Blob(['-- Dump completato\n']), 1024 * 1024, 'mysql');
+  assert.equal((await soloCommenti.readChunk(0)).statements, 0);
+  const commentoMysql = new SqlChunker(new Blob(['/*!40101 SET @salva=1 */;']), 1024 * 1024, 'mysql');
+  assert.equal((await commentoMysql.readChunk(0)).statements, 1);
+  const commentoMaria = new SqlChunker(new Blob(['/*M!100100 SET @salva=1 */;']), 1024 * 1024, 'mysql');
+  assert.equal((await commentoMaria.readChunk(0)).statements, 1);
+  const commentoPg = new SqlChunker(new Blob(['/*! commento */;']), 1024 * 1024, 'postgresql');
+  assert.equal((await commentoPg.readChunk(0)).statements, 0);
+  console.log('  OK   Istruzioni intere, UTF-8, routine, DELIMITER, commenti e conteggi su MySQL e PostgreSQL');
 
   // Test 4: Parsing comandi USE <dbname>
   const useRegex = /^\s*(?:USE|use)\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?\s*;?\s*$/i;

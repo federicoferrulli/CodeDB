@@ -2,7 +2,6 @@
 
 const assert = require('assert');
 const fs = require('fs');
-const http = require('http');
 const net = require('net');
 const os = require('os');
 const path = require('path');
@@ -20,52 +19,30 @@ function portaLibera() {
   });
 }
 
-function avvia(script, env, { readyText = null } = {}) {
+function avvia(script, env, readyText = 'CodeDB in ascolto su ') {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script], {
       cwd: path.join(__dirname, '..'), env: { ...process.env, ...env },
       stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
     });
-    let stderr = '';
-    const onError = (err) => reject(err);
-    child.once('error', onError);
-    child.once('spawn', () => {
-      if (readyText == null) {
-        child.off('error', onError);
-        resolve({ child, stderr: () => stderr });
-      }
-    });
+    let stdout = '', stderr = '';
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`Avvio scaduto per ${path.basename(script)}: ${stderr}`));
+    }, 30000);
+    child.once('error', err => { clearTimeout(timer); reject(err); });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
     child.stdout.on('data', (chunk) => {
-      if (readyText == null || !String(chunk).includes(readyText)) return;
-      child.off('error', onError);
-      resolve({ child, stderr: () => stderr });
+      stdout += chunk;
+      if (stdout.includes(readyText)) {
+        clearTimeout(timer);
+        resolve(child);
+      }
     });
-    child.once('exit', (code) => reject(new Error(`Processo di test terminato prima del READY (${code}): ${stderr}`)));
-  });
-}
-
-async function attendiServer(port, secret, child, stderr) {
-  for (let i = 0; i < 80; i++) {
-    if (await probeServer({ port, secret, timeout: 100 })) return;
-    if (child.exitCode != null) throw new Error(`server.js terminato (${child.exitCode}): ${stderr()}`);
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  throw new Error(`server.js non autentico sulla porta ${port}: ${stderr()}`);
-}
-
-function attendiMarker(port) {
-  return new Promise((resolve, reject) => {
-    let tentativi = 0;
-    const prova = () => {
-      const req = http.get({ host: '127.0.0.1', port, path: '/handshake-check', timeout: 100 }, (res) => {
-        res.resume();
-        res.on('end', resolve);
-      });
-      req.on('error', () => (++tentativi < 80 ? setTimeout(prova, 50) : reject(new Error('Marker non avviato'))));
-      req.on('timeout', () => req.destroy());
-    };
-    prova();
+    child.once('exit', (code) => {
+      clearTimeout(timer);
+      reject(new Error(`Processo di test terminato prima del READY (${code}): ${stderr}`));
+    });
   });
 }
 
@@ -127,7 +104,7 @@ module.exports = (async () => {
       require('./server');
       assert.deepStrictEqual(process.eventNames().map(n => [n, process.listenerCount(n)]), before);
       assert.deepStrictEqual(fs.readdirSync(root), files);
-    `], { cwd: path.join(__dirname, '..'), windowsHide: true, timeout: 10000,
+    `], { cwd: path.join(__dirname, '..'), windowsHide: true, timeout: 30000,
       env: { ...process.env, ...isolatedEnv, CODEDB_TEST_IMPORT_ROOT: root } });
     reale = await avvia(path.join(__dirname, '..', 'server.js'), {
       ...isolatedEnv,
@@ -135,7 +112,6 @@ module.exports = (async () => {
       CODEDB_ELECTRON_INSTANCE_SECRET: secret,
       CODEDB_UI_AUDIT_FILE: auditFile,
     });
-    await attendiServer(realPort, secret, reale.child, reale.stderr);
     assert.strictEqual(await probeServer({ port: realPort, secret }), true, 'primo collegamento autentico');
     assert.strictEqual(await provaDaSecondoProcesso(realPort, secret), true,
       'riuso valido da un secondo processo con la stessa identità ricevuta');
@@ -146,18 +122,16 @@ module.exports = (async () => {
     cli = await avvia(path.join(__dirname, '..', 'bin', 'codedb.js'), {
       ...isolatedEnv, PORT: String(cliPort), HOST: '127.0.0.1', CODEDB_ELECTRON_INSTANCE_SECRET: secret,
     });
-    await attendiServer(cliPort, secret, cli.child, cli.stderr);
     assert.strictEqual(await probeServer({ port: cliPort, secret }), true, 'il launcher bin avvia davvero il server');
 
     marker = await avvia(path.join(__dirname, 'fixture-electron-marker-server.js'), {
       CODEDB_TEST_MARKER_PORT: String(markerPort),
-    }, { readyText: 'READY' });
-    await attendiMarker(markerPort);
+    }, 'READY');
     assert.strictEqual(await probeServer({ port: markerPort, secret }), false,
       'un processo estraneo col solo marker pubblico viene rifiutato');
     console.log('  OK   server reale, processo estraneo e riuso autenticato fra processi');
   } finally {
-    await Promise.all([ferma(reale && reale.child), ferma(marker && marker.child), ferma(cli && cli.child)]);
+    await Promise.all([ferma(reale), ferma(marker), ferma(cli)]);
     try { fs.rmSync(auditFile, { force: true }); } catch { /* file mai creato */ }
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -13,6 +13,7 @@ function dipendenze(config, overrides = {}) {
     AppStore: require('../auth/AppStore').AppStore,
     createEntitlementProvider: require('../auth/EntitlementProvider').createEntitlementProvider,
     makeAuditor: require('../db/AuditLog').makeAuditor,
+    eseguiExportMongo: require('../db/eseguiExportMongo').eseguiExportMongo,
     ScriptResults: {
       creaDeposito(code, options = {}) {
         return deposits.creaDeposito(code, {

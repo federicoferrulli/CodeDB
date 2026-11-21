@@ -105,9 +105,14 @@ async function proxyLento(cfg) {
             assert(await page.evaluate(async () => (await import('/js/tabs.js')).activeTab().state.connected));
           } else {
             assert(response.error, 'Errore restituito dal driver reale');
-            const notice = page.locator('#feedback-container .feedback-message');
-            await notice.waitFor();
-            assert(await notice.getByText(response.error, { exact: true }).isVisible());
+            const notice = page.locator('#feedback-container').getByRole('alert');
+            const errore = /^(.*?)\s*\(dettaglio tecnico:\s*([\s\S]+)\)\s*$/s.exec(response.error);
+            assert(errore, 'Il driver deve fornire messaggio e dettaglio tecnico');
+            await notice.getByText(errore[1], { exact: true }).waitFor();
+            const dettaglio = notice.getByText(errore[2], { exact: true });
+            assert.equal(await dettaglio.isVisible(), false);
+            await notice.getByText('Mostra altro', { exact: true }).click();
+            await dettaglio.waitFor();
             assert.equal(await notice.getByRole('button', { name: 'Modifica connessione' }).count(), 1);
             assert.equal(await page.locator('.illustrated-error-snackbar').count(), 0);
             await page.screenshot({ path: `${dir}/${connection.name}-${mode}-errore.png` });

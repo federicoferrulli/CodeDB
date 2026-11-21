@@ -96,9 +96,9 @@ const fixture = [
       });
       assert(actionVisible, `Riprendi raggiungibile e non coperta: ${theme} ${width}`);
       await page.locator('.btn-resume-pending').click();
-      await page.getByText(/La sessione PostgreSQL.*è stata chiusa/).waitFor();
-      await page.locator('#toast-container button[aria-label="Chiudi notifica"]').last().click();
-      await page.getByText(/La sessione PostgreSQL.*è stata chiusa/).waitFor({ state: 'hidden' });
+      const avviso = page.getByRole('status').filter({ hasText: /La sessione PostgreSQL.*è stata chiusa/ });
+      await avviso.getByRole('button', { name: 'Chiudi messaggio' }).click();
+      await avviso.waitFor({ state: 'hidden' });
       await page.screenshot({ path: `${dir}/${theme}-${width}-dettaglio.png`, animations: 'disabled' });
       if (width === 1440) await page.locator('.pending-studio').screenshot({ path: `${dir}/finestra-${theme}.png`, animations: 'disabled' });
       if (width === 390) {

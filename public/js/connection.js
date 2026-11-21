@@ -1,5 +1,5 @@
 import { initCollegamento } from './collegamento.js';
-import { socket } from './socket.js';
+import { socket, statoRipresaSocket } from './socket.js';
 import { tabs, activeTab, createTab, closeAllTabs } from './tabs.js';
 import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc, dbTypeIcon, lucideIconHtml as ICO, refreshLucideIcons, chiediTesto, scaricaFile, notifica, chiudiNotifica } from './utils.js';
 import { loadSavedConnections, elencoConnessioni } from './connmanager.js';
@@ -453,6 +453,7 @@ export function connectAndOpenTab(cfg) {
     tab.label = tab.connName || res.label || 'Connessione';
     Object.assign(tab.state, {
       connected: true,
+      dbSessionId: res.dbSessionId,
       connLabel: res.label || '',
       dbType: tab.dbType,
       databases: res.databases || [],
@@ -736,7 +737,13 @@ export function initConnection() {
       await restoreSession();
       return;
     }
-    // Riconnessione del socket a runtime: le sessioni server sono andate perse.
+    try {
+      if (await statoRipresaSocket()) return;
+    } catch (err) {
+      if (err.code !== 'SOCKET_DISCONNECTED') notifica(err.message, { tipo: 'errore', titolo: 'Ripresa della connessione' });
+      return;
+    }
+    // Il server ha confermato che la sessione è scaduta o apparteneva all'istanza precedente.
     // Si cattura il layout attuale, si svuotano i tab (sessioni morte) e si
     // riapre tutto riconnettendosi — l'utente resta operativo senza fare nulla.
     //

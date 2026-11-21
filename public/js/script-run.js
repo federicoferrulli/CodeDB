@@ -17,15 +17,17 @@ import { feedbackQuery } from './feedback.js';
  */
 
 import { $, esc, toast, emit, lucideIconHtml as ICO, refreshLucideIcons, notifica } from './utils.js';
-import { socket } from './socket.js';
+import { socket, statoRipresaSocket } from './socket.js';
+import { conRipresaSocket } from './trasporto.js';
 import { activeTab } from './tabs.js';
 import { state } from './state.js';
 import { queryDocument, documentoVisibile } from './query-document.js';
 import { countStatements } from './sql-split.js';
+import { inviaScript } from './script-upload.js';
 import {
   trackPending, updateScriptProgress, removePending,
 } from './pending-queries.js';
-import { renderResults, updateQueryMetrics, contestoErroreQuery, registraErroreQuery, applicaErroreQuery, mostraRisultatiQueryRiuscita } from './query-tab.js';
+import { renderResults, updateQueryMetrics, mostraInvioQuery, contestoErroreQuery, registraErroreQuery, applicaErroreQuery, mostraErroreQuery, mostraRisultatiQueryRiuscita } from './query-tab.js';
 import { refreshDbTree } from './dbtree.js';
 import { segnalaErroreQuery } from './query-editor.js';
 import {
@@ -51,28 +53,31 @@ function nuovoRunId() {
  * Avvia uno script. Ritorna una promise che si risolve all'AVVIO (non alla
  * fine): la fine arriva con gli eventi di progresso.
  */
-export function runScript({ code, engine, db, coll, stopOnError = false, previousRunId, keepSqlSession = false, tab = activeTab(), collTabId = tab?.state.activeCollId, sorgenteErrore } = {}) {
+export function runScript({ code, engine, db, coll, stopOnError = false, previousRunId, keepSqlSession = false, fileChunk, sourceFile, onUpload, tab = activeTab(), collTabId = tab?.state.activeCollId, dbSessionId = tab?.state.dbSessionId, sorgenteErrore } = {}) {
   const testo = String(code || '').trim();
   if (!testo) return Promise.resolve(null);
 
   const tabId = tab ? tab.id : undefined;
   const runId = nuovoRunId();
+  const identita = { tabId, dbSessionId, runId };
   const documento = queryDocument(tab, collTabId);
   sorgenteErrore ||= documentoVisibile(tab, collTabId) ? contestoErroreQuery(testo)
     : { code: documento.code, offset: documento.code?.trim() === testo ? documento.code.length - documento.code.trimStart().length : null,
       executedCode: testo, dbms: engine && engine !== 'auto' ? engine : tab?.dbType };
   documento.errorMark = null;
-  if (documento.runId) socket.emit('query:cancel', { tabId, runId: documento.runId });
+  if (documento.runId) socket.emit('query:cancel', { tabId, runId: documento.runId, dbSessionId: documento.runDbSessionId });
   documento.runId = null;
   if (isScriptActive(documento.scriptRunId)) abortScript(documento.scriptRunId);
+  else if (runs.get(documento.scriptRunId)?.fileChunk) runs.delete(documento.scriptRunId);
   documento.scriptRunId = runId;
   documento.metrics = ['running'];
   const dbms = engine && engine !== 'auto' ? engine : tab?.dbType;
-  const totalePrevisto = countStatements(testo, { dbms, backslashEscape: dbms === 'mysql' });
+  const totalePrevisto = fileChunk ? fileChunk.statements || 0 : countStatements(testo, { dbms, backslashEscape: dbms === 'mysql' });
 
   const handle = trackPending({
     runId,
-    code: testo,
+    code: fileChunk ? testo.slice(0, 512) : testo,
+    fileChunk, sourceFile,
     engine: engine || 'auto',
     db,
     coll,
@@ -90,11 +95,12 @@ export function runScript({ code, engine, db, coll, stopOnError = false, previou
   const attesa = {};
   attesa.promise = new Promise((resolve) => { attesa.resolve = resolve; });
 
-  runs.set(runId, {
-    runId, tabId, tab, collTabId, documento, total: totalePrevisto, handle, log: [], stato: { status: 'running' }, attesa,
+  const r = {
+    identita, runId, tabId, tab, collTabId, documento, fileChunk, keepSqlSession, total: totalePrevisto, handle, log: [], stato: { status: 'running' }, attesa,
     // Elenco delle schede di risultato (arriva a fine script) e quale è aperta.
     risultati: null, schedaAperta: null, sorgenteErrore, primoErrore: null, erroreMostrato: false,
-  });
+  };
+  runs.set(runId, r);
   if (documentoVisibile(tab, collTabId)) {
     segnalaErroreQuery(null);
     runVisibile = runId;
@@ -104,42 +110,86 @@ export function runScript({ code, engine, db, coll, stopOnError = false, previou
     feedbackQuery('running');
   }
 
-  return emit('script:execute', {
+  const invia = (evento, payload, opzioni) => {
+    const ripeti = () => {
+      if (payload.action !== 'discard' && (r.annullato || !runs.has(runId))) throw new Error('Esecuzione dello script interrotta.');
+      return emit(evento, payload, { ...opzioni, reconnect: false });
+    };
+    return conRipresaSocket(tabId, () => emit(evento, payload, opzioni), ripeti);
+  };
+  return inviaScript(invia, {
     code: testo,
     engine,
     db,
     coll,
-    tabId,
-    runId,
+    ...identita,
+    recoverable: true,
     stopOnError,
     previousRunId,
     keepSqlSession,
-  })
+    ...(fileChunk ? { fileChunk: true } : {}),
+  }, () => !runs.has(runId) || r.annullato, onUpload || ((inviati, totale) => {
+    if (documento.scriptRunId === runId && documentoVisibile(tab, collTabId)) mostraInvioQuery(inviati, totale);
+  }))
     .then((res) => {
-      const r = runs.get(runId);
-      if (r && res && res.total) r.total = res.total;
-      toast(`Script avviato: ${res.total} istruzioni`);
-      if (documentoVisibile(tab, collTabId) && runVisibile === runId) aggiornaPannello({ status: 'running', cursor: 0, total: res.total, eseguiti: 0, falliti: 0 });
+      r.avviato = true;
+      if (res?.total) r.total = res.total;
+      if (r.daRiallineare) riallineaRun(r);
+      confermaEsito(r);
+      if (!fileChunk) toast(`Script avviato: ${res.total} istruzioni`);
+      if (r?.stato?.status === 'running' && documentoVisibile(tab, collTabId) && runVisibile === runId) aggiornaPannello({ ...r.stato, total: res.total });
       return res;
     })
     .catch((err) => {
-      // L'avvio è fallito: il run non esiste lato server, quindi la voce in
-      // sospeso va chiusa come errore invece di restare "in esecuzione".
-      handle.fail(err);
-      attesa.resolve({ status: 'error', error: err.message, eseguiti: 0, falliti: 0, total: 0 });
-      runs.delete(runId);
-      if (runVisibile === runId) nascondiPannello();
-      if (documento.scriptRunId === runId) {
-        documento.metrics = ['error', null, 0, err.message || 'Avvio dello script non riuscito'];
-        registraErroreQuery(documento, err, sorgenteErrore);
-        if (documentoVisibile(tab, collTabId)) {
-          updateQueryMetrics(...documento.metrics);
-          feedbackQuery('error');
-          mostraErroreQuery(documento.errorMark);
-        }
-      }
+      chiudiConErrore(r, err);
       throw err;
     });
+}
+
+function chiudiConErrore(r, err) {
+  if (!runs.has(r.runId)) return;
+  r.handle.fail(err);
+  r.attesa.resolve({ ...r.stato, status: 'error', error: err.message });
+  runs.delete(r.runId);
+  if (runVisibile === r.runId) nascondiPannello();
+  if (r.documento.scriptRunId !== r.runId) return;
+  r.documento.metrics = ['error', null, 0, err.message];
+  registraErroreQuery(r.documento, err, r.sorgenteErrore);
+  if (documentoVisibile(r.tab, r.collTabId)) {
+    updateQueryMetrics(...r.documento.metrics);
+    feedbackQuery('error');
+    mostraErroreQuery(r.documento.errorMark);
+  }
+}
+
+function confermaEsito(r) {
+  if (!r.avviato || !['done', 'aborted'].includes(r.stato.status)) return;
+  confermaStato(r.identita, r.stato.status);
+}
+
+function confermaStato(identita, status) {
+  const r = runs.get(identita.runId);
+  if (r?.ricevuta === status) return;
+  if (r) r.ricevuta = status;
+  conRipresaSocket(identita.tabId, () => emit('script:state', { ...identita, received: true, status },
+    { reconnect: false, rejectOnDisconnect: true })).catch(() => {});
+}
+
+async function riallineaRun(r) {
+  if (!r.avviato || !isScriptActive(r.runId) || !socket.connected) return;
+  r.daRiallineare = false;
+  const richiesta = r.richiestaStato = Symbol();
+  try {
+    if (!await statoRipresaSocket()) throw new Error('La sessione dello script è scaduta. Verifica sul database le istruzioni già applicate.');
+    const prima = r.stato;
+    const res = await emit('script:state', r.identita,
+      { reconnect: false, rejectOnDisconnect: true });
+    if (r.richiestaStato !== richiesta || r.stato !== prima || !isScriptActive(r.runId)) return;
+    if (!res.stato) throw new Error('L’esito dello script non è più disponibile. Verifica sul database le istruzioni già applicate.');
+    onProgress({ ...res, runId: r.runId, tipo: res.stato.status });
+  } catch (err) {
+    if (r.richiestaStato === richiesta && err.code !== 'SOCKET_DISCONNECTED' && isScriptActive(r.runId) && !r.annullato) chiudiConErrore(r, err);
+  }
 }
 
 /**
@@ -159,7 +209,8 @@ export function runScriptAndWait(meta) {
 export function pauseScript(runId = runVisibile, force = false) {
   if (!runId) return Promise.resolve(null);
   const r = runs.get(runId);
-  return emit('script:pause', { runId, tabId: r && r.tabId, force })
+  const payload = { runId, ...r?.identita, force };
+  return conRipresaSocket(r?.tabId, () => emit('script:pause', payload, { reconnect: false, rejectOnDisconnect: true }))
     .then((res) => {
       if (res && !res.paused) {
         toast('Lo script era già concluso o già in pausa');
@@ -182,7 +233,8 @@ export function resumeScript(runId = runVisibile) {
   const primaDellaRipresa = r?.stato;
   runVisibile = runId;
   mostraPannello();
-  return emit('script:resume', { runId, tabId: r && r.tabId })
+  const payload = { runId, ...r?.identita, expectedAttempts: primaDellaRipresa?.eseguiti };
+  return conRipresaSocket(r?.tabId, () => emit('script:resume', payload, { reconnect: false, rejectOnDisconnect: true }))
     .then((res) => {
       // Un push più recente (anche la fine) prevale sull'ack della ripresa.
       if (r && res?.stato && r.stato === primaDellaRipresa && r.documento.scriptRunId === runId
@@ -205,21 +257,29 @@ export function resumeScript(runId = runVisibile) {
 }
 
 /** Interruzione definitiva. */
+export async function interrompiRunScript(identita) {
+  const res = await conRipresaSocket(identita.tabId, () => emit('script:abort', { ...identita, recoverable: true },
+    { reconnect: false, rejectOnDisconnect: true }));
+  if (res.aborted) confermaStato(identita, 'aborted');
+  return res;
+}
+
 export function abortScript(runId = runVisibile) {
   if (!runId) return Promise.resolve(null);
   const r = runs.get(runId);
-  return emit('script:abort', { runId, tabId: r && r.tabId })
+  if (r) r.annullato = true;
+  return interrompiRunScript(r?.identita || { runId })
     .then((res) => {
       // Il server cancella subito il run: l'evento `aborted` può non arrivare
       // (il ciclo era fermo in pausa), quindi lo stato finale lo scriviamo qui.
       // Deve risultare "interrotto" e non "in pausa", altrimenti il registro
       // offrirebbe una ripresa che il server non può più onorare.
-      const finale = { ...(r && r.stato), status: 'aborted' };
+      const finale = { ...r?.stato, status: 'aborted', transazioneAnnullata: res?.transazioneAnnullata };
       onProgress({ runId, tipo: 'aborted', stato: finale });
       toast('Script interrotto');
       return res;
     })
-    .catch(() => {});
+    .catch(err => { if (r) chiudiConErrore(r, err); });
 }
 
 /** Il run è ancora attivo (in esecuzione o in pausa)? */
@@ -239,6 +299,7 @@ function onProgress(ev) {
   const stato = ev.stato || {};
   const statoPrecedente = r.stato?.status;
   r.stato = stato;
+  confermaEsito(r);
   r.total = stato.total || r.total;
 
   // Il registro delle query in sospeso segue lo stato reale: è da lì che
@@ -257,7 +318,7 @@ function onProgress(ev) {
     r.primoErrore = errore;
     registraErroreQuery(r.documento, { message: errore.error, queryError: errore.queryError, line: errore.line }, r.sorgenteErrore);
   }
-  if ((ev.tipo === 'done' || ev.tipo === 'paused' || stato.status === 'aborted') && r.attesa) r.attesa.resolve(stato);
+  if (ev.tipo === 'done' || stato.status === 'aborted' || (ev.tipo === 'paused' && !r.fileChunk)) r.attesa?.resolve(stato);
   if (stato.status === 'aborted' && r.documento.scriptRunId === ev.runId) r.documento.metrics = ['cancelled'];
   if ((ev.tipo === 'done' || ev.tipo === 'paused') && r.documento.scriptRunId === ev.runId) {
     const risultato = ev.ultimoRisultato || (stato.falliti ? r.primoErrore : null) || {};
@@ -319,19 +380,15 @@ function onProgress(ev) {
     }
   }
 
-  if ((ev.tipo === 'done' || stato.status === 'aborted') && r.attesa) {
-    r.attesa.resolve(stato);
-  }
-
   if (ev.tipo === 'done') {
     // Uno script è il posto in cui il DDL capita più spesso (creare collezioni,
     // eliminarne): a fine esecuzione l'albero va riallineato, altrimenti mostra
     // una struttura che non esiste più.
-    refreshDbTree();
+    if (!r.fileChunk) refreshDbTree();
     const falliti = stato.falliti || 0;
     // Il riepilogo conta tutti gli errori; la griglia mostra solo la scheda selezionata.
-    if (!falliti) toast(`Script completato: ${stato.eseguiti} istruzioni`);
-    if (!falliti && stato.status === 'done') mostraRisultatiQueryRiuscita();
+    if (!falliti && !r.fileChunk) toast(`Script completato: ${stato.eseguiti} istruzioni`);
+    if (!falliti && stato.status === 'done' && (!r.fileChunk || !r.keepSqlSession)) mostraRisultatiQueryRiuscita();
   }
 }
 
@@ -453,7 +510,7 @@ function disegnaLog() {
     const icona = ICO(v.interrupted ? 'pause' : (v.ok ? 'check' : 'x'));
     const cls = v.interrupted ? 'interrupted' : (v.ok ? 'ok' : 'ko');
     const misure = v.ok
-      ? `${v.rows != null ? `${v.rows} righe` : ''}${v.affected != null ? ` · ${v.affected} modificate` : ''} · ${v.ms} ms`
+      ? `${v.rows != null ? `${v.rows} righe` : ''}${v.truncated ? ' (risultato parziale)' : ''}${v.affected != null ? ` · ${v.affected} modificate` : ''} · ${v.ms} ms`
       : esc(v.error || '');
     return `
       <div class="script-log-row ${cls}">
@@ -519,7 +576,7 @@ function apriScheda(pos) {
   const richiesta = r.richiestaScheda = (r.richiestaScheda || 0) + 1;
   const corrente = () => runVisibile === runId && r.richiestaScheda === richiesta
     && r.documento.scriptRunId === runId && documentoVisibile(r.tab, r.collTabId);
-  emit('script:result', { runId, pos, tabId: r.tabId })
+  emit('script:result', { ...r.identita, pos }, { reconnect: false })
     .then((res) => {
       // Nel frattempo l'utente può aver cambiato run o scheda: la risposta di
       // una richiesta sorpassata non deve sovrascrivere ciò che sta guardando.
@@ -566,8 +623,32 @@ export function knowsScriptRun(runId) {
   return runs.has(runId);
 }
 
+// Un file in pausa aspetta la decisione dell'utente anche fra blocchi. Alla
+// chiusura del documento liberiamo l'attesa e l'eventuale transazione aperta.
+export function chiudiRunFile({ tabId, collTabId }) {
+  for (const [id, r] of runs) {
+    if (!r.fileChunk || !(tabId ? r.tabId === tabId : r.collTabId === collTabId)) continue;
+    r.annullato = true;
+    if (isScriptActive(id) && !tabId) {
+      interrompiRunScript(r.identita).catch(() => {});
+    }
+    r.attesa.resolve({ ...r.stato, status: 'aborted' });
+    runs.delete(id);
+  }
+}
+
 export function initScriptRun() {
-  if (socket) socket.on('script:progress', onProgress);
+  if (socket) {
+    socket.on('script:progress', onProgress);
+    socket.on('disconnect', () => {
+      for (const r of runs.values()) {
+        if (isScriptActive(r.runId)) r.daRiallineare = true;
+      }
+    });
+    socket.on('connect', () => {
+      for (const r of runs.values()) if (r.daRiallineare) riallineaRun(r);
+    });
+  }
 
   const bind = (sel, fn) => {
     const el = $(sel);

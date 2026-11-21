@@ -37,6 +37,10 @@ const { startTestServer } = require('./e2e-harness');
       const fake = { connected: true, on() {}, off() {}, timeout() { return { emit: (name, p, cb) => fake.emit(name, p, r => cb(null, r)) }; }, emit(name, p, cb) {
         f.sent.push({ name, ...p });
         let reply = { ok: true, operations: [] };
+        if (name === 'database:export:plan') reply.catalogo = [
+          { id: 'vista:riepilogo', tipo: 'vista', nome: 'riepilogo' },
+          { id: 'tabella:t', tipo: 'tabella', nome: 't' },
+        ];
         if (name === 'database:import:upload:start') {
           const id = String(++f.next); f.uploads[id] = [];
           reply = { ok: true, uploadId: id, maxBytes: 8 * 1024 * 1024, maxChunkBytes: 1024 };
@@ -46,11 +50,19 @@ const { startTestServer } = require('./e2e-harness');
           if (new TextEncoder().encode(p.chunk).length > 1024) reply = { ok: false, error: 'Blocco troppo grande' };
           if (f.hold) { f.pending.push(() => cb(reply)); return; }
         }
-        if (name === 'database:import:upload:finish') reply.artifact = { db: 'origine', dbType: 'mysql', collections: [{ name: 't', rows: 2 }], avvisi: ['Privilegi non trasferiti.'] };
+        if (name === 'database:import:upload:finish') reply.artifact = { db: 'origine', dbType: 'mysql', collections: [{ name: 't', rows: 2 }], views: ['riepilogo'], avvisi: ['Privilegi non trasferiti.'] };
         cb?.(reply);
       } };
       impostaSocket(fake);
     });
+    await page.evaluate(async () => {
+      const menu = (await import('/js/exportimport.js')).exportImportMenuItems('origine', 'riepilogo');
+      await menu.find(item => item.label.includes('CodeDB')).action();
+    });
+    assert(await page.locator('#dbexport-albero [data-id="vista:riepilogo"][data-colonna="struttura"]').isChecked());
+    assert(await page.locator('#dbexport-albero [data-id="vista:riepilogo"][data-colonna="dati"]').isDisabled());
+    assert(!await page.locator('#dbexport-albero [data-id="tabella:t"][data-colonna="struttura"]').isChecked());
+    await page.locator('#dbexport-cancel').click();
     const open = async () => {
       await page.evaluate(async () => (await import('/js/exportimport.js')).openDbImportModal());
       await page.waitForSelector('#dbimport-overlay[data-arc-dialog="open"]');
@@ -63,6 +75,7 @@ const { startTestServer } = require('./e2e-harness');
     assert.equal(await page.evaluate(() => window.uploadFixture.uploads['1'].join('')), file.buffer.toString());
     assert.equal(await page.locator('#dbimport-target').inputValue(), 'origine');
     assert.match(await page.locator('#dbimport-file-notes').textContent(), /Privilegi/);
+    assert.match(await page.locator('#dbimport-subtitle').textContent(), /1 vist/);
     assert.equal(await page.evaluate(() => window.uploadFixture.sent.find(e => e.name.endsWith('upload:start')).format), 'sql');
     fs.mkdirSync(reportDir, { recursive: true });
     await page.screenshot({ path: path.join(reportDir, 'import-desktop.png') });
@@ -141,14 +154,44 @@ const { startTestServer } = require('./e2e-harness');
     await page.evaluate(async () => {
       (await import('/js/workspace.js')).renderWorkspace();
       (await import('/js/colltabs.js')).openDbTab('origine');
+      (await import('/js/main.js')).setView('query');
     });
     const sql = "SELECT 'città 🦊';\n";
     await page.locator('#query-open-sql-input').setInputFiles({ name: 'query.sql', mimeType: 'text/plain', buffer: Buffer.from(sql) });
     await page.waitForFunction(sql => document.getElementById('query-editor-input').value === sql, sql);
     await page.locator('#query-open-sql-input').setInputFiles({ name: 'grande.sql', mimeType: 'text/plain', buffer: Buffer.from(sql.repeat(60000)) });
-    await page.waitForFunction(() => parseInt(document.getElementById('chunk-count-badge').textContent, 10) > 1);
+    await page.waitForFunction(() => parseInt(document.getElementById('chunk-count-badge').textContent, 10) >= 1
+      && document.getElementById('query-editor-input').value.length > 20000);
     assert((await page.locator('#query-editor-input').inputValue()).startsWith(sql));
     assert(!await page.evaluate(() => uploadFixture.sent.some(e => ['query:execute', 'script:run', 'collection:import'].includes(e.name))), 'Aprire un file non esegue query o importazioni');
+
+    // Il primo INSERT supera il blocco ideale. Tratteniamo soltanto il lavoro
+    // del lexer: i primi byte devono essere visibili e Stop deve funzionare
+    // anche se il confine dell’istruzione deve essere ancora individuato.
+    await page.evaluate(() => {
+      const post = Worker.prototype.postMessage;
+      Worker.prototype.postMessage = function(message, ...rest) {
+        if (message.params?.file?.name === 'istruzione.sql') {
+          uploadFixture.rilasciaLettura = () => { Worker.prototype.postMessage = post; post.call(this, message, ...rest); };
+        } else post.call(this, message, ...rest);
+      };
+    });
+    const inserimento = "INSERT INTO log VALUES ('" + "x;🦊".repeat(200000) + "');";
+    await page.locator('#query-open-sql-input').setInputFiles({ name: 'istruzione.sql', mimeType: 'text/plain', buffer: Buffer.from(inserimento) });
+    await page.waitForFunction(() => uploadFixture.rilasciaLettura && document.getElementById('chunk-preview').textContent.startsWith('INSERT INTO'));
+    assert(await page.locator('#chunk-preview').isVisible(), 'I primi byte si leggono mentre il worker è ancora fermo');
+    assert(await page.locator('#chunk-run-all-btn').isEnabled());
+    assert.equal(await page.locator('#query-editor-input').inputValue(), '', 'Il prefisso di un INSERT incompleto non va nell’editor eseguibile');
+    await page.evaluate(() => {
+      document.getElementById('chunk-run-all-btn').click();
+      document.getElementById('chunk-cancel-run-btn').click();
+      uploadFixture.rilasciaLettura();
+    });
+    await page.waitForFunction(() => document.getElementById('chunk-progress-text').textContent.includes('Sequenza interrotta'));
+    assert(!await page.evaluate(() => uploadFixture.sent.some(e => e.name === 'script:execute')), 'Stop durante la prima lettura non esegue alcun frammento');
+    await page.evaluate(() => document.getElementById('chunk-load-editor-btn').click());
+    await page.waitForFunction(n => document.getElementById('query-editor-input').value.length === n, inserimento.length);
+    assert.equal(await page.locator('#query-editor-input').inputValue(), inserimento, 'Carica in Editor recupera tutta l’istruzione');
     assert.deepEqual(errors, []);
     console.log('  OK UI: SQL/JSON/CSV, selettore touch, UTF-8 integro, SQL grande a blocchi, chiusura, letture sorpassate e file illeggibili (dati, connessioni, snapshot)');
   } finally { await browser.close(); await server.stop(); }

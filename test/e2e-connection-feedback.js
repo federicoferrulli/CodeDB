@@ -48,14 +48,28 @@ const { startTestServer } = require('./e2e-harness');
       await progress.waitFor();
       await page.evaluate(() => window.cf.answer(true));
       assert(await progress.isVisible(), 'Il progresso resta finché una connessione è in corso');
-      await page.evaluate(() => window.cf.answer(false));
+      await page.waitForFunction(() => window.cf.results.includes('ok'));
+      const misuraLayout = () => page.evaluate(() => Object.fromEntries(
+        ['#app', '#navigator', '#navigator-tools', '.main-area'].map(selector => {
+          const { top, bottom } = document.querySelector(selector).getBoundingClientRect();
+          return [selector, { top, bottom }];
+        })
+      ));
+      const layout = await misuraLayout();
+      assert.equal(layout['#app'].bottom, page.viewportSize().height);
+      await page.evaluate(() => window.cf.answer(false, 'Il server non risponde. Controlla host e porta. (dettaglio tecnico: ECONNREFUSED)'));
       await progress.waitFor({ state: 'detached' });
       const notice = page.locator('#feedback-container .feedback-message').filter({ hasText: 'Il server non risponde' });
       await notice.waitFor();
       assert.equal(await page.locator('.illustrated-error-snackbar').count(), 0, 'Nessun dialog per un errore recuperabile');
       assert.equal(await notice.getByRole('button', { name: 'Modifica connessione' }).count(), 1);
       assert.equal(await page.locator('#toast-container [data-tone="error"]').count(), 0);
+      assert.deepEqual(await misuraLayout(), layout, 'La notifica di connessione conserva la geometria del workspace e del navigatore');
+      await notice.getByText('Mostra altro', { exact: true }).click();
+      assert(await notice.getByText('ECONNREFUSED', { exact: true }).isVisible());
+      assert.deepEqual(await misuraLayout(), layout, 'Espandere il dettaglio conserva la geometria');
       await notice.getByRole('button', { name: 'Chiudi messaggio' }).click();
+      assert.deepEqual(await misuraLayout(), layout, 'Chiudere la notifica conserva la geometria');
       await page.evaluate(() => window.cf.start('Terza'));
       await progress.waitFor();
       await page.evaluate(() => window.cf.answer(true));

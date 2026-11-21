@@ -52,7 +52,8 @@ function trackerPer(tracker, collection, identity) {
 
 function registraFileAtteso(tracker, file) {
   const entry = trackerPer(tracker, file.collection, file.identity || null);
-  entry.expectedCardinality = file.replayCardinality ?? file.sourceCardinality ?? file.count ?? 0;
+  entry.pgPhysical = file.pgPhysical === true;
+    entry.expectedCardinality = file.replayCardinality ?? file.sourceCardinality ?? file.count ?? 0;
   entry.expectedDistinctIdentities = file.identity
     ? (file.replayCardinality ?? file.sourceDistinctIdentities ?? file.count)
     : null;
@@ -147,8 +148,14 @@ function resolveChain(backupDir) {
         }
         previousTime = time;
       }
-      const declarations = new Map();
+      const declarations = new Map(), presenti = new Set();
       for (const layer of chain) {
+        require('./inventario-entita').validaCopertura(layer.manifest, presenti);
+        for (const nome of layer.manifest.entityInventory?.removed || []) {
+          declarations.delete(nome);
+          presenti.delete(nome);
+        }
+        for (const f of layer.manifest.files) if (f.kind === 'data') presenti.add(f.collection);
         for (const file of layer.manifest.files.filter((f) => f && f.kind === 'data')) {
           if (Number(layer.manifest.version || 1) < 2) continue;
           const current = {
@@ -198,7 +205,12 @@ function resolveChain(backupDir) {
 /**
  * Controlla l'intera catena prima della prima modifica al database.
  */
-async function preflightChain(chain, log, { allowUnsafeSchema = false } = {}) {
+async function preflightChain(chain, log, { allowUnsafeSchema = false, filtraErroreOrigine } = {}) {
+  try { return await verificaContenutiCatena(chain, log, allowUnsafeSchema); }
+  catch (err) { throw filtraErroreOrigine ? filtraErroreOrigine(err) : err; }
+}
+
+async function verificaContenutiCatena(chain, log, allowUnsafeSchema) {
   let verifiedCount = 0;
   let unverifiableCount = 0;
 
@@ -233,7 +245,7 @@ async function preflightChain(chain, log, { allowUnsafeSchema = false } = {}) {
       );
     }
 
-    const schemas = layer.manifest.files.filter((f) => f.kind === 'schema').map((file) => ({
+    const schemas = layer.manifest.files.filter((f) => f.kind === 'schema' || f.kind === 'schema-standalone').map((file) => ({
       collection: file.collection,
       database: file.schema || layer.manifest.db,
       sql: fs.readFileSync(fileDelBackup(layer.dir, file.path, 'file di schema'), 'utf8'),

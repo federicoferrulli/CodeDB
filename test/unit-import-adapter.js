@@ -20,6 +20,7 @@ function strategy({ primary = ['id'] } = {}) {
   return {
     mutations,
     async listDatabases() { return [{ name: 'destinazione' }]; },
+    async listCollections() { return [{ name: 'clienti' }]; },
     async tableColumnsInfo() {
       return { columns: [{ name: 'id', nullable: false }, { name: 'nome', nullable: true }] };
     },

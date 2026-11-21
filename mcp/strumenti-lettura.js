@@ -72,6 +72,7 @@ function registraStrumentiLettura({
       tunnel: conn.tunnel,
       dbType: conn.dbType,
       name: String(saved || ''),
+      backupOriginId: conn.effective?.backupOriginId,
       writesAllowed,
       guardCtx,
     });

@@ -467,7 +467,8 @@ class PostgreSqlStrategy extends DbStrategy {
   async bersaglioRiga(db, coll, whereSql) {
     const pk = await this.primaryKey(db, coll);
     if (pk.length) return whereSql; // la chiave primaria è già univoca
-    return `ctid = (SELECT ctid FROM ${qtable(db, coll)} WHERE ${whereSql} LIMIT 1)`;
+    // Il ctid è univoco solo nel file della singola partizione.
+    return `(tableoid, ctid) = (SELECT tableoid, ctid FROM ${qtable(db, coll)} WHERE ${whereSql} LIMIT 1)`;
   }
 
   parseRowId(rawId, colonne) {
@@ -672,7 +673,13 @@ class PostgreSqlStrategy extends DbStrategy {
     // il client, mentre i prestiti brevi ripuliscono il contesto prima del rilascio.
     const schema = schemaOf(db);
     // In una transazione abortita PostgreSQL accetta il recupero, ma rifiuta SET.
-    const recupero = /^(?:ROLLBACK|ABORT|COMMIT|END)\b/i.test(stripSqlNoise(sql, { dbms: 'postgresql' }).trim());
+    const testoSql = stripSqlNoise(sql, { dbms: 'postgresql' }).trim();
+    const recupero = /^(?:ROLLBACK|ABORT|COMMIT|END)\b/i.test(testoSql);
+    const commitScript = payload.opHandle?.proteggiIstruzione && lease.transazione && /^(?:COMMIT|END)\b(?!\s+PREPARED\b)/i.test(testoSql);
+    const commitAnnullato = commitScript && client.getTransactionStatus?.() === 'E';
+    const proteggiIstruzione = payload.opHandle?.proteggiIstruzione && lease.transazione && !recupero &&
+      !/^(?:BEGIN|START\s+TRANSACTION|PREPARE\s+TRANSACTION|SAVEPOINT|RELEASE|SET\s+TRANSACTION)\b/i.test(testoSql);
+    let savepoint = false;
     let pathSet = false;
     let timeoutSet = false;
     let readTxOpen = false;
@@ -682,6 +689,13 @@ class PostgreSqlStrategy extends DbStrategy {
       }
       if (payload && payload.opHandle && client.processID) {
         payload.opHandle.processID = client.processID;
+      }
+      // In una transazione PostgreSQL anche una chiave duplicata renderebbe
+      // impossibile il COMMIT delle righe valide. Il savepoint vive solo per
+      // questa istruzione dello script e lascia intatti quelli espliciti.
+      if (proteggiIstruzione) {
+        await client.query('SAVEPOINT codedb_istruzione');
+        savepoint = true;
       }
       if (letturaIsolata) {
         await client.query('BEGIN READ ONLY');
@@ -707,23 +721,15 @@ class PostgreSqlStrategy extends DbStrategy {
       }
       try {
         const cap = DbStrategy.resultCap(payload);
-        const res = await client.query({ text: sql, values: payload.params, types: tipiPostgresNativi })
+        const res = await require('./sqlRighe').queryPostgres(client, { text: sql, values: payload.params, types: tipiPostgresNativi }, cap, DbStrategy.maxResultBytes(this.env))
           .catch(err => { throw require('./queryError').annotaErroreQuery(err, sql, 'postgresql'); });
+        if (savepoint) {
+          await client.query('RELEASE SAVEPOINT codedb_istruzione');
+          savepoint = false;
+        }
         eseguita = true;
-        if (Array.isArray(res)) {
-          const lastRes = res[res.length - 1];
-          const rows = (lastRes.rows || []).slice(0, cap);
-          const columns = lastRes.fields ? lastRes.fields.map((f) => f.name) : [];
-          return { docs: rows.map((r) => serializeRow(r, lastRes.fields || [])), columns, total: lastRes.rows?.length || 0, skip: 0, limit: cap, resultSet: true, truncated: lastRes.rows?.length > cap };
-        }
-        if (res.rows && (res.rows.length > 0 || res.fields)) {
-          const rows = res.rows.slice(0, cap);
-          const columns = res.fields ? res.fields.map((f) => f.name) : [];
-          return { docs: rows.map((r) => serializeRow(r, res.fields || [])), columns, total: res.rows.length, skip: 0, limit: cap, resultSet: true, truncated: res.rows.length > cap };
-        }
-
-        const summary = { comando: res.command, righeCoinvolte: res.rowCount || 0 };
-        return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap };
+        if (commitAnnullato) throw new Error('PostgreSQL ha annullato la transazione in errore al COMMIT. Il file è stato interrotto.');
+        return res;
       } finally {
         if (readTxOpen) {
           await client.query('ROLLBACK').catch(() => {});
@@ -732,6 +738,18 @@ class PostgreSqlStrategy extends DbStrategy {
         if (pathSet && !lease.transazione && !lease.persistente) await client.query('RESET search_path').catch(() => {});
         if (timeoutSet && !lease.transazione && !lease.persistente) await client.query('RESET statement_timeout').catch(() => {});
       }
+    } catch (err) {
+      if (commitScript) err.sqlTransactionLost = true;
+      if (savepoint) {
+        try {
+          await client.query('ROLLBACK TO SAVEPOINT codedb_istruzione');
+          await client.query('RELEASE SAVEPOINT codedb_istruzione');
+        } catch (recuperoFallito) {
+          recuperoFallito.sqlTransactionLost = true;
+          throw recuperoFallito;
+        }
+      }
+      throw err;
     } finally {
       // Rete di sicurezza per errori avvenuti durante i SET LOCAL, prima di
       // entrare nel blocco che esegue la query. Un client con una transazione
@@ -750,6 +768,7 @@ class PostgreSqlStrategy extends DbStrategy {
         }
       } catch (err) {
         guasta = true;
+        err.sqlTransactionLost = true;
         if (eseguita) throw err;
       } finally { await lease.termina(eseguita, guasta, statoServer); }
     }

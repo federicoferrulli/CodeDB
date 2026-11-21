@@ -78,4 +78,5 @@ dependencies {
     implementation 'androidx.webkit:webkit:1.12.1'
     androidTestImplementation 'androidx.test:runner:1.6.2'
     androidTestImplementation 'junit:junit:4.13.2'
+    testImplementation 'junit:junit:4.13.2'
 }

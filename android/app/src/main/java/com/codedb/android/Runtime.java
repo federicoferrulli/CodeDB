@@ -17,11 +17,16 @@ final class Runtime {
     static volatile String error;
     static String secret;
     private static boolean started;
+    private static volatile boolean nodeAvviato;
+
+    static boolean richiedeNuovoProcesso() { return nodeAvviato && error != null; }
     private static native int startNode(String[] args, String temporary);
 
     static synchronized void start(Context context) {
         if (started) return;
         started = true;
+        error = null;
+        url = null;
         Context app = context.getApplicationContext();
         byte[] random = new byte[32];
         new SecureRandom().nextBytes(random);
@@ -64,12 +69,15 @@ final class Runtime {
                 if (links != null) for (java.net.InetAddress address : links.getDnsServers()) dns.put(address.getHostAddress());
                 String[] args = { "node", new File(code, "mobile.cjs").getAbsolutePath(),
                     new File(app.getFilesDir(), "data").getAbsolutePath(), ready.getAbsolutePath(), secret, dns.toString() };
-                new Thread(() -> {
+                Thread node = new Thread(() -> {
                     try {
                         int status = startNode(args, app.getCacheDir().getAbsolutePath());
-                        error = "Il server CodeDB si è fermato (codice " + status + "). Chiudi e riapri l'app.";
+                        error = "Il server CodeDB si è fermato (codice " + status + ").";
                     } catch (Throwable failure) { error = "Avvio Node.js non riuscito: " + failure.getMessage(); }
-                }, "CodeDB-Node").start();
+                }, "CodeDB-Node");
+                nodeAvviato = true;
+                try { node.start(); }
+                catch (Throwable failure) { nodeAvviato = false; throw failure; }
                 for (int i = 0; i < 600 && error == null; i++) {
                     if (ready.isFile()) {
                         JSONObject state = new JSONObject(read(ready));
@@ -79,8 +87,13 @@ final class Runtime {
                     }
                     Thread.sleep(100);
                 }
-                if (error == null) error = "Il server non si è avviato entro un minuto. Chiudi e riapri l'app.";
-            } catch (Throwable failure) { error = "Avvio CodeDB non riuscito: " + failure.getMessage(); }
+                if (error == null) error = "Il server non si è avviato entro un minuto.";
+            } catch (Throwable failure) {
+                synchronized (Runtime.class) {
+                    if (!nodeAvviato) started = false;
+                    error = "Avvio CodeDB non riuscito: " + failure.getMessage();
+                }
+            }
         }, "CodeDB-Avvio").start();
     }
 

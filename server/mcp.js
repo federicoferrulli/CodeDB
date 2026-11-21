@@ -17,6 +17,7 @@ function createModule({ trasporto, vault, connessioni, config, identita, budget 
     env: config.env,
     mcpSettings,
     loadConnections: vault.loadConnections,
+    connectionsFileFor: vault.connectionsFileFor,
     connLabel: vault.connLabel,
     connDbType: vault.connDbType,
     // Unica scrittura su connections.ini concessa al gateway MCP: il flag

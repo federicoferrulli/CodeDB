@@ -545,21 +545,20 @@
         <input type="file" id="conn-import-file" accept=".ini,.txt,text/plain" class="hidden" />
       </aside>
       <div id="navigator-divider" class="resizer-v hidden"></div>
-          <aside id="sidebar" class="hidden">
-            <div class="sidebar-title">
-              <button type="button" id="explorer-toggle-btn" class="navigator-section-toggle" aria-expanded="true" aria-controls="explorer-section-body"><i data-lucide="chevron-down"></i><span id="explorer-title">Database</span></button>
-              <button id="new-db-btn" title="Nuovo database" aria-label="Nuovo database"><i data-lucide="plus"></i></button>
-            </div>
-            <div id="explorer-section-body" class="navigator-section-body">
-            <div id="explorer-context" class="explorer-context"></div>
-            <div class="sidebar-search navigator-search">
-              <i data-lucide="search" aria-hidden="true"></i>
-              <input aria-label="Cerca database e collezioni" type="text" id="db-search" placeholder="Cerca database o collezioni..." autocomplete="off"
-                spellcheck="false" />
-            </div>
-            <ul id="db-tree"></ul>
-            </div>
-          </aside>
+      <aside id="sidebar" class="hidden">
+        <div class="sidebar-title">
+          <button type="button" id="explorer-toggle-btn" class="navigator-section-toggle" aria-expanded="true" aria-controls="explorer-section-body"><i data-lucide="chevron-down"></i><span id="explorer-title">Database</span></button>
+          <button id="new-db-btn" title="Nuovo database" aria-label="Nuovo database"><i data-lucide="plus"></i></button>
+        </div>
+        <div id="explorer-section-body" class="navigator-section-body">
+          <div id="explorer-context" class="explorer-context"></div>
+          <div class="sidebar-search navigator-search">
+            <i data-lucide="search" aria-hidden="true"></i>
+            <input aria-label="Cerca database e collezioni" type="text" id="db-search" placeholder="Cerca database o collezioni…" autocomplete="off" spellcheck="false" />
+          </div>
+          <ul id="db-tree"></ul>
+        </div>
+      </aside>
       <div id="navigator-tools">
         <button type="button" id="conn-settings-btn" aria-haspopup="true" aria-expanded="false"><i data-lucide="settings"></i>Strumenti</button>
       </div>
@@ -1379,28 +1378,27 @@
                             <span id="chunk-count-badge" class="chunk-file-badge">0 chunk</span>
                           </div>
                           <div class="chunk-panel-actions">
-                            <button id="chunk-run-all-btn" class="primary btn-sm" type="button" title="Esegui tutti i chunk sequenzialmente"><i data-lucide="play"></i> Esegui Tutti i Chunk</button>
+                            <button id="chunk-run-all-btn" class="primary btn-sm" type="button" title="Esegui in sequenza dal blocco visualizzato"><i data-lucide="play"></i> <span>Esegui tutti i blocchi</span></button>
                             <button id="chunk-cancel-run-btn" class="danger btn-sm hidden" type="button" title="Interrompi esecuzione sequenziale"><i data-lucide="circle-stop"></i> Stop Esecuzione</button>
                             <button id="chunk-close-btn" class="ghost mini-btn" type="button" title="Chiudi pannello file grandi">✕ Chiudi File</button>
                           </div>
                         </div>
                         <div class="chunk-panel-nav">
                           <div class="chunk-nav-controls">
-                            <button id="chunk-prev-btn" class="mini-btn" type="button" title="Chunk precedente"><i data-lucide="chevron-left"></i> Prev</button>
-                            <select id="chunk-select" class="styled-select chunk-select" title="Seleziona chunk"></select>
-                            <button id="chunk-next-btn" class="mini-btn" type="button" title="Chunk successivo">Next <i data-lucide="play"></i></button>
+                            <button id="chunk-prev-btn" class="mini-btn" type="button" title="Blocco precedente"><i data-lucide="chevron-left"></i> Precedente</button>
+                            <label>Blocco <input id="chunk-select" class="chunk-select" type="number" min="1" step="1" value="1" title="Vai al numero di blocco"></label>
+                            <button id="chunk-next-btn" class="mini-btn" type="button" title="Blocco successivo">Successivo <i data-lucide="play"></i></button>
                             <button id="chunk-load-editor-btn" class="mini-btn" type="button" title="Carica questo chunk nell'editor per ispezione/modifica"><i data-lucide="pencil"></i> Carica in Editor</button>
                           </div>
                           <span id="chunk-byte-info" class="chunk-byte-info">0 KB - 0 KB</span>
                         </div>
                         <div id="chunk-progress-container" class="chunk-progress-container hidden">
-                          <div class="chunk-progress-track">
-                            <div id="chunk-progress-fill" class="chunk-progress-fill" style="width: 0%;"></div>
-                          </div>
-                          <span id="chunk-progress-text" class="chunk-progress-text">Pronto per l'esecuzione</span>
+                          <progress id="chunk-progress-fill" max="100" aria-labelledby="chunk-progress-text"></progress>
+                          <span id="chunk-progress-text" class="chunk-progress-text" role="status"></span>
                         </div>
                       </div>
                       <div class="editor-body">
+                        <pre id="chunk-preview" class="chunk-preview" tabindex="0" aria-label="Anteprima iniziale del blocco SQL" hidden></pre>
                         <div class="query-editor-wrapper">
                           <!-- Numeri di riga: servono da quando gli errori del
                                runner e dell'interprete dicono "riga N". -->
@@ -2126,12 +2124,21 @@
        «struttura» e «dati» sono due decisioni diverse. -->
   <div id="dbexport-overlay" class="overlay hidden">
     <div class="modal wide">
-      <h2>Esporta database</h2>
+      <h2 id="dbexport-titolo">Esporta database</h2>
       <p class="subtitle" id="dbexport-subtitle"></p>
-      <label>Formato del file
-        <select id="dbexport-formato"><option value="codedb-json">CodeDB EJSON (.codedb.json)</option></select>
+      <div id="dbexport-form">
+      <label><span id="dbexport-etichetta-formato">Formato del file</span>
+        <select id="dbexport-formato" aria-describedby="dbexport-formato-hint"><option value="codedb-json">CodeDB EJSON (.codedb.json)</option></select>
       </label>
-      <p class="hint">Gli script .sql si eseguono con mysql o psql e indicano il database/schema di origine. Il formato JSON rispetta il limite di import mostrato nell’anteprima. MongoDB e le tabelle MySQL non transazionali richiedono una finestra senza scritture per garantire la coerenza.</p>
+      <p class="hint" id="dbexport-formato-hint"></p>
+      <div id="dbexport-mongo-destinazione" class="form-row hidden">
+        <label>Connessione di destinazione
+          <select id="dbexport-mongo-connessione"></select>
+        </label>
+        <label>Database di destinazione
+          <input type="text" id="dbexport-mongo-database" placeholder="Nome del database" autocomplete="off">
+        </label>
+      </div>
       <div class="form-row">
         <div class="segmented" id="dbexport-modalita" role="group" aria-label="Modalità di export">
           <button type="button" data-modalita="struttura-e-dati" aria-pressed="true">Struttura e dati</button>
@@ -2140,6 +2147,15 @@
           <button type="button" data-modalita="personalizzata" aria-pressed="false">Personalizzata</button>
         </div>
       </div>
+      <div class="form-row hidden" id="dbexport-opzioni-script">
+        <label><span id="dbexport-label-struttura">Struttura nello script</span>
+          <select id="dbexport-script-struttura" aria-describedby="dbexport-script-hint"></select>
+        </label>
+        <label><span id="dbexport-label-dati">Dati nello script</span>
+          <select id="dbexport-script-dati" aria-describedby="dbexport-script-hint"></select>
+        </label>
+      </div>
+      <p class="hint hidden" id="dbexport-script-hint" aria-live="polite"></p>
       <div class="form-row">
         <label>Cerca fra gli oggetti
           <input type="search" id="dbexport-cerca" placeholder="nome di tabella, vista, routine…" />
@@ -2150,6 +2166,8 @@
       <div class="dbexport-albero" id="dbexport-albero" role="group" aria-label="Oggetti da esportare"></div>
       <p class="hint" id="dbexport-riepilogo"></p>
       <p class="hint" id="dbexport-motore"></p>
+      </div>
+      <div class="dbimport-report hidden" id="dbexport-esito" role="status" aria-live="polite" tabindex="-1"></div>
       <div id="dbexport-error" class="error hidden"></div>
       <div class="modal-actions">
         <button id="dbexport-cancel" class="ghost">Annulla</button>
@@ -2644,6 +2662,7 @@
               <option value="doc:delete">Eliminazione documento/riga</option>
               <option value="collection:deleteMany">Eliminazione massiva</option>
               <option value="collection:import">Import batch</option>
+              <option value="database:export:execute">Copia MongoDB diretta</option>
               <option value="backup:run">Backup</option>
               <option value="backup:restore">Ripristino backup</option>
             </optgroup>

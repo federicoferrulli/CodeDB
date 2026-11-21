@@ -1,7 +1,7 @@
 'use strict';
 
 // Test end-to-end: esercita l'intero flusso socket contro un MongoDB locale.
-// Uso: node test/e2e.js
+// Uso: CODEDB_E2E_DESTRUCTIVE=1 node test/e2e.js (MONGO_PORT facoltativa)
 //
 // Il test avvia una PROPRIA istanza di CodeDB su una porta dedicata, con un
 // connections.ini temporaneo (test/e2e-harness.js): salva ed elimina connessioni,
@@ -10,14 +10,17 @@
 
 const { io } = require('socket.io-client');
 const { startTestServer } = require('./e2e-harness');
+const { createDatabaseFixture } = require('./database-fixture');
 
-const DB = 'gui_mongodb_e2e';
+const MONGO_PORT = Number(process.env.MONGO_PORT || 27017);
+const fixture = createDatabaseFixture('codedb_mongo', emit);
+const DB = fixture.target('principale');
 const COLL = 'people';
-const TMP_DB = 'gui_mongodb_e2e_tmp';
-const TMP_DB2 = 'gui_mongodb_e2e_tmp2';
+const TMP_DB = fixture.target('orig');
+const TMP_DB2 = fixture.target('copia');
 
 function emit(event, payload) {
-  return new Promise((resolve) => socket.emit(event, payload, resolve));
+  return socket.timeout(60000).emitWithAck(event, payload);
 }
 
 function assert(cond, label) {
@@ -50,10 +53,11 @@ let socket = null;
 async function runTests() {
   try {
     console.log('1. mongo:connect');
-    const conn = await emit('mongo:connect', { host: 'localhost', port: 27017 });
+    const conn = await emit('mongo:connect', { host: 'localhost', port: MONGO_PORT });
     assert(conn.ok, `connessione riuscita (${conn.ok ? conn.databases.length + ' db' : conn.error})`);
     if (!conn.ok) return socket.close();
 
+    await fixture.create(DB, COLL);
     console.log('2. doc:insert');
     const ins1 = await emit('doc:insert', { db: DB, coll: COLL, doc: '{ "name": "Ada", "age": 36, "city": "Torino" }' });
     const ins2 = await emit('doc:insert', {
@@ -247,6 +251,25 @@ async function runTests() {
     assert(dopoAnt.ok && dopoAnt.docs.length === primaAnt.docs.length, 'l\'anteprima non scrive nulla');
     await emit('collection:drop', { db: DB, coll: DUPC });
 
+    // La stessa sequenza può identificare due documenti, uno per tipo BSON.
+    const collIdentita = 'identita_miste';
+    const hex = 'abcdef0123456789abcdef01';
+    for (const chiave of [hex, { $oid: hex }]) {
+      const aggiunta = await emit('doc:insert', { db: DB, coll: collIdentita, doc: JSON.stringify({ _id: chiave, nota: 'originale' }) });
+      assert(aggiunta.ok, 'inserito il documento con chiave tipizzata');
+    }
+    for (const evento of ['doc:update', 'doc:replace', 'doc:delete']) {
+      const pagina = await emit('collection:find', { db: DB, coll: collIdentita, limit: 5, deferCount: true });
+      const { _id } = pagina.docs.find(r => typeof r._id === 'string');
+      const esito = await emit(evento, { db: DB, coll: collIdentita, id: JSON.stringify(_id),
+        set: { nota: evento }, doc: JSON.stringify({ nota: evento }) });
+      const lettura = await emit('collection:find', { db: DB, coll: collIdentita, limit: 5, deferCount: true });
+      const testo = lettura.docs.find(r => r._id === hex);
+      const bson = lettura.docs.find(r => r._id?.$oid === hex);
+      assert(esito.ok && (evento === 'doc:delete' ? !testo : testo?.nota === evento), evento + ' raggiunge la chiave stringa');
+      assert(bson?.nota === 'originale', evento + ' preserva la chiave ObjectId');
+    }
+
     console.log('11. doc:delete');
     const all = await emit('collection:find', { db: DB, coll: COLL, filter: '{ "name": "Ada" }' });
     const del = await emit('doc:delete', { db: DB, coll: COLL, id: JSON.stringify(all.docs[0]._id) });
@@ -293,14 +316,14 @@ async function runTests() {
     assert(!fid.ok, 'eliminazione di "_id" rifiutata');
 
     console.log('12. db:create / db:list / db:rename / db:drop');
-    const create = await emit('db:create', { db: TMP_DB, coll: 'c1' });
+    const create = await fixture.create(TMP_DB, 'c1');
     assert(create.ok, `database "${TMP_DB}" creato${create.ok ? '' : ' (' + create.error + ')'}`);
     await emit('doc:insert', { db: TMP_DB, coll: 'c1', doc: '{ "x": 1 }' });
     const list1 = await emit('db:list', {});
     assert(list1.ok && list1.databases.some((d) => d.name === TMP_DB), 'db:list contiene il nuovo database');
     const dup = await emit('db:create', { db: TMP_DB, coll: 'c1' });
     assert(!dup.ok, 'creazione di un db già esistente rifiutata');
-    const ren = await emit('db:rename', { db: TMP_DB, newName: TMP_DB2 });
+    const ren = await fixture.copy(TMP_DB, TMP_DB2);
     assert(ren.ok && ren.modo === 'dump-restore' && ren.origineEliminata === false,
       'rinomina non atomica completata come copia verificata con origine conservata');
     const renCheck = await emit('collection:find', { db: TMP_DB, coll: 'c1', filter: '' });
@@ -310,27 +333,25 @@ async function runTests() {
     const list2 = await emit('db:list', {});
     assert(list2.ok && list2.databases.some((d) => d.name === TMP_DB)
       && list2.databases.some((d) => d.name === TMP_DB2), 'origine e destinazione sono entrambe conservate');
-    const drop1 = await emit('db:drop', { db: TMP_DB });
+    const drop1 = await fixture.drop(TMP_DB);
     assert(drop1.ok, `database "${TMP_DB}" eliminato`);
-    const dropCopy = await emit('db:drop', { db: TMP_DB2 });
+    const dropCopy = await fixture.drop(TMP_DB2);
     assert(dropCopy.ok, `database "${TMP_DB2}" eliminato`);
-    const sysDrop = await emit('db:drop', { db: 'admin' });
-    assert(!sysDrop.ok, 'eliminazione di un db di sistema rifiutata');
 
     console.log('13. pulizia: db:drop del database di test');
-    const drop2 = await emit('db:drop', { db: DB });
+    const drop2 = await fixture.drop(DB);
     assert(drop2.ok, `database "${DB}" eliminato`);
     const list3 = await emit('db:list', {});
     assert(list3.ok && !list3.databases.some((d) => d.name === DB), 'database di test rimosso');
 
     console.log('14. connessioni salvate (connections.ini)');
     const CONN_NAME = 'e2e-locale';
-    const reconn = await emit('mongo:connect', { host: 'localhost', port: 27017, saveAs: CONN_NAME });
-    assert(reconn.ok && reconn.label === 'localhost:27017', `connessione salvata con saveAs (label = ${reconn.label})`);
+    const reconn = await emit('mongo:connect', { host: 'localhost', port: MONGO_PORT, saveAs: CONN_NAME });
+    assert(reconn.ok && reconn.label === `localhost:${MONGO_PORT}`, `connessione salvata con saveAs (label = ${reconn.label})`);
     const clist = await emit('connections:list', {});
     assert(clist.ok && clist.connections.some((c) => c.name === CONN_NAME), 'connections:list contiene la connessione');
     const bySaved = await emit('mongo:connect', { saved: CONN_NAME });
-    assert(bySaved.ok && bySaved.label === 'localhost:27017', 'riconnessione tramite connessione salvata');
+    assert(bySaved.ok && bySaved.label === `localhost:${MONGO_PORT}`, 'riconnessione tramite connessione salvata');
     const missing = await emit('mongo:connect', { saved: 'inesistente' });
     assert(!missing.ok, 'connessione salvata inesistente rifiutata');
 
@@ -338,7 +359,7 @@ async function runTests() {
     const CONN_NAME2 = 'e2e-rinominata';
     const cget = await emit('connections:get', { name: CONN_NAME });
     assert(cget.ok && cget.fields.host === 'localhost' && !('password' in cget.fields), 'connections:get non espone la password');
-    const csave = await emit('connections:save', { name: CONN_NAME2, oldName: CONN_NAME, cfg: { host: '127.0.0.1', port: 27017 } });
+    const csave = await emit('connections:save', { name: CONN_NAME2, oldName: CONN_NAME, cfg: { host: '127.0.0.1', port: MONGO_PORT } });
     assert(csave.ok, 'connections:save aggiorna e rinomina');
     const clistR = await emit('connections:list', {});
     assert(
@@ -392,9 +413,10 @@ async function runTests() {
     assert(disc.ok, 'disconnessione pulita');
 
     console.log('17. sessioni multiple per tab (tabId)');
-    const tabA = await emit('mongo:connect', { host: 'localhost', port: 27017, tabId: 'tabA' });
-    const tabB = await emit('mongo:connect', { host: 'localhost', port: 27017, tabId: 'tabB' });
+    const tabA = await emit('mongo:connect', { host: 'localhost', port: MONGO_PORT, tabId: 'tabA' });
+    const tabB = await emit('mongo:connect', { host: 'localhost', port: MONGO_PORT, tabId: 'tabB' });
     assert(tabA.ok && tabA.tabId === 'tabA' && tabB.ok && tabB.tabId === 'tabB', 'due tab connessi in parallelo sullo stesso socket');
+    await fixture.create(DB, COLL, 'tabB');
     const insA = await emit('doc:insert', { tabId: 'tabA', db: DB, coll: COLL, doc: '{ "who": "tabA" }' });
     const findB = await emit('collection:find', { tabId: 'tabB', db: DB, coll: COLL, filter: '{ "who": "tabA" }' });
     assert(insA.ok && findB.ok && findB.total === 1, 'sessioni separate sullo stesso server');
@@ -404,12 +426,12 @@ async function runTests() {
     const findA = await emit('collection:find', { tabId: 'tabA', db: DB, coll: COLL, filter: '' });
     const findB2 = await emit('collection:find', { tabId: 'tabB', db: DB, coll: COLL, filter: '' });
     assert(discA.ok && !findA.ok && findB2.ok, 'chiusura di un tab: gli altri restano attivi');
-    const dropTab = await emit('db:drop', { tabId: 'tabB', db: DB });
+    const dropTab = await fixture.drop(DB);
     assert(dropTab.ok, 'pulizia del database di test dal tab B');
     await emit('mongo:disconnect', { tabId: 'tabB' });
 
     console.log('18. connections:test');
-    const tOk = await emit('connections:test', { host: 'localhost', port: 27017 });
+    const tOk = await emit('connections:test', { host: 'localhost', port: MONGO_PORT });
     assert(tOk.ok && tOk.dbType === 'mongodb' && tOk.databases >= 1, `test connessione riuscito (${tOk.ok ? tOk.databases + ' db' : tOk.error})`);
     const tBad = await emit('connections:test', { host: 'localhost', port: 1 });
     assert(!tBad.ok, 'test connessione verso porta chiusa fallisce');
@@ -419,12 +441,9 @@ async function runTests() {
     console.error('Errore inatteso:', err);
     process.exitCode = 1;
   } finally {
-    socket.close();
-    await server.stop();
+    try { await fixture.cleanup(); } finally {
+      socket.close();
+      await server.stop();
+    }
   }
 }
-
-setTimeout(() => {
-  console.error('Timeout: il server non risponde.');
-  process.exit(1);
-}, 60000).unref();

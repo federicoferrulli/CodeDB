@@ -234,10 +234,12 @@ function filterResult(kind, result, scope, currentDb) {
  * @param {{ principal: object, connName: string|null }|null} ctx
  * @returns la strategia stessa senza contesto oppure un Proxy che autorizza ogni chiamata
  */
+const contestiGuardia = new WeakMap();
+
 function guardStrategy(strategy, ctx) {
   if (!strategy || !ctx || !ctx.principal) return strategy;
 
-  return new Proxy(strategy, {
+  const protetta = new Proxy(strategy, {
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
       const spec = typeof prop === 'string' ? METHOD_CAPABILITY[prop] : null;
@@ -554,6 +556,14 @@ function guardStrategy(strategy, ctx) {
       return true;
     },
   });
+  contestiGuardia.set(protetta, ctx);
+  return protetta;
 }
 
-module.exports = { guardStrategy, scopeEffettivamenteLimitato };
+// Una strategia su connessione dedicata deve continuare a rivalutare lo
+// stesso principal della sessione anche mentre il ripristino è in corso.
+function ereditaGuardia(originale, dedicata) {
+  return guardStrategy(dedicata, contestiGuardia.get(originale));
+}
+
+module.exports = { guardStrategy, scopeEffettivamenteLimitato, ereditaGuardia };

@@ -1,5 +1,7 @@
 'use strict';
 
+const { collectionDiSistema } = require('./DbStrategy');
+
 const path = require('path');
 const fs = require('fs');
 const { EJSON } = require('bson');
@@ -14,14 +16,15 @@ const {
   canonicalMongoIndex, inventoryDifferences,
 } = require('./schemaObjects');
 
-function descriviBackup(backupDir, onlyCollections = null, { allowUnsafeSchema = false } = {}) {
+function descriviBackup(backupDir, onlyCollections = null, { allowUnsafeSchema = false, filtraErroreOrigine } = {}) {
   const resolved = path.resolve(backupDir);
   const chain = resolveChain(resolved);
   const first = chain[0].manifest;
-  const schemaSnapshot = risolviOggettiCatena(chain, { allowUnsafeSchema });
+  const schemaSnapshot = risolviOggettiCatena(chain, { allowUnsafeSchema, filtraErroreOrigine });
+  if (['postgresql','postgres'].includes(first.dbType)) onlyCollections = require('./pg-partizioni').selezionePartizioni(require('../backup/lib/inventario-entita').livelliAttivi(chain), onlyCollections);
   const selected = onlyCollections ? new Set(onlyCollections) : null;
   const latest = new Map();
-  for (const layer of chain) {
+  for (const layer of require('../backup/lib/inventario-entita').livelliAttivi(chain)) {
     for (const file of layer.manifest.files.filter((item) => item.kind === 'data')) {
       if (!selected || selected.has(file.collection)) latest.set(file.collection, file);
     }
@@ -37,6 +40,7 @@ function descriviBackup(backupDir, onlyCollections = null, { allowUnsafeSchema =
     coerenzaSchema: coerenzaOggetti(schemaSnapshot),
     layers: chain.map(({ manifest }) => ({
       id: manifest.id, type: manifest.type,
+      ...(manifest.entityInventory ? { entityInventory: manifest.entityInventory } : {}),
       manifestSha256: manifest.files.map((file) => file.sha256 || null),
     })),
     collections: [...latest].map(([name, file]) => ({
@@ -47,7 +51,7 @@ function descriviBackup(backupDir, onlyCollections = null, { allowUnsafeSchema =
   };
 }
 
-function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, log, signal = null }) {
+function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, log, signal = null, verificaSorgente, filtraErroreOrigine }) {
   const primaryStrategy = strategy;
   const type = dbType === 'postgres' ? 'postgresql' : dbType;
   const shell = createImportArtifactAdapter({ strategy, dbType: type, connName, recoveryRoot, log, signal });
@@ -56,6 +60,7 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
   let expectedSchema = null;
   let destinationBaseline = null;
   let selectedBaseline = null;
+  const fisichePg = new Set();
   let identities = new Map();
   // La capacità di rimuovere oggetti superati appartiene soltanto allo staging
   // creato da questo adapter e coperto da una copia di recupero verificata.
@@ -171,7 +176,7 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
     const ownership = stagingPosseduti.get(staging);
     if (!ownership || ownership.fingerprint !== plan.fingerprint || ownership.db !== staging.db
       || staging.db === plan.targetDb || plan.drop || plan.source.onlyCollections) return;
-    const resolved = risolviOggettiCatena(resolveChain(plan.source.backupDir), { allowUnsafeSchema: plan.allowUnsafeSchema === true });
+    const resolved = risolviOggettiCatena(resolveChain(plan.source.backupDir), { allowUnsafeSchema: plan.allowUnsafeSchema === true, filtraErroreOrigine });
     if (!resolved.complete) return;
     // Le nuove definizioni vanno applicate prima di distinguere le firme
     // sopravvissute da quelle obsolete: il solo nome non identifica un overload.
@@ -249,7 +254,7 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
 
   async function expectedSchemaOf(plan, stagingDb) {
     const chain = resolveChain(plan.source.backupDir);
-    const schemaSnapshot = risolviOggettiCatena(chain, { allowUnsafeSchema: plan.allowUnsafeSchema === true });
+    const schemaSnapshot = risolviOggettiCatena(chain, { allowUnsafeSchema: plan.allowUnsafeSchema === true, filtraErroreOrigine });
     const objects = schemaSnapshot.objects;
     const indexes = Object.create(null);
     if (type === 'mongodb') {
@@ -260,11 +265,22 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
       }
     }
     const tables = Object.create(null);
-    for (const layer of chain) {
+    const seqIdentita = new Set();
+    const livelli = require('../backup/lib/inventario-entita').livelliAttivi(chain);
+    for (const layer of livelli) for (const f of layer.manifest.files) if (f.pgPhysical) fisichePg.add(f.collection);
+    for (const layer of livelli) {
       for (const file of layer.manifest.files) {
         const absolute = path.join(layer.dir, file.path);
         if (file.kind === 'schema' && (!plan.source.onlyCollections || plan.source.onlyCollections.includes(file.collection))) {
-          const ddl = riqualificaDdl(fs.readFileSync(absolute, 'utf8'), plan.sourceDb, stagingDb, type);
+          const data = layer.manifest.files.find(f=>f.kind==='data' && f.collection===file.collection);
+          const isolata = data?.partitionParent && plan.source.onlyCollections && !plan.source.onlyCollections.includes(data.partitionParent)
+            && !destinationBaseline?.counts.some(c => c.name === data.partitionParent);
+          const standalone = isolata && layer.manifest.files.find(f=>f.collection===file.collection && f.kind==='schema-standalone');
+          const ddl = riqualificaDdl(fs.readFileSync(standalone ? require('../backup/lib/util').fileDelBackup(layer.dir,standalone.path) : absolute,'utf8'), plan.sourceDb, stagingDb, type);
+          if (type === 'postgresql') {
+            const tokens = require('./artefatti').estraiBersaglio(ddl).tokens;
+            for (let i=0;i+2<tokens.length;i++) if (!tokens[i].quoted && tokens[i].value.toUpperCase()==='SEQUENCE' && tokens[i+1].value.toUpperCase()==='NAME') seqIdentita.add(tokens[i+2].value);
+          }
           tables[file.collection] = type === 'mysql' ? require('./mysql-ddl').canonicalMySqlTableDdl(
             require('../backup/lib/engine').splitMySqlForeignKeys(ddl, file.collection).ddl, stagingDb)
             : canonicaIdentificatori(canonicalSqlForDb(ddl, stagingDb));
@@ -283,6 +299,8 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
       delete retargeted.foreignKeys;
       delete retargeted.indexes;
     }
+    if (type === 'postgresql') retargeted.sequenceValues = [...(retargeted.sequenceValues || []),
+      ...require('./pg-partizioni').valoriAutonomi(chain,plan.source.onlyCollections,new Set(destinationBaseline?.counts.map(c=>c.name)))];
     const incoming = { objects: canonicalSchemaInventory(retargeted, { db: stagingDb }), indexes, tables };
     if (!plan.drop && type !== 'mongodb' && destinationBaseline) {
       for (const name of Object.keys(tables)) {
@@ -298,8 +316,7 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
       query: (sql, params) => strategy.pool.query(sql, params), targetDb: plan.targetDb,
       collections: plan.source.onlyCollections, objects,
       references: await require('./pg-routine-selezione').riferimentiRoutineBackup(chain, plan.source.onlyCollections),
-      ddl: chain[0].manifest.files.filter(file => file.kind === 'schema' && selected.has(file.collection))
-        .map(file => fs.readFileSync(path.join(chain[0].dir, file.path), 'utf8')).join('\n'),
+      ddl: require('./pg-routine-selezione').ddlSelettiveBackup(chain,plan.source.onlyCollections,{ allowUnsafeSchema:plan.allowUnsafeSchema }),
     })).map(item => item.name) : []);
     const owned = (field, value) => {
       if (field === 'routines' && type === 'postgresql') return selectedRoutineNames.has(JSON.parse(value).name);
@@ -309,7 +326,7 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
       if (field === 'triggers') return selected.has(item.table);
       if (field === 'sequences') return selected.has(item.ownerTable);
       if (field === 'sequenceValues') {
-        return [...(base.objects.sequences || []), ...(incoming.objects.sequences || [])]
+        return seqIdentita.has(item.name) || [...(base.objects.sequences || []), ...(incoming.objects.sequences || [])]
           .some(sequence => { const s = JSON.parse(sequence); return s.name === item.name && selected.has(s.ownerTable); });
       }
       return false;
@@ -342,6 +359,7 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
       indexes: Object.create(null), tables: Object.create(null),
     };
     const sqlAux = [];
+    const partizioni = type === 'postgresql' ? await require('./pg-partizioni').catalogoPartizioni((s,p)=>strategy.pool.query(s,p),db) : new Map();
     for (const collection of plannedCollections) {
       if (type === 'mongodb') {
         // Senza questo metodo il lato REALE del confronto resterebbe vuoto e
@@ -359,7 +377,7 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
         sqlAux.push(...(type === 'mysql' ? [] : (aux.indexes || [])), ...(aux.foreignKeys || []));
       }
       if (type !== 'mongodb' && typeof strategy.tableDdl === 'function') {
-        const ddl = await strategy.tableDdl(db, collection.name);
+        const ddl = await strategy.tableDdl(db, collection.name, { conSequenze: true, partizione: partizioni.get(collection.name) });
         result.tables[collection.name] = type === 'mysql' ? require('./mysql-ddl').canonicalMySqlTableDdl(
           require('../backup/lib/engine').splitMySqlForeignKeys(ddl, collection.name).ddl, db)
           : canonicaIdentificatori(canonicalSqlForDb(ddl, db));
@@ -371,13 +389,13 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
 
   async function snapshotOf(db, strategy = primaryStrategy) {
     const collections = (await strategy.listCollections(db)).filter((item) => item.type !== 'view'
-      && (type !== 'mongodb' || !item.name.startsWith('system.')));
+      && !collectionDiSistema(type, item.name));
     const counts = [];
     for (const collection of collections) {
       const planned = snapshot && snapshot.counts.find((item) => item.name === collection.name);
       const identity = planned ? planned.identity : identities.get(collection.name) || null;
       const value = await cardinalitaDestinazione({
-        strategy, dbType: type, targetDb: db, collection: collection.name, identity,
+        strategy, dbType: type, targetDb: db, collection: collection.name, identity, pgPhysical:type === 'postgresql' && fisichePg.has(collection.name),
       });
       counts.push({ name: collection.name, identity, ...value });
     }
@@ -390,12 +408,13 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
   return {
     setSignal(next) { activeSignal = next; shell.setSignal(next); },
     async validatePlan(plan) {
+      if (verificaSorgente) await verificaSorgente();
       if (plan.kind !== 'restore-backup' || plan.dbType !== type) throw new Error('Piano restore incompatibile con la strategia.');
-      const current = descriviBackup(plan.source.backupDir, plan.source.onlyCollections, { allowUnsafeSchema: plan.allowUnsafeSchema === true });
+      const current = descriviBackup(plan.source.backupDir, plan.source.onlyCollections, { allowUnsafeSchema: plan.allowUnsafeSchema === true, filtraErroreOrigine });
       if (JSON.stringify(current) !== JSON.stringify(plan.source)) {
         throw new Error('La catena backup e cambiata dopo la conferma del piano.');
       }
-      await preflightChain(resolveChain(plan.source.backupDir), log, { allowUnsafeSchema: plan.allowUnsafeSchema === true });
+      await preflightChain(resolveChain(plan.source.backupDir), log, { allowUnsafeSchema: plan.allowUnsafeSchema === true, filtraErroreOrigine });
       identities = new Map(plan.collections.map((collection) => [collection.name, collection.identity || null]));
     },
     destinationExists: shell.destinationExists,
@@ -415,6 +434,7 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
       return staging;
     },
     async apply(plan, staging) {
+      if (verificaSorgente) await verificaSorgente();
       if (activeSignal && activeSignal.aborted) throw Object.assign(new Error('Restore annullato.'), { code: 'IMPORT_ABORTED' });
       if (!expectedSchema) expectedSchema = await expectedSchemaOf(plan, staging.db);
       const rimuoviSuperati = await preparaRimozioneOggettiSuperati(plan, staging);
@@ -422,7 +442,7 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
       const summary = await runRestore({
         session: { strategy, dbType: type }, backupDir: plan.source.backupDir,
         targetDb: staging.db, onlyCollections: plan.source.onlyCollections,
-        drop: !!plan.drop, log, allowUnsafeSchema: plan.allowUnsafeSchema === true,
+        drop: !!plan.drop, log, allowUnsafeSchema: plan.allowUnsafeSchema === true, filtraErroreOrigine,
       });
       if (summary.largeObjects?.length) staging.largeObjects = [...new Set([...(staging.largeObjects || []), ...summary.largeObjects])];
       if (ripristinaDipendenze) await ripristinaDipendenze();
@@ -488,16 +508,16 @@ function createBackupRestoreAdapter({ strategy, dbType, connName, recoveryRoot, 
 
 async function runRestoreViaPlan({
   session, backupDir, targetDb, onlyCollections, drop, log, recoveryRoot, connName = 'restore', onProgress,
-  allowUnsafeSchema = false,
+  allowUnsafeSchema = false, verificaSorgente, filtraErroreOrigine,
 }) {
-  const source = descriviBackup(backupDir, onlyCollections, { allowUnsafeSchema });
+  const source = descriviBackup(backupDir, onlyCollections, { allowUnsafeSchema, filtraErroreOrigine });
   const plan = require('./importPlan').creaPianoRestore({
     source, expectedDbType: session.dbType, connection: connName,
     targetDb: targetDb || source.sourceDb, drop: !!drop, allowUnsafeSchema,
   });
   const adapter = createBackupRestoreAdapter({
     strategy: session.strategy, dbType: session.dbType, connName,
-    recoveryRoot, log,
+    recoveryRoot, log, verificaSorgente, filtraErroreOrigine,
   });
   const result = await require('./importPlan').eseguiPianoImport(plan, { adapter, onProgress });
   return { ...result,

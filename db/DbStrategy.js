@@ -16,6 +16,10 @@ function unsupported() {
 }
 
 class DbStrategy {
+  static collectionDiSistema(dbType, name) {
+    return dbType === 'mongodb' && String(name).startsWith('system.');
+  }
+
   constructor({ env } = {}) {
     // Le istanze incorporate ricevono una fotografia della configurazione.
     // I chiamanti storici senza opzioni mantengono i default del processo.

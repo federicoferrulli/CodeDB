@@ -32,9 +32,17 @@ function equivalenzaCatena(chain) {
     return { completa: true, motivo: null };
   }
   const latest = new Map();
-  for (const layer of layers) for (const file of layer.manifest.files || []) {
-    if (file.kind === 'data') latest.set(file.collection, { file, manifest: layer.manifest });
+  let coperturaIncerta = false;
+  for (const { manifest } of layers) {
+    const dati = (manifest.files || []).filter(f => f.kind === 'data');
+    const presenti = new Set(dati.map(f => f.collection));
+    const inv = manifest.entityInventory;
+    if (inv?.scope === 'all') coperturaIncerta = false;
+    else if ([...latest.keys()].some(n => !presenti.has(n) && !(inv?.removed || []).includes(n))) coperturaIncerta = true;
+    for (const n of inv?.removed || []) latest.delete(n);
+    for (const file of dati) latest.set(file.collection, { file, manifest });
   }
+  if (coperturaIncerta) return { completa: false, motivo: 'La catena contiene una selezione parziale o storica: lo stato delle entità omesse è sconosciuto.' };
   for (const { file, manifest } of latest.values()) {
     if (file.mode === 'full') continue;
     if (!semanticaCancellazioni(manifest).completa) return semanticaCancellazioni(manifest);

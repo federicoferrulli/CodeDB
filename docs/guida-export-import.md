@@ -16,12 +16,107 @@ per un ripristino con i tipi completi usare l'export CodeDB dalla sidebar.
 
 ## Export dalla sidebar
 
-«Esporta database…» permette di scegliere **Script SQL (.sql)** su MySQL e
-PostgreSQL, oppure **CodeDB (.codedb.json)** sui tre motori. La scelta di
-struttura, dati e oggetti si applica al file effettivo. SQL non rappresenta i
+Il menu del database offre **Esporta database…** su MySQL e PostgreSQL e
+**Esporta o copia il database…** su MongoDB. Tutti e tre i motori permettono
+di scaricare un archivio **CodeDB (.codedb.json)**. Su MySQL e PostgreSQL si
+può scaricare anche uno **script SQL (.sql)**. Su MongoDB si può copiare in un
+altro database oppure scaricare uno **script mongosh (.js)**. La selezione di struttura, dati e
+oggetti si applica sia alla copia sia al file. SQL non rappresenta i
 documenti e gli indici MongoDB: il formato CodeDB contiene BSON grezzo in base64,
-che conserva anche tag storici, date estreme e sottotipi binari. Il menu della
-tabella offre «Esporta CodeDB · tipi completi…» con la tabella già selezionata.
+che conserva anche tag storici, date estreme e sottotipi binari. Per esportare
+una singola tabella MySQL o PostgreSQL, aprire «Esporta SQL o CodeDB con opzioni…»
+dal suo menu.
+
+### Copiare su MongoDB da CodeDB
+
+Nel wizard **Esporta o copia il database** scegliere **Copia in un altro database MongoDB** nel menu
+**Formato o operazione**. Selezionare una connessione MongoDB aperta e indicare
+il database di destinazione. Sulla stessa istanza scegliere un database diverso
+dall’origine. Due server distinti possono usare lo stesso nome di database.
+È possibile aprire lo stesso wizard dal menu della singola collection.
+
+Aprire **Anteprima della copia**, controllare origine, destinazione e oggetti,
+quindi selezionare **Avvia copia**. CodeDB applica la selezione con il driver MongoDB. Il resoconto
+mostra i documenti inseriti, aggiornati, sostituiti e mantenuti, insieme alle
+collection e alle viste create o ricreate. Un documento già identico viene
+contato fra i mantenuti. Se una scrittura fallisce, i conteggi parziali
+descrivono le operazioni già confermate. Quelle operazioni restano applicate.
+Se il browser perde la connessione, mostra l’ultimo avanzamento ricevuto.
+Il server registra l’esito e i conteggi disponibili nello storico Audit,
+alla voce «Copia MongoDB diretta».
+
+Per usare una collection già popolata scegliere **Solo dati**. Il confronto
+avviene per `_id`. I documenti con un nuovo `_id` vengono inseriti in tutte
+le modalità.
+
+| Se il documento esiste | Effetto |
+| --- | --- |
+| Inserisci | Il duplicato genera un errore. |
+| Mantieni | Conserva l’intero documento presente. |
+| Aggiorna | Scrive i campi esportati e conserva gli altri campi di primo livello. Un sottodocumento o un array esportato viene sostituito per intero. |
+| Sostituisci | Rimpiazza il documento con quello esportato, eliminando anche i campi presenti soltanto a destinazione. |
+
+Per **struttura e dati**, si può creare, creare solo se assente oppure eliminare
+e ricreare. Il riuso conserva indici e opzioni locali. La ricreazione ripristina
+la definizione esportata ed elimina i documenti precedenti. L’anteprima indica
+i nomi delle collection e delle viste che la ricreazione potrà eliminare. Una
+collection inclusa soltanto come dipendenza di una vista viene conservata se esiste.
+
+Per una collection time-series scegliere **Inserisci**. Questa modalità
+trasferisce i documenti in BSON grezzo e conserva anche tipi storici o date
+fuori dall’intervallo JavaScript. Le modalità che confrontano i documenti
+per `_id` segnalano i valori che il driver non può convertire fedelmente.
+
+### Scaricare uno script mongosh
+
+Il formato predefinito su MongoDB è l’archivio BSON completo. Per ottenere
+un file eseguibile, scegliere **Scarica lo script di copia per mongosh (.js)**.
+Aprire **Anteprima dello script** e confermare con **Scarica script** per salvare il file.
+La copia avviene solo quando si esegue lo script, per esempio con
+`mongosh "mongodb://localhost:27017" --file negozio.mongosh.js`. Il file
+seleziona il database di origine indicato nell’anteprima. Le operazioni sono
+applicate in ordine. Se un indice univoco o un validatore rifiuta una scrittura,
+le operazioni precedenti possono essere già state applicate. Per il replay
+usare una finestra senza modifiche concorrenti. [Esecuzione di script con mongosh](https://www.mongodb.com/docs/mongodb-shell/write-scripts/)
+
+Il file trasferisce la struttura logica degli oggetti selezionati. La
+configurazione del cluster e dello sharding va predisposta sulla destinazione.
+Le time-series supportano l’inserimento delle misure. Per le collection con
+Queryable Encryption, l’export di script si ferma perché il trasferimento
+richiede anche le chiavi e le collection di stato. Se un valore BSON non ha una
+rappresentazione fedele nello script, l’export lo segnala prima del download.
+Per conservare quei byte scegliere **CodeDB · BSON completo**.
+
+### Script SQL
+
+Con **Script SQL** si sceglie come applicare il file alla destinazione. Le
+impostazioni iniziali generano `CREATE TABLE` per la struttura e `INSERT` per
+le righe. «Crea solo se assente» conserva la struttura delle tabelle esistenti.
+«Elimina e ricrea» scrive `DROP TABLE IF EXISTS` per le tabelle elencate
+nell’anteprima. Quando si esegue il file, queste perdono anche le righe presenti
+solo a destinazione. Scegliere «Solo dati» per lavorare sulle righe di tabelle
+già predisposte.
+
+| Righe duplicate | MySQL | PostgreSQL |
+| --- | --- | --- |
+| Aggiornare la riga esistente | `INSERT … ON DUPLICATE KEY UPDATE` | `INSERT … ON CONFLICT (…) DO UPDATE` su una chiave primaria o un indice univoco compatibile |
+| Mantenere la riga esistente | Autoassegnazione su duplicato. Possono scattare i trigger di aggiornamento | `INSERT … ON CONFLICT DO NOTHING` |
+| Sostituire la riga | `REPLACE INTO` elimina le righe in conflitto prima di inserire quella esportata | Usare l’aggiornamento su conflitto per modificare la riga |
+
+Su PostgreSQL l’aggiornamento confronta una sola chiave. La violazione di
+un altro vincolo univoco può fermare lo script. Su MySQL `REPLACE` attiva
+anche le azioni `ON DELETE` delle chiavi esterne, comprese le cancellazioni
+a cascata di righe figlie. Per applicare le opzioni, eseguire il file con
+`mysql` o `psql` durante una finestra senza scritture concorrenti.
+Il wizard di import usa un proprio piano di staging e sostituzione della
+destinazione. [MySQL REPLACE](https://dev.mysql.com/doc/refman/8.4/en/replace.html) · [MySQL ON DUPLICATE KEY UPDATE](https://dev.mysql.com/doc/refman/8.4/en/insert-on-duplicate.html) · [PostgreSQL ON CONFLICT](https://www.postgresql.org/docs/17/sql-insert.html)
+
+Con le opzioni avanzate PostgreSQL, selezionare i dati delle singole partizioni
+che si vogliono trasferire. La struttura di una partizione include quella del
+padre come dipendenza. La ricreazione di un padre si ferma se eliminerebbe
+anche una partizione esclusa. Le chiavi esterne già presenti nella destinazione
+restano attive. Un ciclo con vincoli immediati può richiedere che le righe
+riferite esistano prima del caricamento.
 
 Il server conserva il piano confermato, produce il file a blocchi su disco,
 verifica i conteggi e il checksum e solo allora offre il download HTTP.
@@ -36,7 +131,7 @@ Le routine MySQL usano la direttiva `DELIMITER` del client mysql.
 Gli script preservano gli ID MySQL pari a zero e gli istanti temporali usando
 UTC durante export e ripristino. Al termine MySQL ripristina modalità SQL,
 fuso orario e controllo FK della sessione destinataria.
-L'export SQL «solo dati» gestisce anche FK cicliche, composte e autorelazioni:
+L'export SQL «solo dati» con `INSERT` semplice gestisce anche FK cicliche, composte e autorelazioni:
 i vincoli vengono verificati dopo il caricamento e prima del commit. Su MySQL
 serve il privilegio `CREATE TEMPORARY TABLES`; su PostgreSQL occorre poter
 alterare i vincoli delle tabelle. Gli errori devono fermare il client SQL:
@@ -125,6 +220,15 @@ Verifica dedicata: `test/unit-database-export.js`,
 crea e rimuove soltanto database con nomi casuali. Se si indicano
 `EXPORT_MYSQL_CONTAINER` e `EXPORT_PG_CONTAINER`, il roundtrip usa direttamente
 mysql e psql nei container indicati, oltre a dump prodotti da mysqldump e pg_dump.
+`test/e2e-export-mongosh.js` scarica lo script via HTTP e lo esegue con
+`mongosh` su un database di prova. Richiede `EXPORT_MONGO_PORT` e usa il
+client locale oppure quello del container indicato da `EXPORT_MONGO_CONTAINER`.
+`test/e2e-export-opzioni-sql-ui.js` verifica nel browser le scelte per gli
+script SQL e mongosh, dall’apertura del wizard all’anteprima.
+`test/e2e-export-mongo-diretto.js` esegue la copia dal browser su due istanze
+MongoDB e confronta il resoconto con i dati effettivi, anche dopo un errore.
+Usa `EXPORT_MONGO_PORT`, `EXPORT_MONGO_TARGET_PORT` e `CODEDB_E2E_DESTRUCTIVE=1`
+per i database casuali della prova.
 `test/e2e-import-volume.js` confronta tutti i valori di 12.000 righe per motore
 e verifica le sequenze nel restore PostgreSQL selettivo. Le misure sono in
 `test-reports/import-export-2026-10-12/volume.json`.

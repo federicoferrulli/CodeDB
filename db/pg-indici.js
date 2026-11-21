@@ -99,4 +99,11 @@ function canonicaIndice(sql, db) {
   return out.join(' ');
 }
 
-module.exports = { riqualificaIndice, canonicaIndice };
+function indiceRicorsivo(sql) {
+  const tokens = tokensIndice(sql);
+  const on = tokens.findIndex(t => t.kind === 'id' && !t.quoted && t.value === 'on');
+  const only = tokens[on + 1];
+  return only?.kind === 'id' && !only.quoted && only.value === 'only'
+    ? sql.slice(0,tokens[on].end) + sql.slice(only.end) : sql;
+}
+module.exports = { riqualificaIndice, canonicaIndice, indiceRicorsivo };

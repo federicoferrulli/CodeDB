@@ -11,7 +11,8 @@
 
 const path = require('path');
 const fs = require('fs');
-const { loadConnections, hasEncryptedSecrets, promptPassphrase } = require('./lib/connstore');
+const { loadConnections, hasEncryptedSecrets, promptPassphrase, ownerCorrente, connectionsFileFor } = require('./lib/connstore');
+const { autorita } = require('./lib/origine');
 const { establishConnection, teardownConnection } = require('./lib/connect');
 const { createLogger, formatDuration } = require('./lib/logger');
 const { runBackup } = require('./lib/engine');
@@ -218,6 +219,7 @@ async function cmdBackup(args) {
       try {
         const result = await runBackup({
           session, connName, db, type, onlyCollections,
+          origine: autorita(connectionsFileFor(ownerCorrente(args.owner)), cfg.backupOriginId),
           sinceField: args['since-field'] || null,
           destRoot, compress: !args['no-compress'], level, log,
         });

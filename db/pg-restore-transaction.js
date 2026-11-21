@@ -1,6 +1,7 @@
 'use strict';
 
 const { EventEmitter } = require('node:events');
+const strategieTransazionali = new WeakSet();
 
 // Una connessione dedicata: il pool della sessione utente non viene sostituito.
 // Le transazioni dei singoli batch diventano savepoint dentro la promozione.
@@ -58,8 +59,10 @@ async function apriTransazioneRipristino(strategy) {
   lease.query = query;
   const isolated = new (require('./PostgreSqlStrategy'))({ env: strategy.env });
   isolated.pool = { query, connect: async () => lease, end: async () => {} };
+  const protetta = require('../auth/guardStrategy').ereditaGuardia(strategy, isolated);
+  strategieTransazionali.add(protetta);
   return {
-    strategy: isolated,
+    strategy: protetta,
     get state() { return state; },
     async commit() {
       await queue;
@@ -85,4 +88,4 @@ async function apriTransazioneRipristino(strategy) {
   };
 }
 
-module.exports = { apriTransazioneRipristino };
+module.exports = { apriTransazioneRipristino, inTransazioneRipristino: strategy => strategieTransazionali.has(strategy) };

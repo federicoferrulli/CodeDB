@@ -119,17 +119,14 @@ async function promoteHexStrings(node, path, isOidField) {
 }
 
 function parseId(rawId) {
-  const val = EJSON.parse(rawId, { relaxed: false });
-  if (typeof val === 'string' && /^[0-9a-fA-F]{24}$/.test(val)) return new ObjectId(val);
-  return val;
+  // Il tipo EJSON della chiave distingue anche stringhe e ObjectId omonimi.
+  return EJSON.parse(rawId, { relaxed: false });
 }
 
 function withIdBound(filter, op, val) {
-  const cond = { _id: { [op]: val } };
-  if (filter && Object.prototype.hasOwnProperty.call(filter, '_id')) {
-    return { $and: [filter, cond] };
-  }
-  return { ...filter, ...cond };
+  // Il confronto fra espressioni segue l'ordine BSON completo dell'indice _id.
+  const cond = { $expr: { [op]: ['$_id', { $literal: val }] } };
+  return filter && Object.keys(filter).length ? { $and: [filter, cond] } : cond;
 }
 
 // BSON Long oltre i 53 bit non deve attraversare Number in relaxed mode (CDB-04):
@@ -757,7 +754,7 @@ class MongoDbStrategy extends DbStrategy {
 }
 
 installaCatalogoMongo(MongoDbStrategy.prototype, { parseQueryObject });
-installaTrasferimentoMongo(MongoDbStrategy.prototype, { parseQueryObject, serialize });
+installaTrasferimentoMongo(MongoDbStrategy.prototype, { parseQueryObject, serialize, withIdBound });
 installaSessioniStreamMongo(MongoDbStrategy.prototype, { serialize });
 
 MongoDbStrategy.serialize = serialize;

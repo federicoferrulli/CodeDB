@@ -178,4 +178,4 @@ function loadConnections(passphrase, ownerId) {
   return sections;
 }
 
-module.exports = { loadConnections, hasEncryptedSecrets, promptPassphrase, CONNECTIONS_FILE };
+module.exports = { loadConnections, hasEncryptedSecrets, promptPassphrase, CONNECTIONS_FILE, connectionsFileFor, ownerCorrente };

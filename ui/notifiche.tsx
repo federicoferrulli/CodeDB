@@ -85,6 +85,9 @@ export function initNotifiche() {
   const toasts = document.getElementById('toast-container');
   if (toasts) snackbar.append(toasts);
   document.body.append(snackbar);
+  new ResizeObserver(([entry]) => {
+    document.documentElement.style.setProperty('--altezza-notifiche', `${entry.contentRect.height}px`);
+  }).observe(snackbar);
   document.addEventListener('codedb:feedback-close', event => {
     const { id, document: owner = document } = (event as CustomEvent<{ id: string; document?: Document }>).detail;
     entries.get(`${documentId(owner)}:${id}`)?.close();
@@ -116,9 +119,13 @@ export function initNotifiche() {
       host.id = `feedback-field-${serial++}`;
       field?.setAttribute('aria-invalid', 'true');
       field?.setAttribute('aria-describedby', [before, host.id].filter(Boolean).join(' '));
-      const clear = () => close();
-      target.addEventListener('input', clear, { once: true });
-      target.addEventListener('change', clear, { once: true });
+      // Invio può emettere change dopo la validazione dello stesso testo.
+      const testo = target.matches('textarea, input:not([type=checkbox], [type=radio], [type=file])')
+        ? target as HTMLInputElement | HTMLTextAreaElement : null;
+      const valoreSegnalato = testo?.value;
+      const clear = () => { if (!testo || testo.value !== valoreSegnalato) close(); };
+      target.addEventListener('input', clear);
+      target.addEventListener('change', clear);
       cleanup = () => {
         target.removeEventListener('input', clear); target.removeEventListener('change', clear);
         if (invalidBefore) field?.setAttribute('aria-invalid', invalidBefore); else field?.removeAttribute('aria-invalid');

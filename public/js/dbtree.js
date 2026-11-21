@@ -7,6 +7,8 @@ import { exportImportMenuItems, dbExportImportMenuItems, openDbImportModal } fro
 import { addOrSplitPane, splitDisponibile } from './splitview.js';
 import { activeTab, tabs } from './tabs.js';
 import { openDbTab } from './colltabs.js';
+import { vaiAllEditorQuery } from './query-tab.js';
+import { closeDrawers } from './responsive.js';
 import { preparaTransizioneAlbero } from './navigator-motion.js';
 import { renderDataEmpty } from '../arc/ui.js';
 
@@ -64,6 +66,13 @@ export function dbWord(capital) {
   const t = state.dbType;
   const w = (t === 'postgresql' || t === 'postgres') ? 'schema' : 'database';
   return capital ? w[0].toUpperCase() + w.slice(1) : w;
+}
+
+function apriQueryDatabase(dbName) {
+  if ($('#sidebar').classList.contains('open')) closeDrawers({ immediate: true });
+  openDbTab(dbName);
+  if (state.view !== 'query') setView('query');
+  vaiAllEditorQuery();
 }
 
 export function renderDbTree(databases, { query = '' } = {}) {
@@ -147,7 +156,7 @@ export function renderDbTree(databases, { query = '' } = {}) {
       showContextMenu(e.clientX, e.clientY, [
         // Utile soprattutto sui database vuoti, dove non c'è alcuna collection
         // da aprire e quindi nessun modo di raggiungere il Query Engine.
-        { icona: 'zap', label: `Query & Aggregate su questo ${dbWord()}`, action: () => openDbTab(db.name) },
+        { icona: 'zap', label: `Query & Aggregate su questo ${dbWord()}`, action: () => apriQueryDatabase(db.name) },
         // La panoramica UML dell'intero database: prima si poteva aprire solo
         // da una tabella, cioe' partendo dal contesto sbagliato.
         { icona: 'network', label: `Diagramma UML del ${dbWord()}`, action: () => { openDbTab(db.name); setView('uml'); } },
@@ -188,22 +197,18 @@ export function renderDbTree(databases, { query = '' } = {}) {
 export function renderCollectionsList(dbName, container, collections) {
   const completaTransizione = preparaTransizioneAlbero($('#db-tree'), activeTab()?.id);
   container.innerHTML = '';
-  // Database vuoto: prima non compariva NULLA sotto il nodo espanso, quindi non
-  // si distingueva un database senza tabelle da uno ancora in caricamento, e
-  // soprattutto non c'era niente da cliccare — nemmeno per creare la prima
-  // tabella con una query. Ora lo si dice, e si offrono le due vie d'uscita.
   if (!collections || collections.length === 0) {
     const li = document.createElement('li');
     li.className = 'node-empty';
-
+    const tipo = collWord();
+    const crea = document.createElement('button');
+    crea.type = 'button';
+    crea.title = `Crea una ${tipo} in ${dbName}`;
+    crea.innerHTML = `<i data-lucide="plus" aria-hidden="true"></i>Nuova ${tipo}`;
+    crea.addEventListener('click', () => openCreateColl(dbName));
+    li.appendChild(crea);
     container.appendChild(li);
-    renderDataEmpty(li, {
-      kind: 'data', compact: true,
-      title: `Nessuna ${collWord()}`,
-      description: `Crea una ${collWord()} o esegui una query su questo ${dbWord()}.`,
-      actionLabel: 'Apri Query & Aggregate', onAction: () => openDbTab(dbName),
-      secondaryAction: { label: `＋ Nuova ${collWord()}…`, onAction: () => openCreateColl(dbName) },
-    });
+    refreshLucideIcons(li);
     completaTransizione();
     return;
   }
@@ -321,7 +326,7 @@ export function initDbTree() {
     e.preventDefault();
     showContextMenu(e.clientX, e.clientY, [
       { icona: 'plus', label: `Nuovo ${dbWord()}…`, action: openCreateDb },
-      { icona: 'upload', label: `Importa ${dbWord()}…`, action: openDbImportModal },
+      { icona: 'download', label: `Importa ${dbWord()}…`, action: openDbImportModal },
       { icona: 'refresh-cw', label: 'Aggiorna elenco', action: refreshDbTree },
     ]);
   });

@@ -9,7 +9,7 @@ function errMsgSafe(err) {
   return (err && err.message) || String(err);
 }
 
-function installaTrasferimentoMongo(prototipo, { parseQueryObject, serialize }) {
+function installaTrasferimentoMongo(prototipo, { parseQueryObject, serialize, withIdBound }) {
   definisciMetodi(prototipo, {
     async shellWrite(db, coll, payload) {
       const client = this.requireClient();
@@ -109,7 +109,7 @@ function installaTrasferimentoMongo(prototipo, { parseQueryObject, serialize }) 
       const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 500, 1), 1000);
       const collection = client.db(db).collection(coll);
       const primaPagina = payload.after == null || payload.after === '';
-      const filter = {};
+      let filter = {};
       if (!primaPagina) {
         let afterId;
         try {
@@ -117,7 +117,7 @@ function installaTrasferimentoMongo(prototipo, { parseQueryObject, serialize }) 
         } catch {
           throw new Error('Cursore di paginazione non valido.');
         }
-        filter._id = { $gt: afterId };
+        filter = withIdBound(null, '$gt', afterId);
       }
       const docs = await collection.find(filter, { promoteValues: false }).sort({ _id: 1 }).limit(limit).toArray();
       const lines = docs.map((d) => EJSON.stringify(d, { relaxed: false }));

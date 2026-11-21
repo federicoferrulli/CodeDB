@@ -223,7 +223,13 @@ const checked = name => { report.checks.push(name); console.log('OK', name); };
     await editor.locator('input').fill('non valido');
     await page.keyboard.press('Enter');
     assert.equal(await countWrites(), beforeInvalid);
-    await page.getByRole('alert').filter({ hasText: 'ObjectId non valido' }).waitFor();
+    const erroreId = editor.getByRole('alert').filter({ hasText: 'ObjectId non valido' });
+    await erroreId.waitFor();
+    assert.equal(await editor.locator('input').getAttribute('aria-invalid'), 'true');
+    await editor.locator('input').fill('fedcba987654321001234567');
+    await erroreId.waitFor({ state: 'detached' });
+    assert.equal(await editor.locator('input').getAttribute('aria-invalid'), null);
+    await editor.locator('input').press('Escape');
     checked('Date UTC e ObjectId: conversione conservata, valore invalido non inviato');
 
     await page.evaluate(async () => {

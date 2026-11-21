@@ -9,7 +9,12 @@ const { normalizzaLayerBackup, estraiBersaglio } = require('../../db/artefatti')
  * La fotografia vuota è significativa: l'ultimo oggetto è stato rimosso.
  * Nei backup precedenti l'assenza del file è ambigua, quindi si conserva
  * l'ultima fotografia disponibile dichiarando il limite, senza inventare dati. */
-function risolviOggettiCatena(chain, { allowUnsafeSchema = false } = {}) {
+function risolviOggettiCatena(chain, { allowUnsafeSchema = false, filtraErroreOrigine } = {}) {
+  try { return leggiOggettiCatena(chain, allowUnsafeSchema); }
+  catch (err) { throw filtraErroreOrigine ? filtraErroreOrigine(err) : err; }
+}
+
+function leggiOggettiCatena(chain, allowUnsafeSchema) {
   let objects = {}, db = chain[0]?.manifest.db, layerId = null;
   let complete = false;
   const indexes = Object.create(null), indexNames = Object.create(null);
@@ -21,6 +26,11 @@ function risolviOggettiCatena(chain, { allowUnsafeSchema = false } = {}) {
   };
   let indiciCompleti = true;
   for (const layer of chain) {
+    for (const nome of layer.manifest.entityInventory?.removed || []) {
+      delete indexes[nome];
+      delete indexNames[nome];
+      mysqlInline.delete(nome);
+    }
     if (layer.manifest.dbType === 'mysql') {
       for (const schema of layer.manifest.files.filter(file => file.kind === 'schema')) {
         const text = fs.readFileSync(fileDelBackup(layer.dir, schema.path, 'file di schema'), 'utf8');

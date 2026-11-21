@@ -23,7 +23,7 @@ fs.mkdirSync(dir, { recursive: true });
     });
     await page.goto(server.url);
     await page.waitForSelector('html[data-arc-ready="true"]');
-    if (await page.locator('#onboarding-close').isVisible()) await page.locator('#onboarding-close').click();
+    await page.locator('#onboarding-close').click();
     if (await page.getByRole('button', { name: 'Nascondi i primi passi' }).isVisible()) await page.getByRole('button', { name: 'Nascondi i primi passi' }).click();
     await page.evaluate(async () => {
       const { createTab, tabs } = await import('/js/tabs.js');
@@ -173,10 +173,12 @@ fs.mkdirSync(dir, { recursive: true });
       const tab = activeTab(), collTabId = tab.state.activeCollId;
       const q = (await import('/js/query-document.js')).queryDocument();
       q.file = { tab, collTabId, document: q, index: 0, running: false, chunker: {
-        chunks: [{ index: 0, size: 10 }, { index: 1, size: 10 }],
+        file: new File(['SELECT BLOCCO_0;SELECT BLOCCO_1;'], 'sequenza.sql'),
+        complete: true, chunks: [{ index: 0, size: 16 }, { index: 1, size: 16 }],
+        ensureChunk(i) { return this.chunks[i]; },
         getFileInfo: () => ({ name: 'sequenza.sql', formattedSize: '20 B', chunkCount: 2 }),
         getChunkCount: () => 2,
-        readChunk: async i => ({ text: `SELECT BLOCCO_${i};`, startByte: i * 10, endByte: (i + 1) * 10, totalBytes: 20 }),
+        readChunk: async i => ({ index: i, text: `SELECT BLOCCO_${i};`, startByte: i * 16, endByte: (i + 1) * 16, totalBytes: 32 }),
       } };
       (await import('/js/query-tab.js')).restoreQueryView(q);
       (await import('/js/main.js')).setView('query');

@@ -81,41 +81,45 @@ async function restoreLayerMySql({
       (f) => f.kind === 'data' && (!onlyCollections || onlyCollections.includes(f.collection))
     );
 
-    let existingTables = null;
-    if (isFirst) {
-      const [rows] = await conn.query(
-        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ?',
-        [targetDb]
-      );
-      existingTables = new Set(rows.map(r => r.TABLE_NAME));
+    const nuovi = dataFiles.filter(f => !tracker.has(f.collection));
+    if (nuovi.length) {
+      const [rows] = await conn.query('SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ?', [targetDb]);
+      const existing = new Set(rows.map(r=>r.TABLE_NAME));
+      for (const f of nuovi) {
+        const table = myQid(f.collection);
+        const schema = layer.manifest.files.find(item=>item.kind==='schema' && item.collection===f.collection);
+        if (!schema && (!existing.has(f.collection) || drop)) throw new Error('Schema di "'+f.collection+'" assente dal backup: impossibile ricreare la tabella.');
+        if (!schema) continue;
+        const ddl = readSchemaFile(layer.dir,schema,f.collection,{...opts,dbType:'mysql',database:layer.manifest.db});
+        const definition = riqualificaDdl(require('./engine').splitMySqlForeignKeys(ddl,f.collection).ddl,layer.manifest.db,targetDb,'mysql').replace(/;\s*$/,'');
+        if (drop && existing.has(f.collection)) {
+          await conn.query('DROP TABLE '+table);
+          existing.delete(f.collection);
+        }
+        if (!existing.has(f.collection)) await conn.query(definition);
+        else {
+          // SHOW CREATE mette gli indici secondari inline. Nel merge la tabella esiste già.
+          const { partiTabella } = require('../../db/schema-merge');
+          const indexes = text => new Map((partiTabella(text)?.parts || []).flatMap(part => {
+            const m = /^(?:(?:UNIQUE|FULLTEXT|SPATIAL)\s+)?(?:KEY|INDEX)\s+(`(?:[^`]|``)+`|[a-zA-Z_][\w$]*)\s+/i.exec(part);
+            return m ? [[m[1].replace(/^`|`$/g,'').replace(/``/g,'`'),part]] : [];
+          }));
+          const [[row]] = await conn.query('SHOW CREATE TABLE '+table);
+          const presenti = indexes(row['Create Table']);
+          for (const [name, clausola] of indexes(definition)) if (!presenti.has(name)) await conn.query('ALTER TABLE '+table+' ADD '+clausola);
+        }
+      }
     }
 
     for (const f of dataFiles) {
+      const primaApparizione = !tracker.has(f.collection);
       await conn.query('SET SESSION time_zone = ?', [f.timezone === 'UTC' ? '+00:00' : originalSession.timezone]);
       registraFileAtteso(tracker, f);
       const tableId = myQid(f.collection);
-      if (isFirst) {
-        if (drop) {
-          await conn.query(`DROP TABLE IF EXISTS ${tableId}`);
-          existingTables.delete(f.collection);
-        }
-
-        if (!existingTables.has(f.collection)) {
-          const schemaFile = layer.manifest.files.find((x) => x.kind === 'schema' && x.collection === f.collection);
-          if (!schemaFile) throw new Error(`Schema di "${f.collection}" assente dal backup: impossibile ricreare la tabella.`);
-          const ddl = readSchemaFile(layer.dir, schemaFile, f.collection, {
-            ...opts, dbType: 'mysql', database: layer.manifest.db,
-          });
-          const separated = require('./engine').splitMySqlForeignKeys(ddl, f.collection);
-          await conn.query(riqualificaDdl(separated.ddl, layer.manifest.db, targetDb, 'mysql').replace(/;\s*$/, ''));
-          existingTables.add(f.collection);
-        }
-      }
-
       const targetMeta = await mysqlTargetIdentity(conn, targetDb, f.collection, f.identity);
       let empty = false;
       if (!f.identity) {
-        if (!isFirst && f.mode === 'full' && f.content?.mode === 'snapshot') {
+        if (!primaApparizione && f.mode === 'full' && f.content?.mode === 'snapshot') {
           assertColumnsAndIdentity(f, targetMeta.columnSchema, targetMeta.identity, { empty: true });
           await conn.query(`DELETE FROM ${tableId}`);
         }
@@ -140,7 +144,7 @@ async function restoreLayerMySql({
       const geoTarget = await mysqlGeoTargetColumns(conn, targetDb, f.collection);
       const sridOrigine = f.geoSrid || {};
 
-      const upsert = !!f.identity && (!isFirst || !drop);
+      const upsert = !!f.identity && (!primaApparizione || !drop);
       const verb = upsert ? 'UPSERT' : 'INSERT';
       let batch = [];
       let columns = null;

@@ -22,14 +22,15 @@ async function restoreLayerMongo({
   );
   let total = 0;
   for (const f of dataFiles) {
+    const primaComparsa = !tracker.has(f.collection);
     registraFileAtteso(tracker, f);
     const collection = client.db(targetDb).collection(f.collection);
-    if (isFirst && drop) {
+    if (primaComparsa && drop) {
       await eliminaSePresente(() => collection.drop(), {
         dbType: 'mongodb', target: `${targetDb}.${f.collection}`,
       });
     }
-    if (isFirst) {
+    if (primaComparsa) {
       const metadata = mongoOptions.get(f.collection);
       await preparaCollectionMongo(client, targetDb, f.collection, metadata?.options || {}, { deferValidation: true, metadata });
     }

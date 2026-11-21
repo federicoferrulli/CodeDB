@@ -723,7 +723,9 @@ class MySqlStrategy extends DbStrategy {
     const { queryMysql, statoMysql } = require('./mysqlSessioneNativa');
     const query = (sql, params) => queryMysql(conn, sql, params);
     const statoNativo = statoMysql(conn);
+    const transazioneInCorso = !!(statoNativo.status & 1);
     let eseguita = false;
+    let erroreIstruzione;
     const letturaIsolata = readOnly && !lease.transazione;
     // Il timeout di mysql2 è lato CLIENT: allo scadere il driver smette di
     // aspettare, ma il server continua a eseguire e il result set arriverà
@@ -748,59 +750,23 @@ class MySqlStrategy extends DbStrategy {
       if (letturaIsolata) await query('START TRANSACTION READ ONLY');
       try {
         const cap = DbStrategy.resultCap(payload);
-        let result, fields;
+        let risposta;
         try {
-          [result, fields] = await query(richiesta, payload.params);
+          risposta = await require('./mysqlSessioneNativa').queryRisultatoMysql(conn, richiesta, payload.params, cap, DbStrategy.maxResultBytes(this.env));
           eseguita = true;
         } catch (err) {
           require('./queryError').annotaErroreQuery(err, sql, 'mysql');
           if (!MySqlStrategy.isDriverTimeout(err)) throw err;
           avvelenata = true;
           await this.uccidiSulServer(conn.threadId);
-          // L'errore del driver risale così com'è: a tradurlo in italiano
-          // (causa + rimedio, citando il limite configurato) è `spiegaErrore`,
-          // che è l'unico posto dove quel testo deve vivere.
           throw err;
         }
-
-        if (Array.isArray(result)) {
-          // I metadati distinguono più result set dai normali nomi di colonna.
-          const isMulti = result.length > 0 && (Array.isArray(result[0]) || Array.isArray(fields?.[0]));
-
-          if (isMulti) {
-            // Cerchiamo l'ultimo result set che ha righe di dati (SELECT)
-            let selectRes = null;
-            let selectFields = null;
-            let totalAffected = 0;
-            let statementCount = result.length;
-
-            for (let i = 0; i < result.length; i++) {
-              const resItem = result[i];
-              if (Array.isArray(resItem)) {
-                selectRes = resItem;
-                selectFields = Array.isArray(fields) && fields[i] ? fields[i] : null;
-              } else if (resItem && typeof resItem.affectedRows === 'number') {
-                totalAffected += resItem.affectedRows;
-              }
-            }
-
-            if (selectRes) {
-              const rows = selectRes.slice(0, cap);
-              const columns = (selectFields || []).map((f) => f.name || f);
-              return { docs: rows.map((r) => serializeRow(r, selectFields || [])), columns, total: selectRes.length, skip: 0, limit: cap, resultSet: true, truncated: selectRes.length > cap };
-            }
-
-            // Soltanto statement di scrittura/DDL (INSERT, UPDATE, CREATE, ecc.)
-            const summary = { istruzioniEseguite: statementCount, righeCoinvolteTotali: totalAffected };
-            return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap };
-          }
-
-          // Singola SELECT
-          const rows = result.slice(0, cap);
-          const columns = (fields || []).map((f) => f.name);
-          return { docs: rows.map((r) => serializeRow(r, fields || [])), columns, total: result.length, skip: 0, limit: cap, resultSet: true, truncated: result.length > cap };
+        if (risposta.righe) return risposta.righe;
+        if (risposta.istruzioni > 1) {
+          const summary = { istruzioniEseguite: risposta.istruzioni, righeCoinvolteTotali: risposta.coinvolte };
+          return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap };
         }
-
+        const result = risposta.header;
         // Statement senza result set (UPDATE, DELETE, DDL...): riepilogo.
         const summary = { righeCoinvolte: result ? (result.affectedRows || 0) : 0 };
         if (result && result.insertId) summary.insertId = result.insertId;
@@ -822,6 +788,9 @@ class MySqlStrategy extends DbStrategy {
         // per leggere il result set arretrato della query uccisa.
         if (letturaIsolata && !avvelenata) await query('ROLLBACK').catch(() => {});
       }
+    } catch (err) {
+      erroreIstruzione = err;
+      throw err;
     } finally {
       let statoServer;
       try {
@@ -836,8 +805,15 @@ class MySqlStrategy extends DbStrategy {
         }
       } catch (err) {
         avvelenata = true;
+        err.sqlTransactionLost = true;
         if (eseguita) throw err;
-      } finally { await lease.termina(eseguita, avvelenata, statoServer); }
+      } finally {
+        if (erroreIstruzione && (avvelenata || (lease.transazione && erroreIstruzione.code === 'ER_LOCK_DEADLOCK') ||
+            (transazioneInCorso && Number.isInteger(statoNativo.status) && !(statoNativo.status & 1)))) {
+          erroreIstruzione.sqlTransactionLost = true;
+        }
+        await lease.termina(eseguita, avvelenata, statoServer);
+      }
     }
   }
 

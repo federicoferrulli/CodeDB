@@ -31,6 +31,7 @@ function creaPianoImport({ artifact, expectedDbType, connection, targetDb, drop 
         : null),
       schemaObjects: (collection.indexes || []).length + (collection.postDdl || []).length,
     })),
+    views: (normalized.objects?.views || []).map(v => v.name),
     artifact: normalized,
   };
   return sigilla(body);

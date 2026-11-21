@@ -65,7 +65,7 @@ function createRestoreOperationRegistry({ now = () => new Date().toISOString(), 
       const first = terminal.shift(); clearTimeout(first.timer); operations.delete(first.key);
     }
   }
-  function start({ operationId = randomUUID(), ownerId, actorId, tabId, connection, backupId, targetDb, fingerprint, execute }) {
+  function start({ operationId = randomUUID(), ownerId, actorId, tabId, connection, backupId, targetDb, fingerprint, source, execute }) {
     if (closed) throw new Error('Registro ripristini in chiusura.');
     if (!validId(operationId)) throw new Error('Identificatore del ripristino non valido.');
     const key = keyOf(operationId, ownerId, actorId), previous = operations.get(key);
@@ -75,7 +75,7 @@ function createRestoreOperationRegistry({ now = () => new Date().toISOString(), 
     }
     let settle;
     const completion = new Promise(resolve => { settle = resolve; });
-    const record = { key, id: operationId, ownerId, actorId, tabId, connection, backupId, targetDb, fingerprint,
+    const record = { key, id: operationId, ownerId, actorId, tabId, connection, backupId, targetDb, fingerprint, source,
       status: 'in_corso', phase: 'accettata', progress: [], startedAt: now(), endedAt: null, ack: null, promise: completion, timer: null };
     operations.set(key, record);
     const progress = event => {
@@ -105,6 +105,7 @@ function createRestoreOperationRegistry({ now = () => new Date().toISOString(), 
   return {
     start,
     get: (id, ownerId, actorId) => publicState(owned(id, ownerId, actorId)),
+    sourceOf: (id, ownerId, actorId) => owned(id, ownerId, actorId).source,
     list: (ownerId, actorId) => [...operations.values()].filter(record => record.ownerId === ownerId && record.actorId === actorId).map(publicState),
     async close() {
       closed = true;

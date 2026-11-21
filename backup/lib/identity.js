@@ -2,7 +2,7 @@
 
 const { EJSON } = require('bson');
 
-const MANIFEST_VERSION = 5;
+const MANIFEST_VERSION = 6;
 const IDENTITY_VERSION = 2;
 const SQL_IDENTITY_KINDS = new Set(['primary-key', 'unique']);
 const IDENTITY_KINDS = new Set(['mongodb-id', ...SQL_IDENTITY_KINDS]);
@@ -129,6 +129,7 @@ function validaManifestIdentita(manifest) {
   if (version > MANIFEST_VERSION) {
     throw new Error(`Versione manifest non supportata: ${version}.`);
   }
+  if (version >= 6) require('./inventario-entita').validaCopertura(manifest);
   if (version >= 3) {
     const d = manifest && manifest.deletions;
     if (!d || d.version !== 1 || d.representation !== 'identity-tombstones'

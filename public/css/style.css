@@ -1570,10 +1570,26 @@ header {
 
 #db-tree ul { list-style: none; margin: 0; padding-left: 16px; }
 
-/* Database senza collection/tabelle: messaggio esplicito + le sole due azioni
-   possibili (aprire il Query Engine sul database, oppure creare la prima
-   tabella). Senza questo il nodo espanso restava muto e vuoto. */
-.node-empty { padding: 4px 8px 8px; }
+/* Il ramo vuoto segue il rientro delle tabelle e la larghezza del navigatore. */
+.node-empty { padding-block: var(--space-xs); }
+.node-empty svg.lucide { width: 14px; height: 14px; }
+.node-empty > button {
+  min-height: max(34px, var(--menu-item-height));
+  width: 100%;
+  justify-content: flex-start;
+  padding: var(--space-xs) var(--space-md);
+  gap: var(--space-sm);
+  font-size: var(--text-sm);
+  text-align: start;
+  white-space: normal;
+  color: var(--accent-fg);
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--accent-fg) 42%, transparent);
+}
+.node-empty > button:hover {
+  background: var(--accent-subtle);
+  border-color: var(--accent-fg);
+}
 
 /* ---------- Workspace ---------- */
 
@@ -4270,14 +4286,25 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .chunk-nav-controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
 .chunk-select {
   padding: 3px 8px;
   font-size: 0.85em;
-  max-width: 260px;
+  width: 9ch;
 }
+
+.chunk-preview {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 12px;
+  overflow: auto;
+  font-family: var(--font-mono);
+}
+.chunk-preview:not([hidden]) + .query-editor-wrapper { display: none; }
 
 .chunk-byte-info {
   font-size: 0.82em;
@@ -4292,19 +4319,10 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   padding-top: 4px;
 }
 
-.chunk-progress-track {
+.chunk-progress-container progress {
   width: 100%;
-  height: 6px;
-  background: var(--bg-3);
-  border-radius: 3px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-
-.chunk-progress-fill {
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.2s ease;
+  height: 8px;
+  accent-color: var(--accent);
 }
 
 .chunk-progress-text {

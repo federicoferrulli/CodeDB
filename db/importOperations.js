@@ -35,6 +35,7 @@ function createImportOperationRegistry({
   battitoMs = 15 * 1000,
 } = {}) {
   const operations = new Map();
+  const pulizie = new Map();
   let closed = false;
 
   // Una voce di diario ha gli stessi nomi dello stato pubblico: la lettura
@@ -46,7 +47,9 @@ function createImportOperationRegistry({
       status: voce.status, phase: voce.phase, progress: voce.progress || [],
       startedAt: voce.iniziatoAl, endedAt: voce.terminatoAl,
       recovery: voce.recovery, staging: voce.staging, error: voce.errore,
-      recoveryError: null, originalError: null, cleanupAt: null,
+      recoveryError: null, originalError: null, cleanupAt: voce.cleanupAt || null,
+      errorePulizia: voce.errorePulizia || null,
+      puliziaStorica: !Object.hasOwn(voce, 'risorse'),
       promotion: null, verification: null, esitoIncerto: voce.esitoIncerto === true,
     };
   }
@@ -67,9 +70,9 @@ function createImportOperationRegistry({
   }
 
   function dimentica(op) {
-    // Il diario si rimuove solo a pulizia esplicita o a esito conservato:
-    // una voce d'errore col recupero penzolante non si cancella da sola.
-    if (diario && (op.cleanupAt || op.status === 'completato')) {
+    // Il diario trattiene le risorse ancora da pulire e la ricevuta di pulizia.
+    const senzaRisorse = op.risorse ? op.risorse.length === 0 : !op.result?.recovery && !op.result?.staging;
+    if (diario && !op.cleanupAt && op.status === 'completato' && !op.errorePulizia && senzaRisorse) {
       try { diario.rimuovi({ ownerId: op.ownerId, operationId: op.id }); } catch (_) { /* già sparita */ }
     }
   }
@@ -113,6 +116,7 @@ function createImportOperationRegistry({
       recoveryError: safeResult && safeResult.recoveryError || null,
       originalError: safeResult && safeResult.originalError || op.originalError || null,
       cleanupAt: op.cleanupAt || null,
+      errorePulizia: op.errorePulizia || null,
       promotion: op.result && op.result.promotion || null,
       verification: op.result && op.result.verification || null,
     };
@@ -127,12 +131,12 @@ function createImportOperationRegistry({
     return op;
   }
 
-  function start({ plan, adapter, ownerId, actorId = null, tabId, onProgress = () => {}, onSettled = () => {} }) {
+  function start({ plan, adapter, ownerId, actorId = null, tabId, backupOriginId = null, onProgress = () => {}, onSettled = () => {} }) {
     if (closed) throw new Error('Registro import in chiusura.');
     const operationId = String(id());
     const controller = new AbortController();
     const op = {
-      id: operationId, ownerId, actorId, tabId, adapter, controller,
+      id: operationId, ownerId, actorId, tabId, adapter, controller, backupOriginId,
       connection: plan.connection || null, targetDb: plan.targetDb || null,
       fingerprint: plan.fingerprint, status: 'in_corso', phase: 'accettata',
       progress: [], startedAt: now(), endedAt: null, result: null, error: null,
@@ -144,7 +148,7 @@ function createImportOperationRegistry({
       try {
         diario.registra({
           ownerId, operationId, fingerprint: plan.fingerprint,
-          connection: op.connection, targetDb: op.targetDb, attore: actorId, tabId,
+          connection: op.connection, backupOriginId, targetDb: op.targetDb, attore: actorId, tabId,
         });
       } catch (_) { /* il diario non ferma l'operazione: la memoria resta */ }
     }
@@ -173,8 +177,12 @@ function createImportOperationRegistry({
     };
     op.promise = Promise.resolve()
       .then(() => execute(plan, { adapter, signal: controller.signal, onProgress: progress }))
-      .then((result) => {
+      .then(async (result) => {
         op.result = result;
+        if (diario && adapter.inventarioPulizia && result.status !== 'intervento_richiesto') {
+          try { op.risorse = await adapter.inventarioPulizia(result); }
+          catch (err) { op.errorePulizia = 'Inventario incompleto. ' + err.message; }
+        }
         op.status = result.status;
         op.phase = 'terminata';
       })
@@ -203,6 +211,7 @@ function createImportOperationRegistry({
                 ownerId, operationId, status: op.status,
                 recovery: finale && finale.recovery, staging: finale && finale.staging,
                 errore: (finale && finale.error) || op.error,
+                risorse: op.risorse || null, errorePulizia: op.errorePulizia || null,
               });
             } catch (_) { /* vedi sopra */ }
           }
@@ -262,11 +271,47 @@ function createImportOperationRegistry({
         throw mancata;
       }
     },
-    async cleanup(operationId, ownerId, adapter = null, actorId = null) {
-      const op = requireOwned(operationId, ownerId, actorId);
-      if (op.status === 'in_corso') throw new Error('L’operazione è ancora in corso.');
-      if (op.cleanupAt) return publicState(op);
-      const cleaner = adapter || op.adapter;
+    async cleanup(operationId, ownerId, adapter = null, actorId = null, connessione = null) {
+      const op = operations.get(String(operationId));
+      const vista = this.get(operationId, ownerId, actorId);
+      const voce = diario?.leggi({ ownerId, operationId });
+      const origine = op?.backupOriginId || voce?.backupOriginId;
+      if (origine ? connessione?.backupOriginId !== origine : connessione && connessione.connection !== vista.connection) {
+        throw new Error('La connessione corrente non corrisponde a quella dell’import.');
+      }
+      if (vista.cleanupAt) return vista;
+      if (vista.status === 'in_corso') throw new Error('L’operazione è ancora in corso.');
+      if (vista.status === 'intervento_richiesto') throw new Error('Esito incerto: verificare la destinazione prima di pulire.');
+      if (op) await op.promise;
+      const cleaner = adapter || op?.adapter;
+      const errorePulizia = op?.errorePulizia || voce?.errorePulizia;
+      if (errorePulizia) throw new Error(errorePulizia);
+      if (Array.isArray(voce?.risorse) || (voce && !Object.hasOwn(voce, 'risorse') && cleaner?.inventarioStorico)) {
+        if (voce.cleanupAt) return daVoce(voce);
+        if (pulizie.has(operationId)) return pulizie.get(operationId);
+        const pulisci = async (aggiornata) => {
+          if (aggiornata.cleanupAt) return daVoce(aggiornata);
+          if (!Array.isArray(aggiornata.risorse)) {
+            const verificate = await cleaner.inventarioStorico(aggiornata);
+            diario.aggiornaPulizia({ ownerId, operationId, risorse: verificate });
+            aggiornata.risorse = verificate;
+          }
+          const risorse = aggiornata.risorse.slice();
+          while (risorse.length) {
+            await cleaner.eliminaRisorsa(risorse[0]);
+            risorse.shift();
+            diario.aggiornaPulizia({ ownerId, operationId, risorse });
+          }
+          const cleanupAt = now();
+          diario.aggiornaPulizia({ ownerId, operationId, risorse, cleanupAt });
+          if (op) { op.cleanupAt = cleanupAt; op.result = sanitizeImportResult(op.result); }
+          return { ...vista, cleanupAt };
+        };
+        const inCorso = diario.conPulizia({ ownerId, operationId }, pulisci).finally(() => pulizie.delete(operationId));
+        pulizie.set(operationId, inCorso);
+        return inCorso;
+      }
+      if (!op) throw new Error(vista.errorePulizia || 'Inventario privato delle risorse non disponibile.');
       if (!cleaner || typeof cleaner.cleanup !== 'function') {
         throw new Error('La strategia non offre la pulizia esplicita di staging e recupero.');
       }

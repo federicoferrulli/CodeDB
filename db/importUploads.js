@@ -57,6 +57,20 @@ function createImportUploadRegistry({
     return [...uploads.values()].reduce((sum, upload) => sum + upload.bytes, 0);
   }
 
+  function open(ownerId, actorId, format, dbType, runId = null) {
+    purge();
+    if (uploads.size >= maxActive) throw new Error('Troppi caricamenti di import contemporanei.');
+    const ownerUploads = [...uploads.values()].filter((upload) => upload.ownerId === ownerId).length;
+    if (ownerUploads >= maxPerOwner) throw new Error('Troppi caricamenti di import contemporanei per questo account.');
+    const uploadId = String(id());
+    const upload = {
+      ownerId, actorId, format, dbType, runId, chunks: [], nextIndex: 0, bytes: 0, artifact: null, touchedAt: now(), timer: null,
+    };
+    uploads.set(uploadId, upload);
+    arm(uploadId, upload);
+    return { uploadId, maxChunkBytes, maxBytes };
+  }
+
   return {
     close() {
       for (const key of uploads.keys()) discard(key);
@@ -64,22 +78,42 @@ function createImportUploadRegistry({
     start(ownerId, actorId = null, { format = 'codedb-json', dbType = null } = {}) {
       if (!['codedb-json', 'sql'].includes(format)) throw new Error('Formato di import non supportato.');
       if (format === 'sql' && !['mysql', 'postgresql'].includes(dbType)) throw new Error('Il dump SQL richiede una connessione SQL.');
-      purge();
-      if (uploads.size >= maxActive) throw new Error('Troppi caricamenti di import contemporanei.');
-      const ownerUploads = [...uploads.values()].filter((upload) => upload.ownerId === ownerId).length;
-      if (ownerUploads >= maxPerOwner) throw new Error('Troppi caricamenti di import contemporanei per questo account.');
-      const uploadId = String(id());
-      const upload = {
-        ownerId, actorId, format, dbType, chunks: [], nextIndex: 0, bytes: 0, artifact: null, touchedAt: now(), timer: null,
-      };
-      uploads.set(uploadId, upload);
-      arm(uploadId, upload);
-      return { uploadId, maxChunkBytes, maxBytes };
+      return open(ownerId, actorId, format, dbType);
+    },
+    startScript(ownerId, session, runId) {
+      if (runId) {
+        purge();
+        for (const [uploadId, upload] of uploads) {
+          if (upload.runId === runId && upload.actorId === session && upload.ownerId === ownerId) {
+            owned(uploadId, ownerId, session);
+            return { uploadId, maxChunkBytes, maxBytes };
+          }
+        }
+      }
+      return open(ownerId, session, 'script', null, runId);
+    },
+    takeScript(uploadId, ownerId, session, expectedBytes) {
+      const upload = owned(uploadId, ownerId, session);
+      if (upload.format !== 'script' || !upload.bytes || expectedBytes !== upload.bytes) {
+        throw new Error('Il caricamento dello script è incompleto.');
+      }
+      const text = upload.chunks.join('');
+      discard(uploadId);
+      return text;
+    },
+    closeScriptSession(session) {
+      for (const [key, upload] of uploads) if (upload.actorId === session) discard(key);
     },
     append(uploadId, ownerId, index, chunk, actorId = null) {
       const upload = owned(uploadId, ownerId, actorId);
       if (upload.artifact) throw new Error('Il caricamento artefatto e gia stato completato.');
+      if (upload.runId && Number.isInteger(index) && index >= 0 && index < upload.nextIndex && upload.chunks[index] === chunk) {
+        return { uploadId: String(uploadId), nextIndex: upload.nextIndex, bytes: upload.bytes };
+      }
       if (Number(index) !== upload.nextIndex) throw new Error(`Blocco fuori sequenza: atteso ${upload.nextIndex}.`);
+      // Oltre al budget dei byte limita la memoria delle singole voci: il client
+      // invia 512 Ki caratteri per frammento (al massimo 129 per uno script).
+      if (upload.format === 'script' && upload.nextIndex >= 256) throw new Error('Troppi frammenti per una singola istruzione SQL.');
       if (typeof chunk !== 'string') throw new Error('Il blocco dell artefatto deve essere testo.');
       const bytes = Buffer.byteLength(chunk, 'utf8');
       if (bytes > maxChunkBytes) throw new Error(`Blocco troppo grande: massimo ${maxChunkBytes} byte.`);

@@ -147,12 +147,19 @@ module.exports = (async () => {
     assert((await list({ ownerId: 'A', category: 'import' })).total > 0);
     assert((await list({ ownerId: 'A', category: 'write' })).entries.some(e => e.category === 'import'));
     assert((await list({ ownerId: 'A', category: 'backup' })).total > 0);
-    change({ confirmTimeoutSeconds: 0.05, pendingPerPrincipal: 1 });
+    change({ pendingPerPrincipal: 1 });
+    const held = await call(a.client, 'execute_write', parameters);
+    assert(held.ok);
+    const overQuota = await call(a.client, 'execute_write', parameters);
+    assert.equal(overQuota.ok, false, 'la quota aggiornata vale subito');
+    assert.match(overQuota.error, /quota conferme/i);
+    assert((await call(a.client, 'execute_write', { connection_id: ca, db: 'app', confirm_token: held.data.confirm_token })).ok);
+
+    change({ confirmTimeoutSeconds: 0.05 });
     const expire = await call(a.client, 'execute_write', parameters);
     assert.equal(expire.data.expires_in_seconds, 0.05);
     const expiring = await latest('execute_write', { ownerId: 'A' });
-    assert.equal((await call(a.client, 'execute_write', parameters)).ok, false, 'la quota aggiornata vale subito');
-    await new Promise(r => setTimeout(r, 80));
+    await waitFor(() => control.confirmQuota().global.count === 0);
     assert.equal((await control.getActivity(expiring.id, { ownerId: 'A' })).status, 'expired');
     assert.equal(control.confirmQuota().global.count, 0);
 

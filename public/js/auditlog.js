@@ -11,6 +11,7 @@ import { $, emit, esc, iniziaCaricamento, lucideIconHtml as ICO, refreshLucideIc
 // Il modulo unico della griglia: stessa finestra virtuale della vista Dati e
 // della tab ⚡ (vedi griglia.js).
 import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo } from './griglia.js';
+import { conteggiCopiaMongo } from './riepilogo-piano.js';
 
 // Etichette italiane degli eventi tracciati (fallback: l'evento grezzo).
 const EVENT_LABELS = {
@@ -189,6 +190,10 @@ function detailsOf(e) {
   if (e.query) bits.push(`query: ${e.query}`);
   if (e.backupType) bits.push(`tipo: ${e.backupType}`);
   if (e.backupId) bits.push(`backup: ${e.backupId}`);
+  if (e.event === 'database:export:execute') {
+    bits.push(`${e.sourceConnection} / ${e.sourceDb} → ${e.connection} / ${e.db}`);
+    for (const { etichetta, valore } of conteggiCopiaMongo(e.risultato)) bits.push(`${etichetta} ${valore}`);
+  }
 
   const counts = [];
   for (const [k, label] of COUNT_LABELS) {

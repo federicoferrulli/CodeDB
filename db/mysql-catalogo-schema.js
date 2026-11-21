@@ -57,6 +57,7 @@ const DIALETTO_METADATI = {
     })),
     visibile: (r) => !/\bINVISIBLE\b/i.test(String(r.extra || '')),
     generato: (r) => colonnaGenerata(r.extra),
+    dettagli: (r) => /\bauto_increment\b/i.test(r.extra) ? { autoIncrement: true } : {},
     classi: [{ nome: 'geo', riconosce: isSqlGeometryType }],
   },
 

@@ -21,6 +21,8 @@ function runAllE2eTests() {
       && file !== 'all-e2e.js' && file !== 'e2e-harness.js')
     // Il riavvio dello stack persistente è una prova separata, richiesta esplicitamente.
     .filter(file => file !== 'e2e-sql-native-provisioning.js' || process.env.CODEDB_E2E_NATIVE_PROVISIONING === '1')
+    // La prova del volume usa un’immagine dell’applicazione costruita per il laboratorio.
+    .filter(file => file !== 'e2e-dati-docker.js' || process.env.CODEDB_E2E_DOCKER_IMAGE)
     .sort();
 
   let passed = 0;
@@ -46,6 +48,14 @@ function runAllE2eTests() {
       PG_DATABASE: process.env.PG_DATABASE || 'postgres',
     };
 
+    // I probe nativi e le suite socket condividono i motori di prova configurati.
+    env.CODEDB_E2E_MONGO_URI ||= env.MONGO_URI || 'mongodb://' + (env.MONGO_HOST || '127.0.0.1') + ':' + (env.MONGO_PORT || '27017');
+    env.MONGO_URI ||= env.CODEDB_E2E_MONGO_URI;
+    for (const [chiave, valore] of Object.entries({
+      PGHOST: env.PG_HOST, PGPORT: env.PG_PORT, PGUSER: env.PG_USER, PGPASSWORD: env.PG_PASSWORD, PGDATABASE: env.PG_DATABASE,
+      E2E_PG_HOST: env.PG_HOST, E2E_PG_PORT: env.PG_PORT, E2E_PG_USER: env.PG_USER, E2E_PG_PASSWORD: env.PG_PASSWORD,
+      E2E_MYSQL_HOST: env.MYSQL_HOST, E2E_MYSQL_PORT: env.MYSQL_PORT, E2E_MYSQL_USER: env.MYSQL_USER, E2E_MYSQL_PASSWORD: env.MYSQL_PASSWORD,
+    })) env[chiave] ??= valore;
     const result = spawnSync(process.execPath, [fullPath], {
       stdio: 'inherit',
       env,

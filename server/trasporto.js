@@ -2,9 +2,11 @@
 
 // CodeDB — trasporto. Stato e dipendenze appartengono alla singola istanza.
 const express = require('express');
+const proxyAddr = require('proxy-addr');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const { bindEsposto, fuoriDalLoopback, hostConsentito } = require('./esposizione');
 const { provaClient, provaServer, stessaProva } = require('../electron-server-auth');
 
 function createModule({ config }) {
@@ -36,7 +38,10 @@ function createModule({ config }) {
   // ingress) alza CODEDB_TRUST_PROXY_HOPS di conseguenza.
   if (String(config.env.CODEDB_TRUST_PROXY_TLS || '').trim() === '1') {
     const hops = parseInt(config.env.CODEDB_TRUST_PROXY_HOPS, 10);
-    app.set('trust proxy', Number.isFinite(hops) && hops > 0 ? hops : 1);
+    const maxHops = Number.isFinite(hops) && hops > 0 ? hops : 1;
+    const reti = String(config.env.CODEDB_TRUST_PROXY_CIDRS || 'loopback').split(',').map(x => x.trim());
+    const proxyFidato = proxyAddr.compile(reti);
+    app.set('trust proxy', (ip, hop) => hop < maxHops && proxyFidato(ip));
   }
 
   const server = http.createServer(app);
@@ -65,8 +70,6 @@ function createModule({ config }) {
    *    cosa che una whitelist fissa su localhost avrebbe rotto.
    * Il rifiuto porta un messaggio che dice cosa fare, non un errore muto.
    * ------------------------------------------------------------------------- */
-  const LOCAL_HOST_HEADER = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
-
   function allowedOriginList() {
     return String(config.env.CODEDB_ALLOWED_ORIGINS || '')
       .split(',')
@@ -81,14 +84,12 @@ function createModule({ config }) {
     const origin = String((req.headers && req.headers.origin) || '').trim();
     const host = String((req.headers && req.headers.host) || '').trim();
     const allowed = allowedOriginList();
-    const bindHost = String(config.env.HOST || '127.0.0.1').toLowerCase();
-    const loopbackBind = ['127.0.0.1', 'localhost', '::1'].includes(bindHost);
 
     // Origin e Host sono entrambi controllati dal browser che visita un dominio
     // ostile. Accettare soltanto perché coincidono consentirebbe il DNS rebinding
     // (evil.example -> 127.0.0.1). Su loopback, in assenza di una whitelist
     // esplicita per il reverse proxy, l'Host deve quindi essere davvero locale.
-    if (loopbackBind && !allowed.length && !LOCAL_HOST_HEADER.test(host)) {
+    if (!hostConsentito(config.env, host)) {
       return { ok: false, reason: `header Host ${host} non consentito su un'istanza in ascolto solo su loopback` };
     }
 
@@ -98,8 +99,7 @@ function createModule({ config }) {
       // continua a essere quello ostile, quindi lo si pretende locale — ma solo
       // se il server è in ascolto su loopback (altrimenti si romperebbe l'accesso
       // legittimo da un'altra macchina).
-      if (!loopbackBind || LOCAL_HOST_HEADER.test(host)) return { ok: true };
-      return { ok: false, reason: `header Host "${host}" non consentito su un'istanza in ascolto solo su loopback` };
+      return { ok: true };
     }
 
     if (allowed.length) {
@@ -210,8 +210,6 @@ function createModule({ config }) {
    * salvo una dichiarazione distinta e volutamente lunga da scrivere
    * (`CODEDB_ALLOW_UNAUTHENTICATED_NETWORK=1`), che viene ripetuta a ogni avvio.
    * ------------------------------------------------------------------------- */
-  const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
-
   /**
    * Indirizzo su cui l'istanza è DAVVERO raggiungibile.
    *
@@ -223,15 +221,6 @@ function createModule({ config }) {
    * dichiarazione di chi pubblica la porta; il compose la ricava da `BIND_ADDR`,
    * così una sola variabile in `.env` resta la fonte di verità.
    */
-  function bindEsposto() {
-    const dichiarato = String(config.env.CODEDB_PUBLIC_BIND || '').trim();
-    return dichiarato || config.env.HOST || '127.0.0.1';
-  }
-
-  function fuoriDalLoopback(host) {
-    return !LOOPBACK_HOSTS.has(String(host || '').trim().toLowerCase());
-  }
-
   function assertTransportSafe(host) {
     if (!fuoriDalLoopback(host)) return;
     if (String(config.env.CODEDB_TRUST_PROXY_TLS || '').trim() !== '1') {
@@ -278,10 +267,11 @@ function createModule({ config }) {
 
   return {
     app,
+    ipClient: req => proxyAddr(req, app.get('trust proxy fn')),
     server,
     checkOrigin,
     io,
-    bindEsposto,
+    bindEsposto: () => bindEsposto(config.env),
     assertTransportSafe,
     assertAuthSafe
   };

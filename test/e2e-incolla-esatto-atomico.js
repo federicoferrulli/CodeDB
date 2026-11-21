@@ -269,15 +269,15 @@ const FABBRICA = `
       impostaSocket(null);
       return {
         scritture: spediti.filter((m) => m.evento === 'doc:update'),
-        toast: document.querySelector('#toast')?.textContent || '',
+        errore: document.querySelector('#feedback-container [role="alert"]')?.innerText || '',
       };
     });
 
     ok(atomico.scritture.length === 0,
       `blocco con una cella non valida: ZERO scritture inviate (${atomico.scritture.length} doc:update) — `
       + 'il database resta invariato');
-    ok(/riga\s*2/i.test(atomico.toast) && /big/.test(atomico.toast),
-      `l'errore identifica riga e colonna ("${atomico.toast}")`);
+    ok(/riga\s*2/i.test(atomico.errore) && /big/.test(atomico.errore),
+      `l'errore identifica riga e colonna ("${atomico.errore}")`);
 
     /* === Parte 3: pasteIntoGrid, valori esatti sul giro intero ============ */
 
@@ -325,12 +325,11 @@ const FABBRICA = `
       return {
         set: scrittura && scrittura.set,
         scritture: spediti.filter((m) => m.evento === 'doc:update').length,
-        toast: document.querySelector('#toast')?.textContent || '',
       };
     });
 
     ok(giroIntero.scritture === 1,
-      `il blocco valido produce una sola doc:update (${giroIntero.scritture}) toast="${giroIntero.toast}"`);
+      `il blocco valido produce una sola doc:update (${giroIntero.scritture})`);
     const set = giroIntero.set || {};
     ok(JSON.stringify(set.big) === JSON.stringify({ $numberLong: '9223372036854775807' }),
       `scrittura reale: BIGINT esatto (${JSON.stringify(set.big)})`);

@@ -350,14 +350,14 @@ function createModule({ config, connessioni, dependencies }) {
     let { code, engine, db, coll, runId, opHandle, run } = payload;
     const codeOriginale = String(code || '').trim();
     // I commenti iniziali non decidono la lingua. Il testo originale resta nell'audit e nell'SQL inviato al driver.
-    const codeStr = codeOriginale.replace(/^(?:\s|--[^\n]*(?:\n|$)|\/\/[^\n]*(?:\n|$)|#[^\n]*(?:\n|$)|\/\*(?![!+])[\s\S]*?\*\/)*/, '').trim();
+    const codeStr = codeOriginale.replace(/^(?:\s|--[^\n]*(?:\n|$)|\/\/[^\n]*(?:\n|$)|#[^\n]*(?:\n|$)|\/\*(?![!+]|M!)[\s\S]*?\*\/)*/, '').trim();
 
     if (!codeStr) {
       throw new Error('Codice query vuoto.');
     }
 
-    const fatto = (res, category, op, dbUsato, collUsata) => {
-      if (res.truncated) {
+    const fatto = (res, category, op, dbUsato, collUsata, ammetteParziale = false) => {
+      if (res.truncated && !ammetteParziale) {
         throw new Error('Risultato incompleto: la query supera il budget di memoria dei risultati. '
           + 'Restringi la query con filtri o un LIMIT esplicito, oppure aumenta CODEDB_MAX_RESULT_BYTES.');
       }
@@ -480,7 +480,7 @@ function createModule({ config, connessioni, dependencies }) {
       try {
         const res = await connessioni.executeWithReconnect(session, (strat) => strat.collectionAggregate(targetDb, targetColl, { pipeline: codeOriginale, maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
         if (res.activeDb) session.strategy.currentDb = res.activeDb;
-        return fatto(res, cat, op, targetDb, targetColl);
+        return fatto(res, cat, op, targetDb, targetColl, true);
       } catch (err) {
         throw conContesto(err, cat, op, targetDb, targetColl);
       }

@@ -1,5 +1,7 @@
 'use strict';
 
+const { collectionDiSistema } = require('../db/DbStrategy');
+
 // CodeDB — operazioni. Stato e dipendenze appartengono alla singola istanza.
 const path = require('path');
 const crypto = require('crypto');
@@ -163,7 +165,7 @@ function createModule({ config, identita }) {
       // attese e zero applicate, e i totali tornano.
       const nomiDi = async (nome) => new Set(
         (await sess.strategy.listCollections(nome))
-          .filter((c) => !String(c.name).startsWith('system.'))
+          .filter((c) => !collectionDiSistema(dbType, c.name))
           .map((c) => String(c.name))
       );
       const attese = await nomiDi(db);

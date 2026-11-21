@@ -26,11 +26,12 @@
  * ciò che lo rende provabile fuori dal browser.
  */
 
-import { socket } from './socket.js';
+import { socket, statoRipresaSocket } from './socket.js';
 import { state } from './state.js';
 import { tabs, activeTab } from './tabs.js';
 import { toast, notifica, chiudiNotifica } from './avvisi.js';
 import { preparaRighe } from './righe.js';
+import { inviaCodice } from './script-upload.js';
 
 // Richiesta con acknowledgment: inietta il tabId del tab attivo, catturato al
 // momento della chiamata (non alla risposta: l'utente può cambiare tab mentre
@@ -49,7 +50,74 @@ import { preparaRighe } from './righe.js';
 // Le operazioni registrate sul server possono sopravvivere al tab: il loro
 // stato non dipende dal workspace. Le opzioni sono esplicite; le richieste
 // ordinarie conservano annullamento sul tab e riconnessione automatica.
-export function emit(event, payload, { timeoutMs = 0, bindTab = true, reconnect = true, rejectOnDisconnect = false } = {}) {
+export function scritturaRighe(event) {
+  return /^doc:(insert|update|replace|delete)$/.test(event) || event === 'collection:deleteMany';
+}
+
+// Una richiesta recuperabile ha un'identità sul server. Il chiamante decide
+// come rileggerla o reinviarla sulla stessa sessione dopo la perdita dell'ack.
+export async function conRipresaSocket(tabId, invia, recupera = invia) {
+  const origine = tabs.list.find(t => t.id === tabId);
+  const tabChiuso = () => tabId && (!origine || !tabs.list.includes(origine));
+  const erroreChiusura = () => Object.assign(new Error('Il tab di origine è stato chiuso.'), { code: 'TAB_CLOSED', name: 'AbortError' });
+  let ripresa = false;
+  for (;;) {
+    try {
+      if (!ripresa) return await invia();
+      if (socket.connected === false) {
+        await new Promise((resolve, reject) => {
+          const pulisci = () => {
+            socket.off('connect', connesso);
+            window.removeEventListener('codedb:tab-closed', chiuso);
+          };
+          const connesso = () => { pulisci(); resolve(); };
+          const chiuso = ev => {
+            if (ev && ev.detail?.tabId !== tabId) return;
+            pulisci();
+            reject(erroreChiusura());
+          };
+          socket.on('connect', connesso);
+          window.addEventListener('codedb:tab-closed', chiuso);
+          if (tabChiuso()) chiuso();
+        });
+      }
+      if (!await statoRipresaSocket()) {
+        throw new Error('La sessione di esecuzione è scaduta. Verifica sul database le istruzioni già applicate.');
+      }
+      if (tabChiuso()) throw erroreChiusura();
+      return await recupera();
+    } catch (err) {
+      if (err.code !== 'SOCKET_DISCONNECTED') throw err;
+      ripresa = true;
+    }
+  }
+}
+
+const opzioniRipresa = { reconnect: false, rejectOnDisconnect: true };
+
+export async function eseguiQueryConRipresa(payload, corrente, onUpload) {
+  const { tabId, runId, dbSessionId } = payload;
+  const leggi = extra => emit('query:state', { tabId, runId, dbSessionId, ...extra }, opzioniRipresa);
+  const invia = (evento, dati, opzioni) => conRipresaSocket(tabId, () => emit(evento, dati, opzioni), async () => {
+    if (evento === 'query:execute') {
+      const esito = await leggi();
+      if (esito.found) return esito;
+      if (esito.found !== false) throw new Error('Esito della query sconosciuto. Verifica sul database le istruzioni già applicate.');
+    }
+    if (dati.action !== 'discard' && !corrente()) throw new Error('La query è stata annullata.');
+    return emit(evento, dati, { ...opzioni, reconnect: false });
+  });
+  try {
+    return await inviaCodice('query:execute', invia, { ...payload, recoverable: true }, () => !corrente(), onUpload);
+  } finally {
+    // Il server può liberare anche un esito SQL negativo già ricevuto.
+    conRipresaSocket(tabId, () => leggi({ received: true })).catch(() => {});
+  }
+}
+
+export function emit(event, payload, opzioni = {}) {
+  const mutazione = scritturaRighe(event);
+  const { timeoutMs = mutazione ? 60000 : 0, bindTab = true, reconnect = true, rejectOnDisconnect = mutazione } = opzioni;
   // Il tabId del payload, quando c'è, ha la precedenza (split view, modali con
   // contesto esplicito): `_tab`/`_state` devono descrivere il tab REALMENTE
   // interrogato, altrimenti il callback scriverebbe nello stato di un altro.
@@ -75,7 +143,7 @@ export function emit(event, payload, { timeoutMs = 0, bindTab = true, reconnect 
     _state: tab ? tab.state : (pinnedMancante || !bindTab ? null : state),
   });
   return new Promise((resolve, reject) => {
-    const scrittura = !!tab && /^doc:(insert|update|replace|delete)$/.test(event);
+    const scrittura = !!tab && mutazione;
     if (scrittura) tab.state.writesInFlight = (tab.state.writesInFlight || 0) + 1;
     let settled = false;
     let onTabClosed = null;
@@ -109,6 +177,7 @@ export function emit(event, payload, { timeoutMs = 0, bindTab = true, reconnect 
     // decidere allo stesso modo se lo stato da toccare è ancora il proprio.
     const fail = (msg, res) => {
       const error = new Error(msg);
+      if (event === 'database:export:execute' && res?.risultato) error.risultato = res.risultato;
       if (res?.queryError) error.queryError = res.queryError;
       if (res?.code === 'SSH_HOST_KEY_UNKNOWN') {
         error.code = res.code;
@@ -177,6 +246,7 @@ export function emit(event, payload, { timeoutMs = 0, bindTab = true, reconnect 
             if (tabChiuso()) { failTabChiuso(); return; }
             if (connRes && connRes.ok) {
               tab.state.connected = true;
+              tab.state.dbSessionId = connRes.dbSessionId;
               chiudiNotifica(`database-${tab.id}`);
               toast(`Riconnessione al database riuscita per "${tab.label || 'Tab'}"`);
               send(event, withTab({ _reconnected: true }), (retryRes) => {

@@ -16,6 +16,7 @@ const { quotaSempre } = require('../../db/identificatori');
 const { normalizzaLayerBackup } = require('../../db/artefatti');
 const { equivalenzaCatena } = require('./tombstones');
 const fotografieSchema = require('./schema-snapshot');
+const { livelliAttivi, ultimaRimozione } = require('./inventario-entita');
 
 const {
   eliminaSePresente, checkApplied, resolveChain, preflightChain,
@@ -29,7 +30,7 @@ const { pgTargetSchema, restoreLayerPostgreSql } = require('./restore-postgres')
 const myQid = (name) => quotaSempre(name, 'mysql');
 const pgQid = (name) => quotaSempre(name, 'postgresql');
 
-async function cardinalitaDestinazione({ strategy, dbType, targetDb, collection, identity }) {
+async function cardinalitaDestinazione({ strategy, dbType, targetDb, collection, identity, pgPhysical = false, mongoSession = null }) {
   if (dbType === 'mysql') {
     const conn = await strategy.pool.getConnection();
     try {
@@ -52,7 +53,7 @@ async function cardinalitaDestinazione({ strategy, dbType, targetDb, collection,
     const distinct = !cols ? 'NULL'
       : cols.length === 1 ? `COUNT(DISTINCT ${cols[0]})` : `COUNT(DISTINCT (${cols.join(', ')}))`;
     const res = await strategy.pool.query(
-      `SELECT COUNT(*) AS cardinality, ${distinct} AS "distinctIdentities" FROM ${pgQid(targetDb)}.${pgQid(collection)}`,
+      `SELECT COUNT(*) AS cardinality, ${distinct} AS "distinctIdentities" FROM ${pgPhysical ? 'ONLY ' : ''}${pgQid(targetDb)}.${pgQid(collection)}`,
     );
     return {
       cardinality: Number(res.rows[0].cardinality),
@@ -60,13 +61,14 @@ async function cardinalitaDestinazione({ strategy, dbType, targetDb, collection,
     };
   }
   const collectionRef = strategy.client.db(targetDb).collection(collection);
-  const cardinality = await collectionRef.countDocuments({});
+  const options = mongoSession ? { session:mongoSession } : {};
+  const cardinality = await collectionRef.countDocuments({}, options);
   let distinctIdentities = null;
   if (identity) {
     const result = await collectionRef.aggregate([
       { $group: { _id: Object.fromEntries(identity.columns.map((c) => [c, `$${c}`])) } },
       { $count: 'n' },
-    ]).toArray();
+    ], options).toArray();
     distinctIdentities = result.length ? Number(result[0].n) : 0;
   }
   return { cardinality, distinctIdentities };
@@ -78,7 +80,7 @@ async function verificaRisultatoFinale({ strategy, dbType, targetDb, tracker, pr
   const collections = [];
   for (const [collection, expected] of tracker) {
     const target = await cardinalitaDestinazione({
-      strategy, dbType, targetDb, collection, identity: expected.identity,
+      strategy, dbType, targetDb, collection, identity: expected.identity, pgPhysical:expected.pgPhysical,
     });
     const expectedCardinality = expected.expectedCardinality + (expected.preserved || 0);
     const expectedDistinct = expected.expectedDistinctIdentities == null ? null
@@ -107,9 +109,11 @@ async function verificaRisultatoFinale({ strategy, dbType, targetDb, tracker, pr
   return { total, expectedTotal, collections };
 }
 
-async function runRestore({ session, backupDir, targetDb, onlyCollections, drop, log, allowUnsafeSchema = false, preserveViewIdentity = false }) {
+async function runRestore(options) {
+  let { session, backupDir, targetDb, onlyCollections, drop, log, allowUnsafeSchema = false, filtraErroreOrigine } = options;
   const { strategy, dbType } = session;
-  const chain = resolveChain(backupDir);
+  const originali = resolveChain(backupDir);
+  const chain = livelliAttivi(originali);
   const first = chain[0].manifest;
   if (first.dbType !== dbType) {
     throw new Error(`Il backup è di tipo "${first.dbType}" ma la connessione di destinazione è "${dbType}".`);
@@ -119,8 +123,12 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
   log.info(`Catena di ripristino (${chain.length} layer): ${chain.map((l) => l.manifest.id).join(' → ')}`);
   log.info(`Database di destinazione: ${db}`);
 
-  await preflightChain(chain, log, { allowUnsafeSchema });
-  const schemaSnapshot = fotografieSchema.risolviOggettiCatena(chain, { allowUnsafeSchema });
+  await preflightChain(originali, log, { allowUnsafeSchema, filtraErroreOrigine });
+  const schemaSnapshot = fotografieSchema.risolviOggettiCatena(originali, { allowUnsafeSchema, filtraErroreOrigine });
+  const postgres = ['postgresql', 'postgres'].includes(dbType);
+  if (postgres) onlyCollections = require('../../db/pg-partizioni').selezionePartizioni(chain, onlyCollections);
+  const ddlSelezionate = onlyCollections && postgres
+    ? require('../../db/pg-routine-selezione').ddlSelettiveBackup(chain, onlyCollections, { allowUnsafeSchema }) : null;
   const routineReferences = onlyCollections && ['postgresql', 'postgres'].includes(dbType)
     ? await require('../../db/pg-routine-selezione').riferimentiRoutineBackup(chain, onlyCollections) : [];
   if (schemaSnapshot.nota) (log.warn || log.info).call(log, `  Oggetti di schema: ${schemaSnapshot.nota}`);
@@ -132,14 +140,40 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
     }
   }
 
+  const prime = new Map();
+  for (const layer of chain) for (const file of layer.manifest.files) {
+    if (file.kind !== 'data' || prime.has(file.collection) || (onlyCollections && !onlyCollections.includes(file.collection))) continue;
+    const schema = layer.manifest.files.find(f=>f.kind==='schema' && f.collection===file.collection);
+    if (drop && dbType !== 'mongodb' && !schema) throw new Error('Schema di "'+file.collection+'" assente dal backup: impossibile sostituire la tabella.');
+    prime.set(file.collection,file);
+  }
+  const contesto = { chain, originali, schemaSnapshot, prime, db, explicitTarget, onlyCollections, ddlSelezionate, routineReferences };
+  if (!postgres || !drop) return applicaCatena(strategy, options, contesto);
+  // DROP, dati, oggetti e controlli finali devono riuscire sulla medesima
+  // connessione prima che la sostituzione diventi visibile.
+  const tx = await require('../../db/pg-restore-transaction').apriTransazioneRipristino(strategy);
+  try {
+    const result = await applicaCatena(tx.strategy, options, contesto);
+    await tx.commit();
+    return result;
+  } catch (error) {
+    if (tx.state === 'aperta') await tx.rollback();
+    throw error;
+  }
+}
+
+async function applicaCatena(strategy, options, contesto) {
+  const { session: { dbType }, drop, log, allowUnsafeSchema = false, preserveViewIdentity = false } = options;
+  const { chain, originali, schemaSnapshot, prime, db, explicitTarget, onlyCollections, ddlSelezionate, routineReferences } = contesto;
+  const first = chain[0].manifest;
   const preserved = new Map();
   if (!drop && typeof strategy.listCollections === 'function') {
     let existing;
     try { existing = await strategy.listCollections(db, { includeCounts: false }); }
     catch (err) { if (err.errno === 1049 || err.code === '3F000') existing = []; else throw err; }
     const names = new Set(existing.filter(item => item.type !== 'view').map(item => item.name));
-    for (const file of first.files.filter(item => item.kind === 'data' && item.identity
-      && names.has(item.collection) && (!onlyCollections || onlyCollections.includes(item.collection)))) {
+    for (const file of prime.values()) {
+      if (!file.identity || !names.has(file.collection) || (onlyCollections && !onlyCollections.includes(file.collection))) continue;
       const count = await require('./merge-identita').contaIdentitaPreservate({
         strategy, dbType, targetDb: db, collection: file.collection, chain, file,
         retarget: (value, source, destination) => riqualificaDdl(value, source, destination, 'postgresql'),
@@ -162,8 +196,12 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
     catch (err) { if (err.errno === 1049 || err.code === '3F000') existing = []; else throw err; }
     const tables = new Set(existing.filter(item => item.type !== 'view').map(item => item.name));
     const quota = dbType === 'mysql' ? myQid : pgQid;
+    // PostgreSQL elimina gli indici attaccati insieme al loro indice padre.
+    const indiciFigli = dbType === 'mysql' ? new Set() : new Set((await strategy.pool.query(
+      `SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_inherits i ON i.inhrelid=c.oid WHERE c.relkind IN ('i','I') AND n.nspname=$1`, [db])).rows.map(r=>r.relname));
     for (const kind of ['triggers', 'foreignKeys', 'indexes']) {
       for (const item of schemaSnapshot.managedSql[kind]) {
+        if (kind === 'indexes' && indiciFigli.has(item.name)) continue;
         if (!tables.has(item.table) || (onlyCollections && !onlyCollections.includes(item.table))) continue;
         let sql;
         if (kind === 'triggers') sql = dbType === 'mysql'
@@ -179,6 +217,15 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
     }
   }
 
+  if (drop) {
+    const rimosse = ultimaRimozione(originali);
+    if (rimosse.size) {
+      const presenti = new Set((await strategy.listCollections(db, { includeCounts: false })).filter(c => c.type !== 'view').map(c => c.name));
+      for (const nome of rimosse.keys()) {
+        if (presenti.has(nome) && (!onlyCollections || onlyCollections.includes(nome))) await strategy.dropCollection(db, nome);
+      }
+    }
+  }
   const mongoOptions = new Map();
   if (dbType === 'mongodb') {
     for (const item of schemaSnapshot.objects.collectionOptions || []) mongoOptions.set(item.name, item);
@@ -193,7 +240,7 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
   for (let i = 0; i < chain.length; i++) {
     const args = {
       strategy, targetDb: db, layer: chain[i], isFirst: i === 0, onlyCollections, drop, log, problems,
-      opts: { allowUnsafeSchema, largeObjectMap, largeObjectReferences, schemaSnapshot, appliedObjects, routineReferences },
+      opts: { allowUnsafeSchema, largeObjectMap, largeObjectReferences, schemaSnapshot, appliedObjects, routineReferences, ddlSelezionate, tabelleDaSostituire: prime.keys() },
       explicitTarget, tracker, mongoOptions,
     };
     totalWrites += dbType === 'mysql'
@@ -227,7 +274,11 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
   if (!onlyCollections || pg || dbType === 'mysql') {
     try {
       let schemaObjects = { ...schemaSnapshot.objects };
-      if (pg) schemaObjects.types = [];
+      if (pg) {
+        schemaObjects.types = [];
+        const esistenti = new Set((await strategy.listCollections(db,{includeCounts:false})).map(t=>t.name));
+        schemaObjects.sequenceValues = [...(schemaObjects.sequenceValues || []), ...require('../../db/pg-partizioni').valoriAutonomi(chain,onlyCollections,esistenti)];
+      }
       if (onlyCollections) {
         schemaObjects = normalizzaLayerBackup({
           dbType, database: schemaSnapshot.db, schemas: [], objects: schemaObjects,
@@ -281,8 +332,8 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
     totalWrites,
     collections: verified.collections,
     problems,
-    equivalenzaDati: equivalenzaCatena(chain),
-    equivalenza: fotografieSchema.equivalenzaConSchema(equivalenzaCatena(chain), schemaSnapshot),
+    equivalenzaDati: equivalenzaCatena(originali),
+    equivalenza: fotografieSchema.equivalenzaConSchema(equivalenzaCatena(originali), schemaSnapshot),
     coerenzaSchema: fotografieSchema.coerenzaOggetti(schemaSnapshot),
     ...(largeObjectMap.size ? { largeObjects: [...largeObjectMap.values()] } : {}),
   };

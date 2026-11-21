@@ -44,11 +44,22 @@ const risultato = (docs, columns) => ({ res: { docs, columns } });
     for (const testo of ['ÿÿÿ', "SELECT 'à/b' FROM 日本", 'SELECT "😀" FROM t']) {
       const strano = idDeposito(testo, 5);
       assert.ok(/^[A-Za-z0-9_-]+-5$/.test(strano), `id con caratteri non ammessi da ${testo}: ${strano}`);
+      assert.equal(strano, Buffer.from(testo).toString('base64url').slice(0, 10) + '-5');
     }
     // Query vuota: un identificativo c'è comunque.
     assert.ok(idDeposito('', 5).startsWith('script-'));
   }
   console.log('  OK   Identificativo: 10 caratteri di base64url + timestamp');
+
+  {
+    const sql = "SELECT '" + 'x'.repeat(1024 * 1024) + "'";
+    const d = creaDeposito(sql, { radice });
+    try {
+      await d.aggiungi({ index: 0, line: 1, sql, ...risultato([{ n: 1 }], ['n']) });
+      assert(d.elenco().schede[0].sql.length <= 1024, 'il testo integrale non deve viaggiare nell’indice');
+      assert.strictEqual((await d.leggi(0)).sql, sql, 'il dettaglio richiesto conserva il testo originale');
+    } finally { await d.elimina(); }
+  }
 
   // 2. Andata e ritorno di una scheda: l'elenco NON porta i documenti (è il
   //    motivo per cui esiste il deposito), il contenuto arriva solo su richiesta.

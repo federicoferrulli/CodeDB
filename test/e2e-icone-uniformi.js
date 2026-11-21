@@ -186,12 +186,12 @@ function emetteSenzaDisegnare() {
         // le etichette partono tutte dalla stessa ascissa, icona o no
         ascisse: [...new Set(voci.map((li) => {
           const r = li.getBoundingClientRect();
-          const ultimo = [...li.childNodes].filter((n) => n.nodeType === 3 && n.textContent.trim())[0];
-          if (!ultimo) return null;
+          const etichetta = li.querySelector('.menu-label');
+          if (!etichetta?.textContent.trim()) throw new Error('Voce di menu priva di etichetta');
           const range = document.createRange();
-          range.selectNodeContents(ultimo);
+          range.selectNodeContents(etichetta);
           return Math.round(range.getBoundingClientRect().left - r.left);
-        }).filter((v) => v !== null))],
+        }))],
       };
     });
 

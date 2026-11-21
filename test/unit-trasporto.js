@@ -79,7 +79,61 @@ module.exports = (async () => {
     return tab;
   }
 
+  await prova('Le scritture interrotte liberano il tab e ignorano la risposta tardiva', async () => {
+    for (const evento of ['doc:insert', 'doc:update', 'doc:replace', 'doc:delete', 'collection:deleteMany']) {
+      const finto = scena();
+      const tab = apriTab({ connName: 'salvata' });
+      const eventi = new (require('node:events').EventEmitter)();
+      finto.on = eventi.on.bind(eventi); finto.off = eventi.off.bind(eventi);
+      finto.sospendi(evento);
+      const richiesta = emit(evento, { db: 'test', coll: 'righe' });
+      richiesta.catch(() => {});
+      eventi.emit('disconnect', 'transport close');
+      const rimaste = tab.state.writesInFlight;
+      finto.sblocca(evento, { ok: false, error: 'nessun reinvio dopo la disconnessione' });
+      assert.equal(rimaste, 0, evento + ': il tab si deve poter chiudere dopo la caduta del socket');
+      await assert.rejects(richiesta, errore => errore.code === 'SOCKET_DISCONNECTED');
+      assert.equal(tab.state.writesInFlight, 0);
+      assert.equal(finto.con(evento).length, 1);
+      assert.equal(eventi.listenerCount('disconnect'), 0);
+    }
+  });
+
   /* --- Il tab della richiesta --------------------------------------------- */
+
+  await prova('Query lunga: interroga il run dopo la caduta e invia solo le istruzioni mai ricevute', async () => {
+    for (const caso of ['ack perso', 'mai arrivata', 'sessione scaduta', 'database riconnesso', 'annullata']) {
+      const finto = scena(), tab = apriTab();
+      const eventi = new (require('node:events').EventEmitter)();
+      finto.on = eventi.on.bind(eventi); finto.off = eventi.off.bind(eventi);
+      finto.connected = true; finto.id = 'primo';
+      finto.sospendi('query:execute');
+      const payload = { tabId: tab.id, dbSessionId: 'sessione-originale', runId: 'run', code: 'INSERT INTO contatore VALUES (1)' };
+      const richiesta = trasporto.eseguiQueryConRipresa(payload, () => caso !== 'annullata');
+      const esito = richiesta.then(r => r, err => err);
+      finto.connected = false;
+      eventi.emit('disconnect', 'transport close');
+      await new Promise(resolve => setImmediate(resolve));
+      finto.sospesi.delete('query:execute');
+      finto.rispondiA('session:recovery', { ok: true, recovered: caso !== 'sessione scaduta', sessionId: 's' });
+      finto.rispondiA('query:state', caso === 'database riconnesso' ? { ok: false, error: 'La connessione al database è cambiata.' }
+        : { ok: true, found: caso === 'ack perso', docs: ['dal run'] });
+      finto.rispondiA('query:execute', { ok: true, docs: ['appena eseguita'] });
+      finto.id = 'secondo'; finto.connected = true;
+      eventi.emit('connect');
+      const risposta = await esito;
+      if (caso === 'ack perso') assert.deepEqual(risposta.docs, ['dal run']);
+      if (caso === 'mai arrivata') assert.deepEqual(risposta.docs, ['appena eseguita']);
+      if (caso === 'sessione scaduta') assert.match(risposta.message, /scaduta/);
+      if (caso === 'database riconnesso') assert.match(risposta.message, /cambiata/);
+      if (caso === 'annullata') assert.match(risposta.message, /annullata/);
+      assert.equal(finto.con('query:execute').length, caso === 'mai arrivata' ? 2 : 1, caso);
+      for (const m of finto.con('query:execute')) assert.deepEqual(m.payload, { ...payload, recoverable: true });
+      for (const m of finto.con('query:state')) assert.equal(m.payload.dbSessionId, payload.dbSessionId);
+      assert.equal(finto.con('mongo:connect').length, 0, caso);
+      assert.equal(eventi.listenerCount('connect'), 0, caso);
+    }
+  });
 
   await prova('la richiesta porta il tabId del tab attivo', async () => {
     const finto = scena();

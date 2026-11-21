@@ -1614,6 +1614,7 @@ console.log('--- Test Unitari CodeDB ---');
   // L'import risponde subito con un id, vive oltre il tab, espone progresso e
   // stato recuperabile e usa un AbortSignal per l'annullamento cooperativo.
   await require('./unit-operazione-import');
+  await require('./unit-mcp-esito-import');
 
   // Socket e contesto finti invocano l'evento reale: ack anticipato, lease
   // oltre la chiusura del tab e stato recuperato da un nuovo contesto.

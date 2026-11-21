@@ -9,11 +9,12 @@ const fs = require('fs');
 const path = require('path');
 const { z } = require('zod');
 const { runBackup } = require('../backup/lib/engine');
+const { origineSessione, verificaOrigine, erroreVerificaOrigine, filtraCatalogo } = require('../backup/lib/origine');
 const { resolveChain } = require('../backup/lib/restore');
 const { parseStorage, uploadBackupDir } = require('../backup/lib/storage');
 const { resolveStorageAlias, resolveSlackWebhook } = require('../backup/lib/policy');
 const { createLogger } = require('../backup/lib/logger');
-const { readCatalog, verifyBackupDir, safeName, formatBytes } = require('../backup/lib/util');
+const { readCatalog, verifyBackupDir, formatBytes, parseCollectionSelection } = require('../backup/lib/util');
 const { notifySlack } = require('../backup/lib/notify');
 const { canWholeConnection } = require('../auth/permissions');
 const { creaPianoImport, creaPianoRestore, eseguiPianoImport } = require('../db/importPlan');
@@ -46,7 +47,9 @@ function backupVerificationPayload(report) {
 function resolveBackupSelection(root, rawGroup, rawBackupId) {
   const group = String(rawGroup || '').trim();
   const backupId = String(rawBackupId || '').trim();
-  if (!group || !backupId || safeName(group) !== group || safeName(backupId) !== backupId) {
+  const componente = value => /^[\w.-]+$/.test(value) && !value.endsWith('.') && value.length <= 255
+    && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(value);
+  if (!componente(group) || !componente(backupId)) {
     throw new Error('Parametri "group" o "backup_id" non validi: usa i valori restituiti da list_backups.');
   }
   const base = path.resolve(root);
@@ -60,7 +63,7 @@ function resolveBackupSelection(root, rawGroup, rawBackupId) {
 
 function registraStrumentiArtefatti({
   tool, session, deps, env, audit, confirmFlow, backupRootOf,
-  requireDbSession, sessionPrincipal, refreshWritesAllowed,
+  requireDbSession, sessionPrincipal, refreshWritesAllowed, eseguiImport = eseguiPianoImport,
 }) {
   tool('backup_database', {
     title: 'Backup di un database',
@@ -71,7 +74,7 @@ function registraStrumentiArtefatti({
       '(modifiche dall\'ultimo full); incremental/differential richiedono un backup full precedente. ' +
       'Senza "since_field" confrontano il contenuto completo e salvano solo le righe cambiate; senza identità stabile salvano una snapshot completa. ' +
       '"since_field" applica invece un filtro temporale esplicito: le modifiche che non aggiornano il campo restano escluse. ' +
-      'I manifest v5 dichiarano questa distinzione e registrano le cancellazioni come tombstone di identità. ' +
+      'I manifest v6 registrano la copertura, le entità rimosse e le cancellazioni per identità. ' +
       'L\'operazione legge soltanto dal database; l\'attività è registrata in backups/backup.log.',
     inputSchema: {
       connection_id: z.string(),
@@ -93,9 +96,7 @@ function registraStrumentiArtefatti({
     const db = String(args.db || '').trim();
     if (!db) throw new Error('Parametro "db" mancante.');
     const type = String(args.type || 'full').toLowerCase();
-    const onlyCollections = args.collections
-      ? String(args.collections).split(',').map((s) => s.trim()).filter(Boolean)
-      : null;
+    const onlyCollections = parseCollectionSelection(args.collections);
     const storageUrl = resolveStorageAlias(args.storage, env);
     if (storageUrl && !canWholeConnection(sessionPrincipal(session), sess.name, 'manage')) {
       throw new Error(`Permesso negato: la API key usata non può inviare backup della connessione "${sess.name}" su storage remoto.`);
@@ -112,6 +113,7 @@ function registraStrumentiArtefatti({
       const summary = await log.run(`backup ${type} conn=${sess.name} db=${db} (via MCP)`, async () => {
         const result = await runBackup({
           session: sess, connName: sess.name, db, type, onlyCollections,
+          origine: origineSessione(deps, sessionPrincipal(session), sess.name, sess.backupOriginId),
           sinceField: args.since_field ? String(args.since_field).trim() : null,
           destRoot, compress, level, log,
         });
@@ -122,7 +124,7 @@ function registraStrumentiArtefatti({
       await notifySlack(webhook, `✅ CodeDB backup *${type}* di \`${db}\` (${sess.name}, via MCP) riuscito: ${summary.totalDocs} documenti/righe, ${formatBytes(summary.totalBytes)}.`, log);
       return jsonResult({
         backup_id: summary.id,
-        group: `${safeName(sess.name)}_${safeName(db)}`,
+        group: path.basename(path.dirname(summary.backupDir)),
         dir: summary.backupDir,
         collections: summary.collections,
         docs: summary.totalDocs,
@@ -153,7 +155,8 @@ function registraStrumentiArtefatti({
         if (!entry.isDirectory()) continue;
         if (group && entry.name !== String(group).trim()) continue;
         const { backups } = readCatalog(path.join(root, entry.name));
-        if (backups.length) groups[entry.name] = backups;
+        const visibili = filtraCatalogo(backups, path.join(root, entry.name), sessionPrincipal(session), root, deps);
+        if (visibili.length) groups[entry.name] = visibili;
       }
     }
     return jsonResult({ groups });
@@ -172,6 +175,7 @@ function registraStrumentiArtefatti({
     const { group, backupId, backupDir } = resolveBackupSelection(
       backupRootOf(session), args.group, args.backup_id,
     );
+    verificaOrigine(sessionPrincipal(session), backupDir, null, backupRootOf(session), deps);
     if (!fs.existsSync(path.join(backupDir, 'manifest.json'))) {
       throw new Error(`Backup "${group}/${backupId}" non trovato: verifica con list_backups.`);
     }
@@ -208,6 +212,10 @@ function registraStrumentiArtefatti({
     const { group, backupId, backupDir } = resolveBackupSelection(
       backupRootOf(session), args.group, args.backup_id,
     );
+    const requestedCollections = parseCollectionSelection(args.collections);
+    const filtraErroreOrigine = err => erroreVerificaOrigine(err, sessionPrincipal(session), backupDir, backupRootOf(session), deps);
+    const verificaSorgente = () => verificaOrigine(sessionPrincipal(session), backupDir, requestedCollections, backupRootOf(session), deps);
+    verificaSorgente();
     if (!fs.existsSync(path.join(backupDir, 'manifest.json'))) {
       throw new Error(`Backup "${group}/${backupId}" non trovato: verifica con list_backups.`);
     }
@@ -216,8 +224,6 @@ function registraStrumentiArtefatti({
 
     const token = String(args.confirm_token || '').trim();
     if (token) {
-      const requestedCollections = args.collections
-        ? String(args.collections).split(',').map((s) => s.trim()).filter(Boolean) : null;
       const pending = confirmFlow.consume(token, 'restore', (p) => p.connectionId === String(args.connection_id)
         && p.group === group && p.backupId === backupId
         && p.plan.targetDb === (String(args.target_db || '').trim() || p.sourceDb)
@@ -227,6 +233,7 @@ function registraStrumentiArtefatti({
       try {
         const adapter = createBackupRestoreAdapter({
           strategy: sess.strategy, dbType: sess.dbType, connName: sess.name,
+          verificaSorgente, filtraErroreOrigine,
           recoveryRoot: path.join(backupRootOf(session), 'import-recovery'), log,
         });
         const result = await log.run(`restore conn=${sess.name} da=${group}/${backupId} (via MCP)`, () => (
@@ -254,11 +261,9 @@ function registraStrumentiArtefatti({
     if (first.dbType !== sess.dbType) {
       throw new Error(`Il backup è di tipo "${first.dbType}" ma la connessione è "${sess.dbType}".`);
     }
-    const onlyCollections = args.collections
-      ? String(args.collections).split(',').map((s) => s.trim()).filter(Boolean)
-      : null;
+    const onlyCollections = requestedCollections;
     const targetDb = String(args.target_db || '').trim() || first.db;
-    const source = descriviBackup(backupDir, onlyCollections);
+    const source = descriviBackup(backupDir, onlyCollections, { filtraErroreOrigine });
     const plan = creaPianoRestore({
       source, expectedDbType: sess.dbType, connection: sess.name,
       targetDb, drop: !!args.drop,
@@ -317,6 +322,7 @@ function registraStrumentiArtefatti({
           connection: plan.connection,
           target_db: plan.targetDb,
           collections: plan.collections,
+          views: plan.views,
           promotion: plan.promotion,
           drop: plan.drop,
         },
@@ -331,12 +337,12 @@ function registraStrumentiArtefatti({
       strategy: sess.strategy, dbType: sess.dbType, connName: sess.name,
       recoveryRoot: path.join(backupRootOf(session), 'import-recovery'), log,
     });
-    const result = await eseguiPianoImport(plan, { adapter });
+    const result = await eseguiImport(plan, { adapter });
     audit({
       sessionId: session.id, connection: sess.name, operation: 'import',
       event: result.status, targetDb: plan.targetDb, error: result.error,
     });
-    return jsonResult({ executed: true, ...sanitizeImportResult(result) });
+    return jsonResult({ executed: result.status === 'completato', ...sanitizeImportResult(result) });
   });
 }
 

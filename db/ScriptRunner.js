@@ -33,6 +33,14 @@ const STATUS = {
   ABORTED: 'aborted',
 };
 
+// La copia breve evita che una slice di V8 trattenga l'intero INSERT nel
+// resoconto o nell'indice delle schede dopo la chiusura del blocco.
+function anteprimaTesto(testo, limite = 512) {
+  if (!testo || testo.length <= limite) return testo;
+  const inizio = testo.slice(0, limite - 1).replace(/[\uD800-\uDBFF]$/, '');
+  return Buffer.from(inizio).toString() + '…';
+}
+
 class ScriptRun {
   /**
    * @param {object} opts
@@ -75,7 +83,7 @@ class ScriptRun {
    *
    * `conResults: false` omette il resoconto. Serve ai push di avanzamento, che
    * sono molti: `results` conserva fino a `maxStoredResults` voci e ognuna
-   * porta il TESTO INTEGRALE della propria istruzione, quindi allegarlo a ogni
+   * porta l'anteprima della propria istruzione, quindi allegarlo a ogni
    * evento fa crescere il traffico con il quadrato della lunghezza dello
    * script. Il caso peggiore non è teorico: le istruzioni FALLITE scavalcano il
    * diradamento (un errore deve arrivare subito) e non vengono mai scartate da
@@ -96,6 +104,8 @@ class ScriptRun {
       omessi: this.omessi,
       startedAt: this.startedAt,
       endedAt: this.endedAt,
+      ...(this.errore ? { errore: this.errore } : {}),
+      ...(this.transazioneAnnullata ? { transazioneAnnullata: true } : {}),
     };
     return conResults ? { ...base, results: this.results } : base;
   }
@@ -150,10 +160,11 @@ class ScriptRun {
 
   /** Alias esplicito: riprendere è ripartire dal cursore conservato. */
   resume(executor, fromIndex) {
+    if (this.status === STATUS.ABORTED) return Promise.resolve(this.state());
     if (Number.isInteger(fromIndex) && fromIndex >= 0 && fromIndex <= this.total) {
       this.cursor = fromIndex;
     }
-    if (this.status === STATUS.DONE || this.status === STATUS.ABORTED) {
+    if (this.status === STATUS.DONE) {
       // Ripresa esplicita di uno script già concluso: ha senso solo se si
       // riparte da un indice precedente, altrimenti non c'è nulla da fare.
       if (this.cursor >= this.total) return Promise.resolve(this.state());
@@ -182,6 +193,14 @@ class ScriptRun {
     return true;
   }
 
+  concludiInterruzione() {
+    this.status = STATUS.ABORTED;
+    this.endedAt = Date.now();
+    this._current = null;
+    this._emit({ tipo: 'aborted', cursor: this.cursor });
+    return this.state();
+  }
+
   /** Registra l'handle dell'operazione in volo (usato da `cancelQuery`). */
   setOpHandle(handle) {
     if (this._current) this._current.opHandle = handle;
@@ -204,15 +223,7 @@ class ScriptRun {
 
   async _run(executor) {
     while (this.cursor < this.total) {
-      if (this._abortRequested) {
-        this.status = STATUS.ABORTED;
-        this.endedAt = Date.now();
-        this._current = null;
-        // Va annunciato come la fine e la pausa: senza, chi segue il run non
-        // saprebbe mai che è finito e resterebbe con un "in esecuzione" eterno.
-        this._emit({ tipo: 'aborted', cursor: this.cursor });
-        return this.state();
-      }
+      if (this._abortRequested) return this.concludiInterruzione();
       if (this._pauseRequested) {
         this.status = STATUS.PAUSED;
         this._current = null;
@@ -226,24 +237,26 @@ class ScriptRun {
 
       const t0 = Date.now();
       let voce;
+      let erroreTerminale;
       try {
         const res = await executor(stmt, index, this);
         voce = {
           index,
           line: stmt.line ?? null,
-          sql: stmt.sql,
+          sql: anteprimaTesto(stmt.sql),
           ok: true,
           ms: Date.now() - t0,
           ...summarize(res),
         };
       } catch (err) {
+        if (err?.interrompiScript) erroreTerminale = err;
         voce = {
           index,
           line: stmt.line ?? null,
-          sql: stmt.sql,
+          sql: anteprimaTesto(stmt.sql),
           ok: false,
           ms: Date.now() - t0,
-          error: err && err.message ? err.message : String(err),
+          error: anteprimaTesto(err?.message || String(err), 4096),
           ...(err?.queryError ? { queryError: { ...err.queryError,
             start: err.queryError.start + (stmt.start || 0), end: err.queryError.end + (stmt.start || 0) } } : {}),
           ...(this._interruptedIndex === index ? { interrupted: true } : {}),
@@ -261,6 +274,8 @@ class ScriptRun {
       this._current = null;
       this._emit({ tipo: 'statement', result: voce, cursor: this.cursor });
 
+      if (this._abortRequested) return this.concludiInterruzione();
+      if (erroreTerminale) return this.fail(erroreTerminale);
       if (!voce.ok && this.stopOnError) {
         this.status = STATUS.PAUSED;
         this._emit({ tipo: 'paused', cursor: this.cursor, motivo: 'errore' });
@@ -290,7 +305,7 @@ class ScriptRun {
     this.status = STATUS.ABORTED;
     this.endedAt = Date.now();
     this._current = null;
-    this.errore = (err && err.message) || String(err);
+    this.errore = anteprimaTesto(err?.message || String(err), 4096);
     this._emit({ tipo: 'aborted', cursor: this.cursor, errore: this.errore });
     return this.state();
   }
@@ -327,4 +342,4 @@ function createScriptRun(opts) {
   return new ScriptRun(opts);
 }
 
-module.exports = { ScriptRun, createScriptRun, STATUS };
+module.exports = { ScriptRun, createScriptRun, STATUS, anteprimaTesto };

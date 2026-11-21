@@ -13,6 +13,28 @@ function fileApplicazione(name) {
     || /^(package(-lock)?\.json|electron-server-auth\.js|LICENSE(\.md)?|MANLEVA\.md|EULA\.md)$/.test(name);
 }
 
+function copiaApplicazione(root, dest) {
+  const gitFiles = (...args) => execFileSync('git', ['ls-files', '-z', ...args], { cwd: root, encoding: 'utf8' }).split('\0');
+  const files = gitFiles().filter(fileApplicazione);
+  const nuovi = gitFiles('--others', '--exclude-standard', '--', 'auth', 'backup', 'db', 'mcp', 'public', 'server');
+  for (const name of nuovi) {
+    if (/(?:^|\/)(?:\.[^/]*|data|backups|conns|node_modules)(?:\/|$)/.test(name)) continue;
+    if (/\.[cm]?js$/.test(name) || /^public\/.+\.(?:css|html|svg|png|ico|webp|woff2?)$/.test(name)) files.push(name);
+  }
+  const rootReale = fs.realpathSync(root);
+  for (const name of files) {
+    const source = path.join(rootReale, name);
+    const stat = fs.lstatSync(source, { throwIfNoEntry: false });
+    if (!stat) continue;
+    if (!stat.isFile() || path.relative(source, fs.realpathSync(source))) {
+      throw new Error('Sorgente Android non regolare: ' + name);
+    }
+    const target = path.join(dest, name);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(source, target);
+  }
+}
+
 function estraiZip(archive, directory) {
   // Il JDK è già richiesto dalla build Android; jar legge ZIP anche su Linux.
   const jar = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'jar.exe' : 'jar') : 'jar';
@@ -33,16 +55,10 @@ async function prepara() {
   }
   estraiZip(archive, path.join(__dirname, '.cache/node'));
 
-  // Solo sorgenti tracciati, letti dal working tree: mai vault, .env o connessioni personali.
   // La destinazione è fissa e interna ad android/build, non è un percorso ricevuto dall'utente.
   fs.rmSync(DEST, { recursive: true, force: true });
   fs.mkdirSync(DEST, { recursive: true });
-  const files = execFileSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8' }).split('\0');
-  for (const name of files.filter(fileApplicazione)) {
-    const target = path.join(DEST, name);
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.copyFileSync(path.join(ROOT, name), target);
-  }
+  copiaApplicazione(ROOT, DEST);
   fs.copyFileSync(path.join(__dirname, 'mobile.cjs'), path.join(DEST, 'mobile.cjs'));
   // Node 18 non deduce ESM dalla sintassi dei .js: estensione esplicita nella
   // sola copia Android del modulo foglia importato dal gateway MCP.
@@ -66,4 +82,4 @@ async function prepara() {
 }
 
 if (require.main === module) prepara().catch(error => { console.error(error); process.exitCode = 1; });
-module.exports = { fileApplicazione, estraiZip };
+module.exports = { copiaApplicazione, fileApplicazione, estraiZip };

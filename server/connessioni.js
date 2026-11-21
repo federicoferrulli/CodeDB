@@ -18,7 +18,7 @@ function createModule({ vault, dependencies, errori, config }) {
     // Un solo caricamento del file: sia "saved" che "keepPasswordFrom" leggono
     // dalla stessa mappa in memoria, evitando due letture/decifrature ridondanti.
     const needsLookup = cfg.saved || cfg.keepPasswordFrom;
-    const conns = needsLookup ? vault.loadConnections(ownerId) : null;
+    const conns = needsLookup ? vault.loadConnections(ownerId, cfg.saved) : null;
     if (cfg.saved) {
       const saved = conns[cfg.saved];
       if (!saved) throw new Error(`Connessione salvata "${cfg.saved}" non trovata.`);
@@ -240,7 +240,11 @@ function createModule({ vault, dependencies, errori, config }) {
       if (err && err.importOutcomeUnknown) throw err;
       if (isConnectionError(err, sess) && sess.effectiveCfg) {
         console.warn(`[Auto-Reconnect] Rilevata perdita di connessione DB. Avvio ripristino connessione...`);
-        await reconnectSession(sess);
+        try { await reconnectSession(sess); }
+        catch (riconnessione) {
+          if (['mysql', 'postgresql'].includes(sess.dbType)) riconnessione.sqlConnectionLost = true;
+          throw riconnessione;
+        }
         if (sess.closed) throw new Error('Sessione chiusa durante la riconnessione.');
         // Una risposta persa non prova che il DB non abbia già eseguito la scrittura.
         err.operationOutcomeUnknown = true;

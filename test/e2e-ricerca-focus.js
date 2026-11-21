@@ -25,7 +25,7 @@ fs.mkdirSync(dir, { recursive: true });
       assert(code.includes(update));
       await route.fulfill({ response, body: code.replace(update, "pulsante.querySelector('kbd').textContent = 'Ctrl+P'") });
     });
-    await page.goto(server.url);
+    await page.goto(server.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForSelector('html[data-arc-ready="true"]', { timeout: 30000 });
     if (await page.locator('#onboarding-close').isVisible()) await page.locator('#onboarding-close').click();
     if (await page.getByRole('button', { name: 'Nascondi i primi passi' }).isVisible()) await page.getByRole('button', { name: 'Nascondi i primi passi' }).click();

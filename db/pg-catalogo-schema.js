@@ -253,8 +253,13 @@ function installaCatalogoPg(prototipo) {
       }
     },
 
-    async tableDdl(db, coll) {
+    async tableDdl(db, coll, { conSequenze = false, partizione = null } = {}) {
       const schema = schemaOf(db);
+      // Nei backup le sequenze sono oggetti autonomi. Il DDL deve riferirsi
+      // a quelle archiviate, anche quando hanno un nome o un passo personalizzato.
+      if (conSequenze) return this.conSearchPath(schema, client => require('./pg-ddl').pgCreateTable(
+        (sql, params) => client.query(sql, params), schema, coll, { partizione },
+      ));
       const fields = await this.tableFields(db, coll);
       if (!fields.length) return null;
 

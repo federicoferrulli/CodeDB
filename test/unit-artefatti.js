@@ -19,6 +19,13 @@ function exportBase(dbType, collection) {
 // Seam pubblico: soltanto un export validato e normalizzato puo' essere
 // consegnato all'applicazione. Non si osservano lexer o helper interni.
 {
+  const archivioViste = exportBase('mongodb', 'ordini');
+  archivioViste.collections.push({ name: 'system.views', docs: [{ _id: 'negozio.riepilogo', viewOn: 'ordini', pipeline: [] }] });
+  archivioViste.objects = { views: [{ name: 'riepilogo', viewOn: 'ordini', pipeline: [] }] };
+  const migrato = normalizzaExportDatabase(archivioViste);
+  assert.deepStrictEqual(migrato.collections.map(c => c.name), ['ordini']);
+  assert.deepStrictEqual(migrato.objects.views.map(v => v.name), ['riepilogo']);
+
   const mysql = exportBase('mysql', 'ordini');
   mysql.collections[0].ddl = [
     'CREATE TABLE `ordini` (`id` bigint PRIMARY KEY)',

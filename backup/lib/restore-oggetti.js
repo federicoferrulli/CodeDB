@@ -298,6 +298,12 @@ async function restoreSchemaObjects({
     const cosa = `valore della sequenza "${seq.name}"`;
     try {
       const sql = String(seq.sql || '').trim();
+      // setval da solo sopravvive al ROLLBACK. RESTART assegna alla sequenza
+      // uno stato transazionale: anche un contatore esistente torna identico
+      // se fallisce la verifica successiva o viene annullata la promozione.
+      if (dbType === 'postgresql' && require('../../db/pg-restore-transaction').inTransazioneRipristino(strategy)) {
+        await strategy.pool.query(`ALTER SEQUENCE ${pgQid(targetDb)}.${pgQid(seq.name)} RESTART`);
+      }
       await strategy.collectionAggregate(targetDb, null, { pipeline: sql });
       if (log) log.info(`  ${cosa} ripristinato`);
     } catch (err) {

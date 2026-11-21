@@ -60,46 +60,56 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     (f) => f.kind === 'data' && (!onlyCollections || onlyCollections.includes(f.collection))
   );
   targetDb = pgTargetSchema(targetDb, layer, explicitTarget);
-  if (isFirst) {
-    await strategy.pool.query(`CREATE SCHEMA IF NOT EXISTS ${pgQid(targetDb)}`);
-    if (onlyCollections) {
-      const sourceDdl = layer.manifest.files.filter(file => file.kind === 'schema' && onlyCollections.includes(file.collection))
-        .map(file => readSchemaFile(layer.dir, file, file.collection, {
-          ...opts, dbType: 'postgresql', database: layer.manifest.db,
-        })).join('\n');
+  const nuovi = dataFiles.filter(f=>!tracker.has(f.collection));
+  if (isFirst) await strategy.pool.query(`CREATE SCHEMA IF NOT EXISTS ${pgQid(targetDb)}`);
+  if (onlyCollections && (isFirst || nuovi.length)) {
+    const sourceDdl = opts.ddlSelezionate ?? require('../../db/pg-routine-selezione').ddlSelettiveBackup([layer],onlyCollections,opts);
       opts.selectedRoutines = await require('../../db/pg-routine-selezione').routineSelettivePg({
         query: (sql, params) => strategy.pool.query(sql, params), targetDb, collections: onlyCollections,
         objects: opts.schemaSnapshot.objects, ddl: sourceDdl,
         references: opts.routineReferences,
       });
-    }
-    if (drop) for (const f of dataFiles) {
-      await eliminaSePresente(() => strategy.dropCollection(targetDb, f.collection), {
-        dbType: 'postgresql', target: `${targetDb}.${f.collection}`,
-      });
-    }
-    {
+  }
+  if (isFirst) {
+      // Una DROP elimina anche le sequenze possedute. Si sostituiscono prima
+      // tutte le tabelle della catena, comprese quelle introdotte da un delta.
+      if (drop) for (const table of opts.tabelleDaSostituire) {
+        await eliminaSePresente(() => strategy.dropCollection(targetDb, table), {
+          dbType: 'postgresql', target: `${targetDb}.${table}`,
+        });
+      }
       const objects = opts.schemaSnapshot.objects;
       const sequences = (objects.sequences || []).filter(s => !onlyCollections || onlyCollections.includes(s.ownerTable));
+      // Dopo la DROP una sequenza posseduta dalla tabella non esiste più.
+      // Un'omonima superstite appartiene alla destinazione: IF NOT EXISTS
+      // la riuserebbe e OWNED BY ne cambierebbe proprietario e contatore.
+      const possedute = sequences.filter(s => s.ownerTable).map(s => s.name);
+      if (drop && possedute.length) {
+        const { rows } = await strategy.pool.query(`SELECT s.relname FROM pg_catalog.pg_class s
+          JOIN pg_catalog.pg_namespace n ON n.oid=s.relnamespace
+          WHERE n.nspname=$1 AND s.relname=ANY($2::text[]) LIMIT 1`, [targetDb, possedute]);
+        if (rows.length) throw new Error(`La sequenza "${rows[0].relname}" coincide con una relazione estranea alle tabelle da sostituire.`);
+      }
       await require('../../db/pg-types').checkExtensions(strategy, objects.extensions);
       await restoreSchemaObjects({ strategy, targetDb, dbType: 'postgresql',
         oggetti: { collations: objects.collations, types: objects.types, typeRoutines: opts.selectedRoutines || objects.routines, sequences: sequences.map(({ ownerTable, ownerColumn, ...s }) => s) },
         dbOrigine: opts.schemaSnapshot.db, problems, log, allowUnsafeSchema: opts.allowUnsafeSchema, applied: opts.appliedObjects });
       if (problems.length) throw new Error(problems.join('; '));
-    }
   }
   log.info(`  Schema di destinazione PostgreSQL: ${targetDb}`);
   let total = 0;
   let existingTables = null;
-  if (isFirst && dataFiles.length) {
+  if (nuovi.length) {
     existingTables = await pgExistingTables(strategy, targetDb).catch((err) => {
       log.error(`  Impossibile elencare le tabelle di "${targetDb}": ${err.message}`);
       return null;
     });
   }
-  for (const f of dataFiles) {
-    if (isFirst) {
-      const schemaFile = layer.manifest.files.find((x) => x.kind === 'schema' && x.collection === f.collection);
+  for (const f of nuovi) {
+      const standalone = f.partitionParent && onlyCollections && !onlyCollections.includes(f.partitionParent) && !existingTables?.has(f.partitionParent);
+      const kind = standalone ? 'schema-standalone' : 'schema';
+      const schemaFile = layer.manifest.files.find(x => x.kind === kind && x.collection === f.collection);
+      if (!schemaFile && !existingTables?.has(f.collection)) throw new Error('Schema di "'+f.collection+'" assente dal backup: impossibile ricreare la tabella.');
       const mustCreate = schemaFile && (!existingTables || !existingTables.has(f.collection));
       if (mustCreate) {
         const sql = riqualificaDdl(readSchemaFile(layer.dir, schemaFile, f.collection, {
@@ -114,9 +124,8 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
           );
         }
       }
-    }
   }
-  if (isFirst) {
+  if (isFirst || nuovi.length) {
     const objects = opts.schemaSnapshot.objects;
     await restoreSchemaObjects({
       strategy, targetDb, dbType: 'postgresql',
@@ -124,6 +133,19 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
       dbOrigine: opts.schemaSnapshot.db, problems: [], log,
       allowUnsafeSchema: opts.allowUnsafeSchema, applied: opts.appliedObjects,
     });
+  }
+  if (dataFiles.some(f=>f.pgPhysical)) {
+    const catalogo = await require('../../db/pg-partizioni').catalogoPartizioni((s,p)=>strategy.pool.query(s,p),targetDb);
+    const canonica = require('../../db/schemaObjects').canonicalSqlForDb;
+    for (const f of dataFiles.filter(f=>f.pgPhysical)) {
+      const actual = catalogo.get(f.collection);
+      const parent = f.partitionParent && (!onlyCollections || onlyCollections.includes(f.partitionParent) || existingTables?.has(f.partitionParent)) ? f.partitionParent : null;
+      if ((actual?.parent || null) !== parent
+          || canonica(actual?.key,targetDb) !== canonica(f.partitionKey,layer.manifest.db)
+          || (parent && canonica(actual?.bound,targetDb) !== canonica(f.partitionBound,layer.manifest.db))) {
+        throw new Error('La struttura delle partizioni di "'+f.collection+'" diverge dal backup.');
+      }
+    }
   }
   const referenceShapes = new Map();
   let wantedLargeObjects = null;
@@ -159,6 +181,8 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     for (const [id, value] of map) opts.largeObjectMap.set(id, value);
   }
   for (const f of dataFiles) {
+    const primaApparizione = !tracker.has(f.collection);
+    const only = f.pgPhysical ? 'ONLY ' : '';
     registraFileAtteso(tracker, f);
     const references = referenceShapes.get(f.collection) || await require('../../db/pg-references').columnReferences((s, p) => strategy.pool.query(s, p), targetDb, f.collection);
     const rewrite = row => require('../../db/pg-references').rowReferences(row, references, id => opts.largeObjectMap.get(id) || id,
@@ -166,13 +190,13 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     const targetMeta = await pgTargetIdentity(strategy, targetDb, f.collection, f.identity);
     let empty = false;
     if (!f.identity) {
-      if (!isFirst && f.mode === 'full' && f.content?.mode === 'snapshot') {
+      if (!primaApparizione && f.mode === 'full' && f.content?.mode === 'snapshot') {
         const metadata = { ...f, columnSchema: f.columnSchema?.map(c => ({ ...c, type: riqualificaDdl(c.type, layer.manifest.db, targetDb, 'postgresql') })) };
         assertColumnsAndIdentity(metadata, targetMeta.columnSchema, targetMeta.identity, { empty: true });
-        await strategy.pool.query(`DELETE FROM ${pgQid(targetDb)}.${pgQid(f.collection)}`);
+        await strategy.pool.query(`DELETE FROM ${only}${pgQid(targetDb)}.${pgQid(f.collection)}`);
       }
       const res = await strategy.pool.query(
-        `SELECT NOT EXISTS(SELECT 1 FROM ${pgQid(targetDb)}.${pgQid(f.collection)} LIMIT 1) AS empty`,
+        `SELECT NOT EXISTS(SELECT 1 FROM ${only}${pgQid(targetDb)}.${pgQid(f.collection)} LIMIT 1) AS empty`,
       );
       empty = !!res.rows[0].empty;
     }
@@ -194,7 +218,7 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
           return `${pgQid(c)} = ${reference ? reference.sql.replace('$1', placeholder) : `${placeholder}::${column.cast}`}`;
         }).join(' AND ');
         await strategy.pool.query(
-          `DELETE FROM ${pgQid(targetDb)}.${pgQid(f.collection)} WHERE ${whereDelete}`,
+          `DELETE FROM ${only}${pgQid(targetDb)}.${pgQid(f.collection)} WHERE ${whereDelete}`,
           params,
         );
       }
@@ -207,7 +231,7 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
       if (!batch.length) return;
       const imp = await strategy.collectionImport(targetDb, f.collection, {
         docs: batch,
-        upsert: !!f.identity && (!isFirst || !drop),
+        upsert: !!f.identity && (!primaApparizione || !drop),
         conflictColumns: f.identity ? f.identity.columns : undefined,
       });
       applied += imp.inserted;

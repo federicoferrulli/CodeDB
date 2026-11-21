@@ -20,7 +20,7 @@ function projection(info, mysql) {
 
 function encodeRow(row, columns = [], mysql = true) {
   const encoded=mysql?require('./mysql-ordinal').encode(row, columns):require('./pg-alias').encode(row,columns);
-  delete encoded.__codedb_vuota;
+  if (Object.hasOwn(encoded, '__codedb_vuota') && !columns.some(c => !c.generated)) delete encoded.__codedb_vuota;
   for(const [key,value]of Object.entries(encoded))if(Buffer.isBuffer(value))encoded[key]=new Binary(value);
   return stringifyRiga(encoded);
 }

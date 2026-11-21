@@ -17,6 +17,7 @@
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
+const { hostConsentito } = require('../server/esposizione');
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 const { isInitializeRequest } = require('@modelcontextprotocol/sdk/types.js');
@@ -316,12 +317,8 @@ function attachMcp(app, deps) {
   }
 
   // Anti DNS-rebinding sul bind locale.
-  const bindHost = String(env.HOST || '127.0.0.1');
-  const loopbackBind = ['127.0.0.1', 'localhost', '::1'].includes(bindHost);
-  const LOCAL_HOST_HEADER = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
-
   function guardHost(req, res) {
-    if (!loopbackBind || LOCAL_HOST_HEADER.test(String(req.headers.host || ''))) return true;
+    if (hostConsentito(env, String(req.headers.host || ''))) return true;
     res.status(403).json(rpcError(-32000, 'Host header non consentito.'));
     return false;
   }

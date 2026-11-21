@@ -297,6 +297,24 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--control-on); }
   position: static; width: 100%; max-height: none; overflow: visible;
 }
 #feedback-container #toast-container:empty { display: none; }
+body > #feedback-container:has(> .feedback-host) {
+  max-height: max(0px, calc((var(--area-altezza) - var(--nav-mobile)) * .4));
+}
+/* Si può scorrere oltre il fondo per raggiungere righe e comandi coperti dal messaggio. */
+@media (width > 900px), (height > 650px) {
+  body:has(> #feedback-container > .feedback-host) .tab-body > main {
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  body:has(> #feedback-container > .feedback-host) .tab-body > main::-webkit-scrollbar { display: none; }
+}
+body:has(> #feedback-container > .feedback-host) #workspace::after {
+  --spazio-notifiche: calc(var(--altezza-notifiche, 0px) + var(--space-md));
+  content: '';
+  flex: 0 0 var(--spazio-notifiche);
+  margin-bottom: calc(0px - var(--spazio-notifiche));
+  pointer-events: none;
+}
 :is(.modal, .palette) #feedback-container {
   position: static; flex: none; width: 100%; max-height: none; overflow: visible;
 }

@@ -8,6 +8,7 @@ vault*
 !**/vault.js
 connections.ini.bak
 connections.ini.bak2
+*.backup-signing-key*
 # Audit log delle scritture eseguite via MCP.
 mcp-audit.log
 mcp-audit.log.1

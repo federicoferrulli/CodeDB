@@ -31,7 +31,7 @@ function createModule({ vault, identita, config }) {
       // durante i quali l'event loop è fermo per tutte le sessioni, e senza limite
       // questo è insieme un oracolo per la passphrase e un modo per bloccare il
       // server. La chiave è l'indirizzo del client, come per /auth/login.
-      const ipClient = socketContext.socket.handshake.address || 'unknown';
+      const ipClient = socketContext.ip || 'unknown';
       if (identita.loginBlocked(ipClient)) {
         throw new Error('Troppi tentativi di sblocco falliti: riprova tra un minuto.');
       }
@@ -212,7 +212,7 @@ function createModule({ vault, identita, config }) {
         );
         delete conns[oldName];
       }
-      conns[name] = next;
+      conns[name] = vault.identificaOrigine(next, previous);
       vault.saveConnections(conns, socketContext.principal.ownerId);
       cb({ ok: true });
       }));
@@ -320,7 +320,7 @@ function createModule({ vault, identita, config }) {
           }
         }
         if (conns[name]) overwritten += 1; else imported += 1;
-        conns[name] = cfg;
+        conns[name] = vault.identificaOrigine(cfg);
       }
       if (!imported && !overwritten) throw new Error('Il file non contiene connessioni valide.');
       vault.saveConnections(conns, socketContext.principal.ownerId);

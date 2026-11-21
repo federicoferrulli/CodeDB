@@ -76,6 +76,7 @@ class AppStore {
 
   async ensureIndexes() {
     await this.col('users').createIndex({ ownerId: 1, email: 1 }, { unique: true });
+    await this.col('users').createIndex({ localOwner: 1 }, { unique: true, partialFilterExpression: { localOwner: true } });
     await this.col('roles').createIndex({ ownerId: 1, name: 1 }, { unique: true });
     await this.col('grants').createIndex({ subjectId: 1, connName: 1 }, { unique: true });
     await this.col('grants').createIndex({ ownerId: 1 });
@@ -140,6 +141,56 @@ class AppStore {
 
   findOwnerByEmail(email) {
     return this.col('users').findOne({ type: 'owner', email: normEmail(email) });
+  }
+
+  /** Mantiene il tenant self-hosted anche quando il gestore ruota le credenziali. */
+  async bootstrapLocalOwner({ email, password, legacyId }) {
+    const users = this.col('users');
+    const mail = normEmail(email);
+    for (;;) {
+      const associato = await users.findOne({ type: 'owner', localOwner: true });
+      let owner = associato;
+      if (!owner) {
+        const candidati = { type: 'owner', plan: 'self-hosted' };
+        if (legacyId) candidati._id = legacyId;
+        const esistenti = await users.find(candidati).limit(2).toArray();
+        if (esistenti.length > 1) throw new Error('Più tenant self-hosted nel control plane. Indica l’owner da conservare con CODEDB_LOCAL_OWNER_ID.');
+        if (legacyId && !esistenti.length) throw new Error('CODEDB_LOCAL_OWNER_ID non identifica un owner self-hosted esistente.');
+        owner = esistenti[0];
+      }
+      if (legacyId && owner?._id !== legacyId) throw new Error('CODEDB_LOCAL_OWNER_ID diverso dall’owner associato a questa installazione.');
+      try {
+        if (!owner) {
+          const id = crypto.randomUUID();
+          owner = { _id: id, ownerId: id, type: 'owner', plan: 'self-hosted', email: mail, displayName: mail,
+            passwordHash: hashPassword(password), externalId: null, localOwner: true, status: 'active', createdAt: new Date() };
+          await users.insertOne(owner);
+        } else {
+          const cambiaPassword = !verifyPassword(password, owner.passwordHash);
+          const cambiaIdentita = owner.email !== mail || cambiaPassword;
+          if (!associato || cambiaIdentita || owner.status !== 'active') {
+            const patch = { localOwner: true, status: 'active', email: mail };
+            if (cambiaPassword) patch.passwordHash = hashPassword(password);
+            if (owner.displayName === owner.email) patch.displayName = mail;
+            const update = { $set: patch };
+            if (cambiaIdentita) update.$inc = { authRevision: 1 };
+            const res = await users.updateOne({ _id: owner._id, email: owner.email, passwordHash: owner.passwordHash }, update);
+            if (!res.matchedCount) continue;
+            owner = await this.findUserById(owner._id);
+          }
+        }
+      } catch (err) {
+        if (err.code === 11000 && err.keyPattern?.localOwner) continue;
+        throw err;
+      }
+      if (owner.authRevision) {
+        const precedente = { $or: [{ authRevision: { $exists: false } }, { authRevision: { $lt: owner.authRevision } }] };
+        await this.col('sessions').deleteMany({ userId: owner._id, ...precedente });
+        await this.col('api_keys').updateMany({ subjectId: owner._id, revokedAt: null, ...precedente }, { $set: { revokedAt: new Date() } });
+      }
+      this.localOwnerId = owner._id;
+      return owner;
+    }
   }
 
   findUserByEmail(email, ownerId = null) {
@@ -364,6 +415,7 @@ class AppStore {
       ownerId: String(ownerId),
       subjectId: String(subjectId),
       hashedKey: hashToken(raw),
+      authRevision: subject.authRevision || 0,
       prefix,
       connScope: Array.isArray(connScope) && connScope.length ? connScope.map(String) : null,
       label: String(label || '').trim() || 'API key',
@@ -391,7 +443,7 @@ class AppStore {
     const doc = await this.col('api_keys').findOne({ hashedKey: hashToken(rawKey), revokedAt: null });
     if (!doc) return null;
     const user = await this.findUserById(doc.subjectId);
-    if (!user || user.status !== 'active') return null;
+    if (!this.credenzialeValida(user, doc)) return null;
     // Aggiornamento best-effort: non deve mai far fallire la richiesta.
     this.col('api_keys').updateOne({ _id: doc._id }, { $set: { lastUsedAt: new Date() } }).catch(() => {});
     return this.principalFor(user, doc.connScope);
@@ -404,6 +456,7 @@ class AppStore {
     await this.col('sessions').insertOne({
       _id: crypto.randomUUID(),
       tokenHash: hashToken(token),
+      authRevision: user.authRevision || 0,
       userId: String(user._id),
       ownerId: String(user.ownerId),
       createdAt: new Date(),
@@ -419,7 +472,7 @@ class AppStore {
     // L'indice TTL passa ogni minuto: la scadenza va verificata anche a mano.
     if (!sess || sess.expiresAt <= new Date()) return null;
     const user = await this.findUserById(sess.userId);
-    if (!user || user.status !== 'active') return null;
+    if (!this.credenzialeValida(user, sess)) return null;
     this.col('sessions').updateOne({ _id: sess._id }, { $set: { lastSeenAt: new Date() } }).catch(() => {});
     return this.principalFor(user, null);
   }
@@ -428,6 +481,11 @@ class AppStore {
     if (!token) return { deleted: 0 };
     const res = await this.col('sessions').deleteOne({ tokenHash: hashToken(token) });
     return { deleted: res.deletedCount };
+  }
+
+  credenzialeValida(user, credenziale) {
+    return !!user && user.status === 'active' && (!this.localOwnerId || user.ownerId === this.localOwnerId)
+      && (user.authRevision || 0) === (credenziale.authRevision || 0);
   }
 
   async deleteSessionsForUser(userId) {
@@ -454,7 +512,7 @@ class AppStore {
    */
   async verifySubUser(email, password) {
     const candidates = await this.col('users')
-      .find({ email: normEmail(email), type: 'subuser' })
+      .find({ email: normEmail(email), type: 'subuser', ...(this.localOwnerId ? { ownerId: this.localOwnerId } : {}) })
       .toArray();
 
     const matches = [];

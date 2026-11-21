@@ -61,12 +61,16 @@ const { creaPianoExport, MODALITA } = require('../db/exportPlan');
   assert.match(ripiego.nonDeducibili[0].nota, /non leggibili/);
 
   const moderno = await vistePerMySql(
-    async () => [{ view_name: 'v_ordini', ref_schema: 'negozio', ref: 'ordini' }], 'negozio', ['v_ordini'],
+    async () => [
+      { view_name: 'v_ordini', ref_schema: 'negozio', ref: 'ordini' },
+      { view_name: 'a_riepilogo', ref_schema: 'negozio', ref: 'v_ordini' },
+    ], 'negozio', ['a_riepilogo', 'v_ordini'],
   );
   assert.deepStrictEqual(moderno.dipendenze[0], {
     da: 'vista:v_ordini', a: 'tabella:ordini', tipo: 'vista', esterna: false, db: null,
   });
   assert.strictEqual(moderno.nonDeducibili.length, 0);
+  assert.strictEqual(moderno.dipendenze[1].a, 'vista:v_ordini');
   console.log('  OK   MySQL: una view illeggibile e dichiarata, non data per indipendente');
 
   /* --- PostgreSQL --------------------------------------------------------- */
@@ -101,7 +105,9 @@ const { creaPianoExport, MODALITA } = require('../db/exportPlan');
   /* --- MongoDB ------------------------------------------------------------ */
 
   const mongo = catalogoMongo([
+    { name: 'system.views', type: 'collection' },
     { name: 'clienti', type: 'collection' },
+    { name: 'a_riepilogo', type: 'view', options: { viewOn: 'v_semplice', pipeline: [] } },
     { name: 'ordini', type: 'collection' },
     { name: 'v_semplice', type: 'view', options: { viewOn: 'ordini', pipeline: [{ $match: {} }] } },
     { name: 'v_unita', type: 'view', options: { viewOn: 'ordini', pipeline: [{ $lookup: { from: 'clienti' } }] } },
@@ -109,12 +115,18 @@ const { creaPianoExport, MODALITA } = require('../db/exportPlan');
   assert.strictEqual(mongo.oggetti.filter((o) => o.tipo === 'collection').length, 2);
   assert.strictEqual(mongo.oggetti.find((o) => o.nome === 'ordini').righeStimate, 7);
   assert.ok(mongo.dipendenze.some((d) => d.da === 'vista:v_semplice' && d.a === 'collection:ordini'));
+  assert.ok(mongo.dipendenze.some((d) => d.da === 'vista:a_riepilogo' && d.a === 'vista:v_semplice'));
   // `viewOn` e' dichiarato dal catalogo; le collection lette da un `$lookup`
   // dentro la pipeline no. La differenza va detta, non appianata.
   const lookup = mongo.dipendenze.find((d) => d.tipo === 'lookup');
   assert.strictEqual(lookup.da, 'vista:v_unita');
   assert.strictEqual(lookup.a, null);
   assert.ok(!mongo.dipendenze.some((d) => d.tipo === 'fk'), 'MongoDB non dichiara chiavi esterne');
+  const vistaSenzaBase = catalogoMongo([{ type: 'view', name: 'in_attesa', options: { viewOn: 'futura' } }]);
+  const pianoVista = creaPianoExport({ catalogo: { ...vistaSenzaBase, dbType: 'mongodb', db: 'negozio' },
+    connection: 'locale', formato: 'mongosh' });
+  assert.deepStrictEqual(pianoVista.ordine.creazione, ['vista:in_attesa']);
+  assert.equal(pianoVista.prerequisitiEsterni[0].a, 'collection:futura');
   console.log('  OK   MongoDB: viewOn dichiarato, $lookup dichiarato non deducibile');
 
   /* --- I due strati si incastrano ----------------------------------------- */
@@ -129,12 +141,13 @@ const { creaPianoExport, MODALITA } = require('../db/exportPlan');
       // senza, il piano rifiuta la dipendenza — ed e' giusto che la rifiuti,
       // perche' un arco che parte da un oggetto sconosciuto e' un catalogo
       // incoerente, non una riga da saltare.
-      oggetti: [...my.oggetti, { tipo: 'vista', nome: 'v_ordini' }],
+      oggetti: [...my.oggetti, { tipo: 'vista', nome: 'a_riepilogo' }, { tipo: 'vista', nome: 'v_ordini' }],
       dipendenze: [...my.dipendenze, ...moderno.dipendenze],
     },
     connection: 'locale', modalita: MODALITA.STRUTTURA_E_DATI,
   });
   assert.ok(piano.fingerprint);
+  assert.ok(piano.ordine.creazione.indexOf('vista:v_ordini') < piano.ordine.creazione.indexOf('vista:a_riepilogo'));
   assert.strictEqual(piano.prerequisitiEsterni.length, 1, 'la FK cross-database resta un prerequisito');
   console.log('  OK   il catalogo reale e accettato dal piano senza adattamenti');
 

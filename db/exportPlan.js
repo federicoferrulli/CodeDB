@@ -7,8 +7,7 @@
  * le due impronte non coincidono l'esecuzione viene rifiutata, perché la
  * conferma dell'utente descriveva un'operazione diversa.
  *
- * Qui dentro non c'è nulla che sappia di MySQL, PostgreSQL o MongoDB, e nulla
- * che apra una connessione: il CATALOGO arriva come dato (`db/exportCatalogo.js`
+ * Qui non si apre una connessione: il CATALOGO arriva come dato (`db/exportCatalogo.js`
  * lo legge dal motore) e tutto ciò che questo modulo fa è decidere. È la
  * ragione per cui l'ordine delle barriere, la chiusura delle dipendenze e le
  * esclusioni si provano senza alcun database.
@@ -69,6 +68,59 @@ function databaseDiSistema(dbType, nome) {
   return elenco.includes(String(nome || '').toLowerCase());
 }
 
+function verificaCampiOpzioni(opzioni, campi, nome) {
+  if (!opzioni || typeof opzioni !== 'object' || Array.isArray(opzioni)
+      || Object.keys(opzioni).some(k => !campi.includes(k))) {
+    throw new Error(`Opzioni dello script ${nome} non valide.`);
+  }
+}
+
+function politicaStruttura(scelta, oggetti) {
+  const strutture = oggetti.filter(o => o.struttura);
+  if (!strutture.length) return 'crea';
+  if (scelta === 'ricrea' && strutture.every(o => o.aggiuntoPerDipendenza)) return 'se-assente';
+  return scelta;
+}
+
+function opzioniScriptSql(formato, dbType, opzioni, tabelle) {
+  if (formato !== 'sql') {
+    if (opzioni !== undefined) throw new Error('Le opzioni SQL richiedono il formato Script SQL.');
+    return undefined;
+  }
+  if (!['mysql', 'postgresql'].includes(dbType)) throw new Error('Il formato SQL richiede MySQL o PostgreSQL.');
+  if (opzioni === undefined) opzioni = {};
+  verificaCampiOpzioni(opzioni, ['righe', 'tabelle'], 'SQL');
+  const { righe = 'insert', tabelle: creazione = 'crea' } = opzioni;
+  if (!['insert', 'aggiorna', 'ignora', 'replace'].includes(righe)
+      || (righe === 'replace' && dbType !== 'mysql')) {
+    throw new Error(`Modalità di inserimento delle righe non disponibile su ${dbType}.`);
+  }
+  if (!['crea', 'se-assente', 'ricrea'].includes(creazione)) {
+    throw new Error('Modalità di creazione delle tabelle non valida.');
+  }
+  return {
+    righe: tabelle.some(t => t.dati) ? righe : 'insert',
+    tabelle: politicaStruttura(creazione, tabelle),
+  };
+}
+
+function opzioniScriptMongo(formato, dbType, opzioni, oggetti) {
+  if (formato !== 'mongosh') {
+    if (opzioni !== undefined) throw new Error('Le opzioni MongoDB richiedono il formato Script mongosh.');
+    return undefined;
+  }
+  if (dbType !== 'mongodb') throw new Error('Il formato mongosh richiede MongoDB.');
+  if (opzioni === undefined) opzioni = {};
+  verificaCampiOpzioni(opzioni, ['collection', 'documenti'], 'mongosh');
+  const { collection = 'crea', documenti = 'inserisci' } = opzioni;
+  if (!['crea', 'se-assente', 'ricrea'].includes(collection)) throw new Error('Modalità di creazione delle collection non valida.');
+  if (!['inserisci', 'mantieni', 'aggiorna', 'sostituisci'].includes(documenti)) throw new Error('Modalità di scrittura dei documenti non valida.');
+  return {
+    collection: politicaStruttura(collection, oggetti),
+    documenti: oggetti.some(o => o.dati) ? documenti : 'inserisci',
+  };
+}
+
 /** L'identificatore di un oggetto nel grafo: `tipo:nome`, mai il solo nome. */
 function idOggetto(oggetto) {
   return `${oggetto.tipo}:${oggetto.nome}`;
@@ -81,7 +133,8 @@ function normalizzaCatalogo(catalogo) {
   const visti = new Set();
   const normalizzati = oggetti.map((raw) => {
     const tipo = String(raw && raw.tipo || '').trim();
-    const nome = String(raw && raw.nome || '').trim();
+    // Gli spazi fanno parte del nome reale di una collection o di una tabella quotata.
+    const nome = String(raw && raw.nome || '');
     if (!TIPI_VALIDI.has(tipo)) {
       throw new Error(`Tipo di oggetto sconosciuto nel catalogo: "${tipo}". Ammessi: ${TIPI.join(', ')}.`);
     }
@@ -111,13 +164,14 @@ function normalizzaCatalogo(catalogo) {
  * già avere. Confondere i due casi produce un export che si dichiara completo
  * e non lo è.
  */
-function normalizzaDipendenze(catalogo, indice) {
+function normalizzaDipendenze(catalogo, indice, partizioni) {
   const righe = Array.isArray(catalogo.dipendenze) ? catalogo.dipendenze : [];
   const archi = [];
   const esterne = [];
   const nonDeducibili = [];
   for (const raw of righe) {
-    const da = String(raw && raw.da || '').trim();
+    if (raw?.tipo === 'partizione' && !partizioni) continue;
+    const da = String(raw && raw.da || '');
     if (!da) throw new Error('Dipendenza senza origine nel catalogo.');
     if (!indice.has(da)) throw new Error(`Dipendenza da un oggetto assente dal catalogo: ${da}.`);
     const tipo = String(raw.tipo || 'sconosciuta');
@@ -127,7 +181,7 @@ function normalizzaDipendenze(catalogo, indice) {
       nonDeducibili.push({ da, tipo, nota: String(raw.nota || 'dipendenza non deducibile dal catalogo') });
       continue;
     }
-    const a = String(raw.a).trim();
+    const a = String(raw.a);
     if (raw.esterna) {
       esterne.push({ da, a, tipo, db: raw.db ? String(raw.db) : null });
       continue;
@@ -320,6 +374,36 @@ function dipendenzeDati(stato, archi) {
   return fuori;
 }
 
+// Con FK già attive, inserire i genitori prima dei figli. Una visita in
+// postordine attraversa anche i cicli senza perdere i loro prerequisiti esterni.
+function ordinaDatiPerFk(ids, archi) {
+  const genitori = new Map(ids.map(id => [id, []]));
+  for (const a of archi) {
+    if (a.tipo === 'fk' && genitori.has(a.a)) genitori.get(a.da)?.push(a.a);
+  }
+  const visitati = new Set(), ordinati = [];
+  for (const primo of ids) {
+    if (visitati.has(primo)) continue;
+    const pila = [{ id: primo, prossimo: 0 }];
+    visitati.add(primo);
+    while (pila.length) {
+      const corrente = pila.at(-1);
+      const riferimenti = genitori.get(corrente.id);
+      if (corrente.prossimo === riferimenti.length) {
+        ordinati.push(corrente.id);
+        pila.pop();
+        continue;
+      }
+      const id = riferimenti[corrente.prossimo++];
+      if (!visitati.has(id)) {
+        visitati.add(id);
+        pila.push({ id, prossimo: 0 });
+      }
+    }
+  }
+  return ordinati;
+}
+
 /**
  * Costruisce e congela il piano di export.
  *
@@ -329,6 +413,8 @@ function dipendenzeDati(stato, archi) {
  * @param {string} opts.modalita   una delle quattro di MODALITA
  * @param {object} [opts.selezione] scelte per oggetto, chiave `tipo:nome`
  * @param {string} [opts.formato]  contenitore dell'artefatto
+ * @param {object} [opts.opzioniSql] comportamento dello script su tabelle e righe esistenti
+ * @param {object} [opts.opzioniMongo] comportamento dello script su collection, viste e documenti esistenti
  * @param {object} [opts.destinazione] dove finisce l'artefatto
  */
 function creaPianoExport({
@@ -337,6 +423,10 @@ function creaPianoExport({
   modalita = MODALITA.STRUTTURA_E_DATI,
   selezione = null,
   formato = 'codedb-backup',
+  opzioniSql,
+  opzioniMongo,
+  destinazioneMongo,
+  idConfermaMongo,
   destinazione = { kind: 'server' },
   backend = 'incorporato',
   consistenza = 'nessuna-garanzia',
@@ -354,13 +444,24 @@ function creaPianoExport({
   if (databaseDiSistema(dbType, sourceDb)) {
     throw new Error(`"${sourceDb}" è un database di sistema: contiene metadati del server, non dati esportabili.`);
   }
+  if (destinazioneMongo && (formato !== 'mongosh' || dbType !== 'mongodb' || !idConfermaMongo
+      || !destinazioneMongo.tabId || !destinazioneMongo.connection || !destinazioneMongo.db
+      || databaseDiSistema('mongodb', destinazioneMongo.db))) {
+    throw new Error('Destinazione o conferma della copia diretta MongoDB non valida.');
+  }
   if (modalita === MODALITA.PERSONALIZZATA && !selezione) {
     throw new Error('La modalità personalizzata richiede una selezione per oggetto.');
   }
 
   const { oggetti, indice } = normalizzaCatalogo(catalogo);
-  const { archi, esterne, nonDeducibili } = normalizzaDipendenze(catalogo, indice);
   const scelte = applicaSelezione(oggetti, modalita, selezione);
+  // Gli script con politiche SQL riproducono le partizioni fisiche. Il formato
+  // CodeDB storico descrive invece ogni relazione come tabella autonoma.
+  const partizioni = formato === 'sql' && (
+    (['ricrea', 'se-assente'].includes(opzioniSql?.tabelle) && scelte.some(s => s.struttura))
+    || (['aggiorna', 'ignora'].includes(opzioniSql?.righe) && scelte.some(s => s.dati))
+  );
+  const { archi, esterne, nonDeducibili } = normalizzaDipendenze(catalogo, indice, partizioni);
   const { stato, aggiunti } = chiudiStruttura(scelte, archi, indice);
   const ordine = ordina(stato, archi);
 
@@ -378,6 +479,11 @@ function creaPianoExport({
   // Solo struttura non scorre i dati: il piano lo DICHIARA, così nessuna fase
   // può decidere per conto proprio di lanciare un COUNT(*) «tanto per sapere».
   const contaRighe = stato.some((s) => s.dati);
+  const sql = opzioniScriptSql(formato, dbType, opzioniSql, inclusi.filter(o => o.tipo === 'tabella'));
+  const mongo = opzioniScriptMongo(formato, dbType, opzioniMongo, inclusi);
+  if (sql && (sql.righe !== 'insert' || sql.tabelle !== 'crea')) {
+    ordine.dati = ordinaDatiPerFk(ordine.dati, archi);
+  }
 
   const body = {
     version: 1,
@@ -387,18 +493,20 @@ function creaPianoExport({
     sourceDb,
     modalita,
     formato,
+    ...(destinazioneMongo && { destinazioneMongo, idConfermaMongo }),
+    ...(sql && { opzioniSql: sql }),
+    ...(mongo && { opzioniMongo: mongo }),
     backend,
-    compressione: !!compressione,
-    destinazione,
+    ...(destinazioneMongo ? { destinazione: { kind: 'mongodb' } } : { compressione: !!compressione, destinazione }),
     consistenza,
     contaRighe,
     // La lettura passa dal driver nativo, fuori dal proxy autorizzante: serve
     // la capability sull'INTERA connessione, non su un singolo database.
-    capability: { connessione: 'read', ambito: 'intera-connessione' },
+    capability: { connessione: 'read', ambito: 'intera-connessione', ...(destinazioneMongo && { destinazione: 'manage' }) },
     verifica: {
-      artefatto: true,
+      artefatto: !destinazioneMongo,
       schema: stato.some((s) => s.struttura),
-      dati: contaRighe ? verificaDati : 'nessuna',
+      dati: contaRighe ? (destinazioneMongo ? 'esiti-scrittura' : verificaDati) : 'nessuna',
     },
     oggetti: inclusi.map((s) => ({
       id: s.id,

@@ -41,6 +41,70 @@ const trova = (plan, id) => plan.oggetti.find((o) => o.id === id);
   /* --- Le quattro modalita' ---------------------------------------------- */
 
   const completo = creaPianoExport({ catalogo, connection: 'locale', modalita: MODALITA.STRUTTURA_E_DATI });
+  assert(!Object.hasOwn(completo, 'opzioniSql'));
+  assert(!Object.hasOwn(completo, 'opzioniMongo'));
+  const catalogoMongo = { dbType: 'mongodb', db: 'negozio', oggetti: [
+    { tipo: 'collection', nome: 'clienti ' }, { tipo: 'collection', nome: 'clienti' }, { tipo: 'vista', nome: 'attivi' },
+  ], dipendenze: [{ da: 'vista:attivi', a: 'collection:clienti ', tipo: 'vista' }] };
+  const mongosh = (opzioniMongo, extra) => creaPianoExport({
+    catalogo: catalogoMongo, connection: 'locale', formato: 'mongosh', opzioniMongo, ...extra,
+  });
+  const predefinito = mongosh();
+  assert.deepStrictEqual(predefinito.opzioniMongo, { collection: 'crea', documenti: 'inserisci' });
+  assert.strictEqual(mongosh(predefinito.opzioniMongo).fingerprint, predefinito.fingerprint);
+  const impronteMongo = new Set();
+  for (const collection of ['crea', 'se-assente', 'ricrea']) {
+    for (const documenti of ['inserisci', 'mantieni', 'aggiorna', 'sostituisci']) {
+      const piano = mongosh({ collection, documenti });
+      assert.deepStrictEqual(piano.opzioniMongo, { collection, documenti });
+      assert(Object.isFrozen(piano.opzioniMongo));
+      impronteMongo.add(piano.fingerprint);
+    }
+  }
+  assert.equal(impronteMongo.size, 12, 'ogni scelta eseguibile richiede la sua anteprima');
+  const vistaMongo = mongosh({ collection: 'ricrea', documenti: 'sostituisci' }, {
+    modalita: MODALITA.PERSONALIZZATA, selezione: sola('vista:attivi'),
+  });
+  assert.deepStrictEqual(vistaMongo.ordine.creazione, ['collection:clienti ', 'vista:attivi']);
+  assert(trova(vistaMongo, 'collection:clienti ').aggiuntoPerDipendenza);
+  assert.deepStrictEqual(vistaMongo.opzioniMongo, { collection: 'ricrea', documenti: 'inserisci' });
+  assert.strictEqual(mongosh({ collection: 'ricrea' }, { modalita: MODALITA.SOLO_DATI }).opzioniMongo.collection, 'crea');
+  assert.throws(() => mongosh({}, { catalogo }), /richiede MongoDB/);
+  assert.throws(() => mongosh({}, { formato: 'codedb-json' }), /formato Script mongosh/);
+  assert.throws(() => mongosh(undefined, { opzioniSql: {} }), /formato Script SQL/);
+  for (const invalide of [null, [], 'ricrea', { altra: true }, { collection: 'drop' }, { documenti: 'drop' }]) {
+    assert.throws(() => mongosh(invalide), /non valid/);
+  }
+  const sql = (opzioniSql, extra) => creaPianoExport({ catalogo, connection: 'locale', formato: 'sql', opzioniSql, ...extra });
+  const normale = sql();
+  assert.deepStrictEqual(normale.opzioniSql, { righe: 'insert', tabelle: 'crea' });
+  assert.strictEqual(normale.fingerprint, sql({ righe: 'insert', tabelle: 'crea' }).fingerprint);
+  for (const [campo, valore] of [['righe', 'aggiorna'], ['tabelle', 'ricrea']]) {
+    const personalizzato = sql({ [campo]: valore });
+    assert.strictEqual(personalizzato.opzioniSql[campo], valore);
+    assert.notStrictEqual(personalizzato.fingerprint, normale.fingerprint);
+    assert(Object.isFrozen(personalizzato.opzioniSql));
+  }
+  assert.strictEqual(sql({ tabelle: 'ricrea' }, { modalita: MODALITA.SOLO_DATI }).opzioniSql.tabelle, 'crea');
+  assert.strictEqual(sql({ righe: 'ignora' }, { modalita: MODALITA.SOLO_STRUTTURA }).opzioniSql.righe, 'insert');
+  const figliPrima = { ...catalogo, oggetti: [...catalogo.oggetti].reverse() };
+  const conFk = sql({ righe: 'aggiorna' }, { catalogo: figliPrima, modalita: MODALITA.SOLO_DATI });
+  assert(conFk.ordine.dati.indexOf('tabella:clienti') < conFk.ordine.dati.indexOf('tabella:ordini'));
+  const soloVista = sql({ tabelle: 'ricrea' }, { modalita: MODALITA.PERSONALIZZATA, selezione: sola('vista:v_ordini') });
+  assert.strictEqual(soloVista.opzioniSql.tabelle, 'se-assente', 'una dipendenza non autorizza la DROP');
+  const catalogoPartizionato = { ...catalogo, oggetti: [{ tipo: 'tabella', nome: 'anno' }, { tipo: 'tabella', nome: 'storico' }],
+    dipendenze: [{ da: 'tabella:anno', a: 'tabella:storico', tipo: 'partizione' }] };
+  const foglia = { catalogo: catalogoPartizionato, modalita: MODALITA.PERSONALIZZATA, selezione: sola('tabella:anno') };
+  const partizione = sql({ tabelle: 'ricrea' }, foglia);
+  assert.deepStrictEqual(partizione.ordine.creazione, ['tabella:storico', 'tabella:anno']);
+  assert(trova(partizione, 'tabella:storico').aggiuntoPerDipendenza);
+  assert.deepStrictEqual(sql(undefined, { ...foglia, formato: 'codedb-json' }).ordine.creazione, ['tabella:anno']);
+  assert.throws(() => sql({ righe: 'replace' }), /non disponibile su postgresql/);
+  assert.throws(() => sql({ righe: 'insert' }, { formato: 'codedb-json' }), /formato Script SQL/);
+  assert.throws(() => sql({}, { catalogo: { ...catalogo, dbType: 'mongodb' } }), /richiede MySQL o PostgreSQL/);
+  for (const invalide of [[], null, 'ricrea', { altro: true }, { righe: 'sconosciuta' }, { tabelle: 'sconosciuta' }]) {
+    assert.throws(() => sql(invalide), /non valid|non disponibile/);
+  }
   assert.strictEqual(completo.oggetti.length, 7, 'struttura e dati prende tutto il catalogo');
   assert.strictEqual(trova(completo, 'tabella:ordini').dati, true);
   assert.strictEqual(trova(completo, 'vista:v_ordini').dati, false, 'una vista non porta righe');

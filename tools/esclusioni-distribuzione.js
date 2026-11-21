@@ -55,6 +55,10 @@ const ESCLUSIONI = [
   '!.env.example',
   '!connections.ini',
   '!connections.ini.*',
+  '!**/*.backup-signing-key*',
+  '!**/vault.json*',
+  '!**/connections.ini*',
+  '!**/.env*',
   '!conns/**',
   '!data/**',        // data/conns/<ownerId>.ini — i vault per tenant
   '!vault.json',
@@ -98,10 +102,11 @@ function aRegex(voce) {
     const dir = glob.slice(0, -3).replace(/[.+^${}()|[\]\\]/g, '\\$&');
     return new RegExp(`^/${dir}($|/)`);
   }
-  const corpo = glob
+  const ricorsivo = glob.startsWith('**/');
+  const corpo = (ricorsivo ? glob.slice(3) : glob)
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
     .replace(/\*/g, '.*');
-  return new RegExp(`^/${corpo}$`);
+  return new RegExp(`^/${ricorsivo ? '(?:.*/)?' : ''}${corpo}$`);
 }
 
 function regexPackager() {

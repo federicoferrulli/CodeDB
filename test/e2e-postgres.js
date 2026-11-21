@@ -374,6 +374,26 @@ async function runTests() {
   assert(raw.ok && raw.docs.length === 1 && raw.docs[0].cliente === 'B-uno',
     `SELECT non qualificata risolta in B (${raw.ok ? raw.docs.map((d) => d.cliente).join(', ') : raw.error})`);
 
+  await withAdmin(async c => {
+    const parent = '"' + SCHEMA_A + '".mensili';
+    await c.query('CREATE TABLE ' + parent + ' (mese integer, nota text) PARTITION BY LIST (mese)');
+    for (const n of [1, 2]) {
+      await c.query('CREATE TABLE ' + parent + n + ' PARTITION OF ' + parent + ' FOR VALUES IN (' + n + ')');
+    }
+    for (const evento of ['doc:update', 'doc:delete']) {
+      await c.query('TRUNCATE ' + parent);
+      await c.query('INSERT INTO ' + parent + " VALUES (1,'prima'),(2,'seconda')");
+      const fisiche = (await c.query('SELECT ctid::text AS posizione FROM ' + parent)).rows;
+      assert(fisiche.length === 2 && fisiche[0].posizione === fisiche[1].posizione, 'le due partizioni hanno una riga nella stessa posizione fisica');
+      const pagina = await emit('collection:find', { db: SCHEMA_A, coll: 'mensili', limit: 5 });
+      const id = JSON.stringify(pagina.docs.find(r => r.mese === 1)._id);
+      const result = await emit(evento, { db: SCHEMA_A, coll: 'mensili', id, set: { nota: 'modificata' } });
+      assert(result.ok && (result.modified ?? result.deleted) === 1, evento + ' agisce su una sola riga');
+      const salvata = (await c.query('SELECT nota FROM ' + parent + ' WHERE mese=2')).rows;
+      assert(salvata.length === 1 && salvata[0].nota === 'seconda', evento + ' preserva la riga dell’altra partizione');
+    }
+  });
+
   console.log('11. DDL sul livello "database" = schema');
   const created = await emit('db:create', { db: SCHEMA_NEW, coll: 'prima_tabella' });
   assert(created.ok, `creazione schema riuscita (${created.ok ? 'ok' : created.error})`);

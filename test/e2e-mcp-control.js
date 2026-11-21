@@ -14,7 +14,9 @@ const { startTestServer, createE2eTargetRegistry } = require('./e2e-harness');
 
 const targets = createE2eTargetRegistry({ destructive: true, prefix: 'codedb_mcp_panel' });
 const appDb = targets.target('auth');
-const mongoUri = 'mongodb://127.0.0.1:37017/?directConnection=true';
+const mongoUri = process.env.CODEDB_E2E_MONGO_URI || 'mongodb://127.0.0.1:37017/?directConnection=true';
+const mysqlPort = Number(process.env.E2E_MYSQL_PORT || 33306);
+const pgPort = Number(process.env.E2E_PG_PORT || 35432);
 const password = 'Solo-laboratorio-2026!';
 const ownerEmail = 'mcp-panel@codedb-lab.test';
 const clients = [], sockets = [], engines = [];
@@ -56,15 +58,15 @@ async function check(label, run) {
       amount: async db => (await mongo.db(db).collection('ledger').findOne({ id: 1 })).amount,
       drop: db => mongo.db(db).dropDatabase(),
     });
-    const my = await mysql.createConnection({ host: '127.0.0.1', port: 33306, user: 'root', password: 'lab_mysql' });
-    engines.push({ kind: 'mysql', driver: my, cfg: { dbType: 'mysql', host: '127.0.0.1', port: 33306, username: 'root', password: 'lab_mysql', readOnly: false },
+    const my = await mysql.createConnection({ host: '127.0.0.1', port: mysqlPort, user: 'root', password: 'lab_mysql' });
+    engines.push({ kind: 'mysql', driver: my, cfg: { dbType: 'mysql', host: '127.0.0.1', port: mysqlPort, username: 'root', password: 'lab_mysql', readOnly: false },
       prepare: async db => { await my.query(`CREATE DATABASE \`${db}\``); await my.query(`CREATE TABLE \`${db}\`.ledger (id INT PRIMARY KEY, amount INT)`); await my.query(`INSERT INTO \`${db}\`.ledger VALUES (1,10)`); },
       amount: async db => (await my.query(`SELECT amount FROM \`${db}\`.ledger WHERE id=1`))[0][0].amount,
       drop: db => my.query(`DROP DATABASE IF EXISTS \`${db}\``),
     });
-    const pg = new PgClient({ host: '127.0.0.1', port: 35432, user: 'postgres', password: 'lab_postgres', database: 'postgres' });
+    const pg = new PgClient({ host: '127.0.0.1', port: pgPort, user: 'postgres', password: 'lab_postgres', database: 'postgres' });
     await pg.connect();
-    engines.push({ kind: 'postgresql', driver: pg, cfg: { dbType: 'postgresql', host: '127.0.0.1', port: 35432, username: 'postgres', password: 'lab_postgres', database: 'postgres', readOnly: false },
+    engines.push({ kind: 'postgresql', driver: pg, cfg: { dbType: 'postgresql', host: '127.0.0.1', port: pgPort, username: 'postgres', password: 'lab_postgres', database: 'postgres', readOnly: false },
       prepare: async db => { await pg.query(`CREATE SCHEMA "${db}"`); await pg.query(`CREATE TABLE "${db}".ledger (id INT PRIMARY KEY, amount INT)`); await pg.query(`INSERT INTO "${db}".ledger VALUES (1,10)`); },
       amount: async db => (await pg.query(`SELECT amount FROM "${db}".ledger WHERE id=1`)).rows[0].amount,
       drop: db => pg.query(`DROP SCHEMA IF EXISTS "${db}" CASCADE`),

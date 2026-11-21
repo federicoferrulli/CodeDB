@@ -89,6 +89,7 @@ function createModule({ config, dependencies, errori }) {
     // comincia cercando la sessione sarebbe circolare.
     'mongo:connect': 'apre la sessione che le tre giunture presuppongono',
     'mongo:disconnect': 'chiude la sessione',
+    'session:recovery': 'conferma se il trasporto ha ritrovato la sessione della pagina',
     'connections:test': 'prova una connessione senza aprirne una sessione',
 
     // --- Capability senza bersaglio ------------------------------------------
@@ -173,6 +174,7 @@ function createModule({ config, dependencies, errori }) {
     'mongosh:closeStream': ['statoDiSessione', 'interruzioneInProcesso'],
     'mongosh:answer': ['statoDiSessione'],
     'database:export:start': ['rispostaAnticipata', 'avanzamento', 'statoDiSessione'],
+    'database:export:execute': ['avanzamento', 'statoDiSessione'],
     'query:execute': [
       'annullamentoMutevole',
       'categoriaAuditFinale',
@@ -188,11 +190,13 @@ function createModule({ config, dependencies, errori }) {
       'capabilityPerIstruzione',
       'statoDiSessione',
     ],
+    'script:upload': ['statoDiSessione'],
     'script:pause': ['statoDiSessione', 'interruzioneInProcesso'],
     'script:resume': ['statoDiSessione'],
     'script:state': ['statoDiSessione', 'letturaOperazioniInCorso'],
     'script:result': ['statoDiSessione'],
     'script:abort': ['statoDiSessione', 'interruzioneInProcesso'],
+    'query:state': ['statoDiSessione', 'letturaOperazioniInCorso'],
     'query:cancel': ['letturaOperazioniInCorso', 'interruzioneInProcesso'],
     'database:import:start': [
       'rispostaAnticipata', 'avanzamento', 'interruzioneInProcesso',

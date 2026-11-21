@@ -76,6 +76,23 @@ fs.mkdirSync(dir, { recursive: true });
 
     await open('mongodb');
     const initial = await aligned('Prima apertura con una vecchia altezza salvata');
+    const toggle = page.locator('#explorer-toggle-btn');
+    for (const [width, navWidth] of [[1024, 224], [1440, 244]]) {
+      await page.setViewportSize({ width, height: 1060 });
+      assert.equal((await page.locator('#navigator').boundingBox()).width, navWidth, 'Larghezza predefinita del navigatore');
+      const connTitle = await page.locator('#conn-sidebar .sidebar-title').boundingBox();
+      for (const expanded of [true, false]) {
+        assert.equal(await toggle.getAttribute('aria-expanded'), String(expanded));
+        const dbTitle = await page.locator('#sidebar .sidebar-title').boundingBox();
+        assert.deepEqual([dbTitle.x, dbTitle.width], [connTitle.x, connTitle.width], 'Database e Connessioni occupano la stessa larghezza');
+        if (expanded) {
+          const treeBottom = await page.locator('#db-tree').evaluate(el => el.getBoundingClientRect().bottom);
+          const sectionBottom = await page.locator('#sidebar').evaluate(el => el.getBoundingClientRect().bottom);
+          assert(Math.abs(treeBottom - sectionBottom) < 1, 'La lista database usa tutto lo spazio disponibile anche con un solo elemento');
+        }
+        await toggle.click();
+      }
+    }
     await drag(120);
     assert(Math.abs((await measure()).height - initial - 120) < 1, 'La maniglia può scendere oltre la fine della lista');
     await page.evaluate(async () => (await import('/js/workspace.js')).renderWorkspace());
