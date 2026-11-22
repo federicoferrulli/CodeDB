@@ -47,7 +47,40 @@ const VERSION = 2;
 // all'avvio. `maxmem` va alzato di conseguenza (il default di Node è 32 MB e
 // N=16384,r=8 ne chiede ~16 MB per blocco più margine).
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32, maxmem: 64 * 1024 * 1024 };
+const SCRYPT_LIMITS = Object.freeze({
+  minN: 1024, maxN: 65536,
+  minR: 1, maxR: 16,
+  minP: 1, maxP: 8,
+  minKeylen: 16, maxKeylen: 64,
+  maxmem: SCRYPT.maxmem,
+});
 const CHECK_PLAINTEXT = 'codedb-vault-ok';
+
+/** Valida i parametri scrypt prima di invocare la KDF sincrona (evita DoS CPU/RAM). */
+function validaParametriScrypt(params = SCRYPT) {
+  const N = Number(params && params.N);
+  const r = Number(params && params.r);
+  const p = Number(params && params.p);
+  const keylen = Number(params && params.keylen != null ? params.keylen : SCRYPT.keylen);
+  const maxmem = Number(params && params.maxmem != null ? params.maxmem : SCRYPT.maxmem);
+  if (!Number.isInteger(N) || N < SCRYPT_LIMITS.minN || N > SCRYPT_LIMITS.maxN || (N & (N - 1)) !== 0) {
+    throw new Error('Parametro scrypt N non valido o fuori dai limiti di sicurezza.');
+  }
+  if (!Number.isInteger(r) || r < SCRYPT_LIMITS.minR || r > SCRYPT_LIMITS.maxR) {
+    throw new Error('Parametro scrypt r non valido o fuori dai limiti di sicurezza.');
+  }
+  if (!Number.isInteger(p) || p < SCRYPT_LIMITS.minP || p > SCRYPT_LIMITS.maxP) {
+    throw new Error('Parametro scrypt p non valido o fuori dai limiti di sicurezza.');
+  }
+  if (!Number.isInteger(keylen) || keylen < SCRYPT_LIMITS.minKeylen || keylen > SCRYPT_LIMITS.maxKeylen) {
+    throw new Error('Lunghezza chiave scrypt non valida o fuori dai limiti di sicurezza.');
+  }
+  const limiteMem = Number.isInteger(maxmem) && maxmem > 0 ? Math.min(maxmem, SCRYPT_LIMITS.maxmem) : SCRYPT_LIMITS.maxmem;
+  if (128 * N * r > limiteMem) {
+    throw new Error('Parametri scrypt oltre il budget di memoria consentito.');
+  }
+  return { N, r, p, keylen, maxmem: limiteMem };
+}
 
 /* --- Cifratura dei singoli valori ------------------------------------------ */
 
@@ -86,8 +119,9 @@ function legacyKey(passphrase) {
 
 /** KEK del formato v2: scrypt(passphrase, salt). */
 function deriveKek(passphrase, salt, params = SCRYPT) {
-  return crypto.scryptSync(String(passphrase || ''), salt, params.keylen, {
-    N: params.N, r: params.r, p: params.p, maxmem: params.maxmem,
+  const sicuri = validaParametriScrypt(params);
+  return crypto.scryptSync(String(passphrase || ''), salt, sicuri.keylen, {
+    N: sicuri.N, r: sicuri.r, p: sicuri.p, maxmem: sicuri.maxmem,
   });
 }
 
@@ -133,18 +167,23 @@ function writeMeta(connectionsFile, meta) {
 
   // Copia di sicurezza della generazione attuale (se c'è).
   try {
-    if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
+    if (fs.existsSync(file)) {
+      fs.copyFileSync(file, `${file}.bak`);
+      try { fs.chmodSync(`${file}.bak`, 0o600); } catch { /* permessi POSIX best-effort */ }
+    }
   } catch { /* la copia è un di più: non deve impedire la scrittura */ }
 
   const dati = JSON.stringify(meta, null, 2);
-  const fd = fs.openSync(tmp, 'w');
+  const fd = fs.openSync(tmp, 'w', 0o600);
   try {
     fs.writeFileSync(fd, dati, 'utf8');
     fs.fsyncSync(fd); // il contenuto è sul supporto PRIMA che il rename lo renda visibile
   } finally {
     fs.closeSync(fd);
   }
+  try { fs.chmodSync(tmp, 0o600); } catch { /* permessi POSIX best-effort */ }
   fs.renameSync(tmp, file);
+  try { fs.chmodSync(file, 0o600); } catch { /* permessi POSIX best-effort */ }
 
   // Anche il rename va reso durevole: su alcuni filesystem la voce di directory
   // sopravvive senza il file. Non tutti i sistemi permettono di aprire una
@@ -224,6 +263,8 @@ function rewrapDataKey(meta, dataKey, newPassphrase) {
 module.exports = {
   VERSION,
   SCRYPT,
+  SCRYPT_LIMITS,
+  validaParametriScrypt,
   encryptWith,
   decryptWith,
   legacyKey,

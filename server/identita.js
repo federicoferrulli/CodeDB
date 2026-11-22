@@ -265,9 +265,18 @@ function createModule({ config, trasporto, audit, errori, dependencies, chiudiSe
     loginAttempts.clear();
   }
 
+  const verificaOrigineAuth = (req, res, next) => {
+    const verdict = trasporto.checkOrigin(req);
+    if (!verdict.ok) {
+      res.status(403).json({ ok: false, error: verdict.publicReason || verdict.reason });
+      return;
+    }
+    next();
+  };
+
   // Login/logout via HTTP (non via socket): così il gate dell'handshake resta una
   // regola secca — nessun evento è raggiungibile senza essere già autenticati.
-  trasporto.app.post('/auth/login', express.json({ limit: '16kb' }), richiestaHttp(async (req, res) => {
+  trasporto.app.post('/auth/login', verificaOrigineAuth, express.json({ limit: '16kb' }), richiestaHttp(async (req, res) => {
     if (!config.rbacOn()) {
       res.json({ ok: true, rbac: false, token: null, user: principalView(ROOT_PRINCIPAL) });
       return;
@@ -307,7 +316,7 @@ function createModule({ config, trasporto, audit, errori, dependencies, chiudiSe
     }
   }));
 
-  trasporto.app.post('/auth/logout', express.json({ limit: '16kb' }), richiestaHttp(async (req, res) => {
+  trasporto.app.post('/auth/logout', verificaOrigineAuth, express.json({ limit: '16kb' }), richiestaHttp(async (req, res) => {
     const token = String((req.body && req.body.token) || '') || bearerToken(req);
     if (config.rbacOn() && appStore) {
       await appStore.deleteSession(token).catch(() => {});

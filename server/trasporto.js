@@ -17,6 +17,16 @@ function createModule({ config }) {
   const PORT = config.env.PORT ?? 3030;
 
   const app = express();
+  app.disable('x-powered-by');
+  // Intestazioni HTTP di difesa in profondità (clickjacking esterno, MIME sniffing, referrer).
+  // SAMEORIGIN / 'self' conserva gli iframe same-origin dei riquadri Split-View (`pane-runtime.js`).
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    next();
+  });
 
   // Reverse proxy davanti a CodeDB (CDB-19): senza questa impostazione `req.ip` è
   // l'indirizzo del PROXY, uguale per tutti, quindi il freno ai tentativi di login

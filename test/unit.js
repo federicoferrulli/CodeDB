@@ -45,6 +45,7 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-ssh-config');
   await require('./unit-conn-config');
   await require('./unit-mcp-auth');
+  await require('./unit-hardening-produzione');
   // Test 1: DbFactory instanziamento e helper
   const mongoStrategy = DbFactory.getStrategy('mongodb');
   assert.strictEqual(mongoStrategy.type, 'mongodb', 'MongoDbStrategy type deve essere mongodb');

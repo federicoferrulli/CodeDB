@@ -532,11 +532,14 @@ function createModule({ config, errori, dependencies }) {
     // se dopo una migrazione corrotta arriva un ulteriore salvataggio dalla UI.
     try {
       fs.copyFileSync(file + '.bak', file + '.bak2');
+      try { fs.chmodSync(file + '.bak2', 0o600); } catch { /* permessi POSIX best-effort */ }
     } catch { /* nessun .bak precedente: niente da ruotare */ }
     try {
       fs.copyFileSync(file, file + '.bak');
+      try { fs.chmodSync(file + '.bak', 0o600); } catch { /* permessi POSIX best-effort */ }
     } catch { /* file ancora inesistente: nessun backup da fare */ }
-    fs.writeFileSync(file, stringifyIni(toSave), 'utf8');
+    fs.writeFileSync(file, stringifyIni(toSave), { encoding: 'utf8', mode: 0o600 });
+    try { fs.chmodSync(file, 0o600); } catch { /* permessi POSIX best-effort */ }
   }
 
   function identificaOrigine(next, previous) {

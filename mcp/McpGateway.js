@@ -106,7 +106,7 @@ function buildMcpServer(session, deps) {
     { name: 'CodeDB-mcp', version: require('../package.json').version },
     {
       instructions:
-        'Gateway di sola lettura verso i database (MongoDB e MySQL) gestiti da Mongo Web GUI. ' +
+        'Gateway verso i database (MongoDB, MySQL e PostgreSQL) gestiti da CodeDB. ' +
         'Flusso tipico: list_saved_connections → connect_database → get_databases_and_collections ' +
         '→ get_schema → execute_query. Chiudi le connessioni con disconnect_database quando hai finito. ' +
         'Strumenti analitici avanzati: get_shortest_path (cammino di relazioni tra tabelle), analyze_dependencies (matrice dipendenze e seeding order), ' +
@@ -343,9 +343,43 @@ function attachMcp(app, deps) {
     return { principal, credentialFingerprint: credentialFingerprint(rawKey) };
   }
 
-  app.post(MCP_PATH, express.json({ limit: '50mb' }), tracked(async (req, res) => {
-    if (!guardHost(req, res)) return;
-    const auth = await authenticate(req, res);
+  const parseMcpJson = express.json({ limit: '50mb' });
+
+  // Controllo stato, Host e autenticazione PRIMA di leggere o parsare il body JSON
+  // (limite 50 MB): evita che client non autenticati impegnino RAM/CPU prima del 401/403.
+  function preAuthPostMcp(req, res, next) {
+    if (closing || runtimeState !== 'active') {
+      res.status(503).json(rpcError(-32000, closing ? 'Server in arresto.' : 'Gateway MCP disattivato o in fase di arresto.'));
+      return;
+    }
+    const work = Promise.resolve().then(async () => {
+      try {
+        if (!guardHost(req, res)) return;
+        const auth = await authenticate(req, res);
+        if (!auth) return;
+        req.mcpAuth = auth;
+        next();
+      } catch (err) {
+        if (!res.headersSent) res.status(500).json(rpcError(-32603, errMsg(err)));
+      }
+    });
+    pendingRequests.add(work);
+    work.then(() => pendingRequests.delete(work), () => pendingRequests.delete(work));
+  }
+
+  function parsePostBodyMcp(req, res, next) {
+    parseMcpJson(req, res, (err) => {
+      if (!err) return next();
+      const status = (err.status || err.statusCode) === 413 ? 413 : 400;
+      const msg = status === 413
+        ? 'Payload MCP oltre il limite consentito (50 MB).'
+        : 'Corpo JSON MCP non valido.';
+      if (!res.headersSent) res.status(status).json(rpcError(-32700, msg));
+    });
+  }
+
+  app.post(MCP_PATH, preAuthPostMcp, parsePostBodyMcp, tracked(async (req, res) => {
+    const auth = req.mcpAuth || await authenticate(req, res);
     if (!auth) return;
     const { principal, credentialFingerprint: requestFingerprint } = auth;
     activity.describe({ principal }, req.body?.params?.arguments || {});
