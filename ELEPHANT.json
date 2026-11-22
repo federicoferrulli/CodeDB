@@ -791,19 +791,21 @@
     },
     "mongosh-process": {
       "kind": "concept",
-      "title": "Runtime mongosh esplicito",
-      "summary": "Il motore mongosh crea un processo figlio per la sessione MongoDB. Conserva variabili e change stream tra richieste e può accedere a Node e al filesystem del server.",
+      "title": "Runtime mongosh nativo",
+      "summary": "Il motore mongosh crea un processo figlio per la sessione MongoDB. Conserva variabili e change stream tra richieste e può accedere a Node e al filesystem del server. In modalità Auto gli script MongoDB che usano API o sintassi native di mongosh vengono instradati automaticamente a questo runtime.",
       "rules": [
-        "Autorizza la creazione con isInstallAdmin. Il permesso di scrittura sul database da solo è insufficiente.",
+        "Autorizza la creazione con isInstallAdmin, sia quando il motore è esplicito sia in auto-instradamento da Auto. Il permesso di scrittura sul database da solo è insufficiente.",
         "Reset, timeout o arresto del processo chiudono anche variabili, richieste e stream di quel runtime."
       ],
       "sources": [
         "db/mongoshRuntime.js",
+        "db/mongoshRouting.js",
         "db/mongoshProcesso.cjs",
         "server/query.js"
       ],
       "tests": [
         "test/unit-mongosh.js",
+        "test/unit-mongosh-auto.js",
         "test/e2e-mongosh-runtime.js"
       ],
       "section": "queries"
@@ -833,7 +835,7 @@
       "rules": [
         "Dividi SQL con le regole del dialetto, rispettando blocchi, stringhe e commenti. Il JavaScript gestito arriva intero all’interprete.",
         "ScriptRunner prosegue dopo un errore per impostazione predefinita. stopOnError cambia la politica di arresto.",
-        "L’editor indicizza i file SQL su richiesta e conserva gli offset in byte. Per un’istruzione che supera il singolo messaggio socket, script:upload raccoglie i frammenti nella sessione e script:execute consuma il testo completo una volta. Il limite per istruzione è 64 MiB.",
+        "L’editor adatta apertura e salvataggio file al DBMS attivo (SQL o MongoDB: .js, .mongodb, .json, .mql oltre a .sql). Indicizza i file SQL su richiesta conservando gli offset in byte, mentre mantiene interi gli script JavaScript e i documenti JSON MongoDB senza spezzarli sul `;`. Per un’istruzione che supera il singolo messaggio socket, script:upload raccoglie i frammenti nella sessione e script:execute consuma il testo completo una volta. Il limite per singola esecuzione è 64 MiB.",
         "L’apertura mostra il blocco in lettura e l’invio frammentato mostra i byte confermati dal server. La ripresa riutilizza runId, upload e sessione del database. script:state restituisce anche il risultato terminale perso durante la disconnessione.",
         "Il registro conserva un’anteprima e l’intervallo nel file originale. In pausa il blocco attende ripresa o annullamento. Alla fine di una sequenza, lo stato indica se il database ha annullato la transazione rimasta aperta.",
         "script:result legge dal deposito su disco i risultati e gli errori conservati entro i limiti del run. I riepiloghi di scrittura restano nel resoconto. Se il deposito non si apre, lo script può proseguire."
@@ -844,6 +846,7 @@
         "db/ScriptResults.js",
         "public/js/sql-chunker.js",
         "public/js/sql-chunker-worker.js",
+        "public/js/query-file.js",
         "public/js/sql-split.js",
         "public/js/sql-file-limits.mjs",
         "public/js/script-upload.js",
@@ -859,6 +862,7 @@
         "test/e2e-script-risultati.js",
         "test/unit-operazioni-lunghe.js",
         "test/unit-sql-chunking.js",
+        "test/unit-query-file.js",
         "test/e2e-import-upload-ui.js",
         "test/e2e-workbench.js",
         "test/e2e-file-sql.js",

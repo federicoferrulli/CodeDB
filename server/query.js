@@ -8,6 +8,8 @@ const VirtualJoinEngine = require('../db/VirtualJoinEngine');
 const { conSessioneSql } = require('../db/sqlSessione');
 const MongoScriptRunner = require('../db/MongoScriptRunner');
 const MongoShell = require('../db/MongoShell');
+const { richiedeMongoshNativo } = require('../db/mongoshRouting');
+const { isInstallAdmin } = require('../auth/permissions');
 const { EJSON } = require('bson');
 
 function documentoMongo(code) {
@@ -370,7 +372,7 @@ function createModule({ config, connessioni, dependencies }) {
       return err;
     };
 
-    if (engine === 'mongosh') {
+    const eseguiMongosh = async () => {
       try {
         mongoshAccess(session);
         if (session.mongosh?.closing) await session.mongosh.closing;
@@ -386,6 +388,18 @@ function createModule({ config, connessioni, dependencies }) {
         const res = await session.mongosh.evaluate(codeOriginale, db, opHandle);
         return fatto(res, 'write', 'Runtime mongosh nativo', res.activeDb, coll);
       } catch (err) { throw conContesto(err, 'write', 'Runtime mongosh nativo', db, coll); }
+    };
+
+    if (engine === 'mongosh') return eseguiMongosh();
+
+    // In modalità Auto su MongoDB, gli script che richiedono API o sintassi
+    // native di mongosh (es. export CodeDB, rs/sh, Map/Set, spread/destructuring)
+    // vengono instradati automaticamente al runtime mongosh, mantenendo il
+    // controllo di autorizzazione per l'amministratore dell'installazione.
+    if ((!engine || engine === 'auto') && session.strategy.type === 'mongodb' && richiedeMongoshNativo(codeOriginale)) {
+      if (session.mongosh || session.strategy.uri || !isInstallAdmin(session.principal, config.env)) {
+        return eseguiMongosh();
+      }
     }
 
     if (['mysql', 'postgresql', 'mongodb'].includes(engine) && engine !== session.strategy.type) {

@@ -16,6 +16,8 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-sql-sessioni');
   await require('./unit-query-audit');
   await require('./unit-query-error');
+  await require('./unit-query-file');
+  await require('./unit-mongosh-auto');
   await require('./unit-feedback-messaggi');
   await require('./unit-query-export-json');
   require('./sql-to-mql');

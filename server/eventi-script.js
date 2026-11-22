@@ -3,6 +3,7 @@
 // CodeDB — eventi-script. Stato e dipendenze appartengono alla singola istanza.
 const { payloadEsecuzione } = require('../db/payloadEsecuzione');
 const MongoScriptRunner = require('../db/MongoScriptRunner');
+const { richiedeMongoshNativo } = require('../db/mongoshRouting');
 const { splitStatementsDetailed } = require('../db/sqlText');
 const { createImportUploadRegistry } = require('../db/importUploads');
 const { MAX_SQL_STATEMENT_BYTES } = require('../public/js/sql-file-limits.mjs');
@@ -333,12 +334,15 @@ function createModule({ lock, query, audit, dependencies, errori }) {
       const codeStr = leggiCodice(session, payload);
       if (!codeStr.trim()) throw new Error('Script vuoto.');
 
-      // Uno SCRIPT JavaScript su MongoDB non si divide per `;`: il separatore
-      // sta anche dentro i blocchi `{ … }` di cicli e funzioni, e spezzarlo
-      // produrrebbe frammenti privi di senso. Lo si tratta come un'unica unità e
-      // sarà l'interprete ad analizzarlo (executeQueryCode → MongoScriptRunner).
+      // Uno SCRIPT JavaScript o un documento/pipeline JSON/MQL su MongoDB non si
+      // divide per `;`: in JS il separatore sta dentro i blocchi `{ … }` di cicli
+      // e funzioni, e in un JSON/EJSON una stringa con `\"` e `;` verrebbe
+      // spezzata a metà dal lexer SQL. Si tratta come un'unica unità e sarà
+      // l'esecutore MongoDB ad analizzarlo.
+      const docMongo = session.strategy.type === 'mongodb'
+        && /^\s*(?:\/\/[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/\s*)*[[{]/.test(codeStr);
       const jsMongo = session.strategy.type === 'mongodb'
-        && (payload.engine === 'mongosh' || MongoScriptRunner.sembraScriptJs(codeStr));
+        && (payload.engine === 'mongosh' || docMongo || richiedeMongoshNativo(codeStr) || MongoScriptRunner.sembraScriptJs(codeStr));
 
       // Le porzioni fatte di soli commenti non sono istruzioni: un file .sql
       // finisce spesso con un commento di chiusura, e mandarlo al database

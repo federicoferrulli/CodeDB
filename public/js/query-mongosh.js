@@ -20,11 +20,12 @@ function pannello() {
 }
 export function renderMongosh() {
   const el = pannello(), tab = activeTab(), streams = stati.get(tab?.id) || new Map();
-  el.hidden = document.getElementById('query-target-engine')?.value !== 'mongosh' && !streams.size;
+  const result = risultati.get(tab?.id);
+  el.hidden = document.getElementById('query-target-engine')?.value !== 'mongosh'
+    && !streams.size && !result?.scriptOutput?.length && !result?.cursorHasMore;
   el.replaceChildren();
   const summary = document.createElement('summary'); summary.textContent = `mongosh · ${[...streams.values()].filter(f => !['chiuso', 'errore'].includes(f.status)).length} stream attivi`;
   el.append(summary);
-  const result = risultati.get(tab?.id);
   if (result?.cursorHasMore) {
     const hint = document.createElement('p'); hint.textContent = 'Il cursore contiene altri risultati: esegui it per il batch successivo, oppure toArray() per richiederli insieme.';
     el.append(hint);

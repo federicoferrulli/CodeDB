@@ -7,6 +7,7 @@ import { runQuery, updateEditorHighlight, setQueryTarget } from './query-tab.js'
 import { queryDocument } from './query-document.js';
 import { setView } from './main.js';
 import { knowsScriptRun, focusScriptRun, resumeScript, chiudiRunFile } from './script-run.js';
+import { acceptPerRipresaFile } from './query-file.js';
 
 const STORAGE_KEY = 'codedb:pending';
 const ospite = typeof window !== 'undefined' ? window.frameElement?.codedbPanel : null;
@@ -695,7 +696,8 @@ async function codiceDalRegistro(item) {
   if (!source) {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.sql,text/plain';
+    const origine = tabs.list.find(t => t.id === item.tabId);
+    input.accept = acceptPerRipresaFile(chunk.name, origine?.dbType);
     toast(`Seleziona ${chunk.name} per riaprire il blocco ${chunk.index + 1}.`);
     source = await new Promise(resolve => {
       input.onchange = () => resolve(input.files[0]);

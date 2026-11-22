@@ -192,6 +192,35 @@ const { startTestServer } = require('./e2e-harness');
     await page.evaluate(() => document.getElementById('chunk-load-editor-btn').click());
     await page.waitForFunction(n => document.getElementById('query-editor-input').value.length === n, inserimento.length);
     assert.equal(await page.locator('#query-editor-input').inputValue(), inserimento, 'Carica in Editor recupera tutta l’istruzione');
+
+    // Adattamento al DBMS: su MySQL accetta file SQL, su MongoDB abilita anche
+    // .js, .mongodb, .json e .mql, e non spezza sul `;` gli script JS > 1 MB.
+    assert.equal(await page.locator('#query-open-sql-input').getAttribute('accept'), '.sql,.txt,.queries');
+    assert.match(await page.locator('#query-open-sql-btn').textContent(), /Apri file SQL/);
+    await page.evaluate(async () => {
+      const [{ createTab, tabs }, { renderWorkspace }, { openDbTab }, { setView }] = await Promise.all(
+        ['tabs', 'workspace', 'colltabs', 'main'].map(n => import(`/js/${n}.js`))
+      );
+      const tm = createTab({ id: 'mongo-ui' }); tm.dbType = 'mongodb'; tm.connName = 'Collaudo Mongo';
+      Object.assign(tm.state, { connected: true, dbType: 'mongodb' }); tabs.activeId = tm.id;
+      renderWorkspace();
+      openDbTab('negozio');
+      setView('query');
+    });
+    assert.equal(await page.locator('#query-open-sql-input').getAttribute('accept'), '.js,.mongodb,.json,.mql,.sql,.txt,.queries');
+    assert.match(await page.locator('#query-open-sql-btn').textContent(), /Apri file query/);
+    const mongoSmall = 'db.ordini.find({ stato: "aperto" });\n';
+    await page.locator('#query-open-sql-input').setInputFiles({ name: 'ordini.mongodb.js', mimeType: 'text/javascript', buffer: Buffer.from(mongoSmall) });
+    await page.waitForFunction(txt => document.getElementById('query-editor-input').value === txt, mongoSmall);
+    const mongoLarge = 'for (let i = 0; i < 3; i++) {\n  db.ordini.insertOne({ i, nota: "x;y" });\n}\n' + '// ' + 'a'.repeat(1100 * 1024);
+    await page.locator('#query-open-sql-input').setInputFiles({ name: 'migrazione.js', mimeType: 'text/javascript', buffer: Buffer.from(mongoLarge) });
+    await page.waitForFunction(() => document.getElementById('chunk-count-badge').textContent === 'File intero');
+    assert.equal(await page.locator('#chunk-run-all-btn span').textContent(), 'Esegui file');
+    assert.equal(await page.locator('#chunk-select').isDisabled(), true);
+    await page.evaluate(() => document.getElementById('chunk-load-editor-btn').click());
+    await page.waitForFunction(n => document.getElementById('query-editor-input').value.length === n, mongoLarge.length);
+    assert.equal(await page.locator('#query-editor-input').inputValue(), mongoLarge, 'Uno script JS MongoDB > 1 MB resta integro senza tagli sui ;');
+
     assert.deepEqual(errors, []);
     console.log('  OK UI: SQL/JSON/CSV, selettore touch, UTF-8 integro, SQL grande a blocchi, chiusura, letture sorpassate e file illeggibili (dati, connessioni, snapshot)');
   } finally { await browser.close(); await server.stop(); }

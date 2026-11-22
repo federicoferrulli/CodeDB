@@ -12,6 +12,7 @@ import { initSnippetManager } from './snippet-manager.js';
 import { serializzaJsonStandard } from './export-json.js';
 import { trackPending, markPaused } from './pending-queries.js';
 import { SqlChunker, formatBytes } from './sql-chunker.js';
+import { azioneApriFileQuery, nomeFileSalvaQuery, usaChunkingSql } from './query-file.js';
 import { highlightQueryCode } from './query-highlighter.js';
 import { intervalloErroreQuery } from './query-error.js';
 import { isScript, countStatements } from './sql-split.js';
@@ -73,7 +74,10 @@ export function registraErroreQuery(documento, errore, sorgente) {
   const range = offset != null && Number.isInteger(posizione?.start) && Number.isInteger(posizione?.end)
     && posizione.start >= 0 && posizione.end >= posizione.start
     ? { start: offset + posizione.start, end: offset + posizione.end } : null;
-  const riga = errore.line || rigaDaMessaggio(errore.message);
+  const rigaMsg = rigaDaMessaggio(errore.message);
+  const riga = (errore.line && rigaMsg)
+    ? (errore.line === 1 ? rigaMsg : errore.line)
+    : (errore.line || rigaMsg);
   documento.errorMark = { range, message: errore.message, code: sorgente?.code,
     line: offset != null && riga ? sorgente.code.slice(0, offset).split('\n').length - 1 + riga : 0 };
   return documento.errorMark;
@@ -518,12 +522,29 @@ export function initQueryTab() {
   initVerticalResizer();
 }
 
-// Inizializza ed aggancia la gestione del Chunking per File SQL Grandi
+// Aggiorna etichetta, tooltip e filtro file del menu editor in base al DBMS attivo.
+function aggiornaControlliFileQuery(dbType) {
+  const azione = azioneApriFileQuery(dbType);
+  const input = $('#query-open-sql-input');
+  if (input && input.accept !== azione.accept) input.accept = azione.accept;
+  const btn = $('#query-open-sql-btn');
+  if (btn) {
+    if (btn.title !== azione.title) btn.title = azione.title;
+    if (btn.dataset.label !== azione.label) {
+      btn.dataset.label = azione.label;
+      btn.innerHTML = `${ICO('folder-open')} ${esc(azione.label)}`;
+      refreshLucideIcons(btn);
+    }
+  }
+}
+
+// Inizializza ed aggancia la gestione del Chunking per File Grandi
 async function salvaQueryFile() {
   const code = $('#query-editor-input')?.value || '';
   const q = queryDocument();
+  const engine = $('#query-target-engine')?.value || 'auto';
   const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
-  const nome = `${(state.db || 'query').replace(/[^\w.-]/g, '_')}.sql`;
+  const nome = nomeFileSalvaQuery({ db: state.db, code, dbType: state.dbType, engine });
   if (!await scaricaFile(blob, nome)) return;
   if (q) { q.savedCode = code; q.dirty = q.code !== code; }
 }
@@ -561,20 +582,25 @@ function initSqlChunking() {
     panel.classList.toggle('hidden', !file);
     if (!file) { progress.classList.add('hidden'); excerpt.hidden = true; excerpt.textContent = ''; return; }
     const info = file.chunker.getFileInfo();
+    const bloccoUnico = !info.splitStatements;
     $('#chunk-file-name').textContent = info.name;
     $('#chunk-file-size').textContent = info.formattedSize;
     const conteggio = info.chunkCount === 1 ? '1 blocco' : `${info.chunkCount} blocchi`;
-    $('#chunk-count-badge').textContent = file.chunker.complete ? conteggio : conteggio + (info.chunkCount === 1 ? ' indicizzato' : ' indicizzati');
+    $('#chunk-count-badge').textContent = bloccoUnico
+      ? 'File intero'
+      : (file.chunker.complete ? conteggio : conteggio + (info.chunkCount === 1 ? ' indicizzato' : ' indicizzati'));
     if (document.activeElement !== select || file.running) select.value = file.index + 1;
     if (file.chunker.complete) select.max = info.chunkCount;
     else select.removeAttribute('max');
-    select.disabled = file.running;
-    prev.disabled = file.running || file.index === 0;
-    next.disabled = file.running || (file.chunker.complete && file.index + 1 >= info.chunkCount);
+    select.disabled = file.running || bloccoUnico;
+    prev.disabled = file.running || bloccoUnico || file.index === 0;
+    next.disabled = file.running || bloccoUnico || (file.chunker.complete && file.index + 1 >= info.chunkCount);
     load.disabled = file.running;
     run.disabled = file.destination != null && file.destination !== file.index;
     $('#query-stop-on-error-wrap')?.classList.remove('hidden');
-    run.querySelector('span').textContent = file.index ? `Esegui dal blocco ${file.index + 1}` : 'Esegui tutti i blocchi';
+    run.querySelector('span').textContent = bloccoUnico
+      ? 'Esegui file'
+      : (file.index ? `Esegui dal blocco ${file.index + 1}` : 'Esegui tutti i blocchi');
     run.classList.toggle('hidden', file.running);
     cancel.classList.toggle('hidden', !file.running);
     const message = file.loading || file.upload?.message || file.message || '';
@@ -625,7 +651,7 @@ function initSqlChunking() {
       if (current()) {
         file.message = 'Caricamento del blocco interrotto';
         file.percent = null;
-        notifica(`Impossibile leggere ${file.chunker.file.name}: ${err.message}`, { tipo: 'errore', titolo: 'File SQL' });
+        notifica(`Impossibile leggere ${file.chunker.file.name}: ${err.message}`, { tipo: 'errore', titolo: azioneApriFileQuery(file.tab.dbType).titoloNotifica });
       }
     } finally {
       if (current()) {
@@ -660,10 +686,22 @@ function initSqlChunking() {
         const code = await source.text();
         if (openings.get(doc) !== opening) return;
         doc.code = code; doc.dirty = true; doc.file = null;
-        if (documentoVisibile(tab, collTabId)) { chiudiFileSql(); editor.value = code; updateEditorHighlight(); }
+        if (documentoVisibile(tab, collTabId)) {
+          chiudiFileSql();
+          editor.value = code;
+          updateEditorHighlight();
+          aggiornaLint(editor, $('#query-lint'), { soloSeJson: true });
+        }
         return;
       }
-      const chunker = new SqlChunker(source, 1024 * 1024, tab.dbType);
+      const engine = $('#query-target-engine')?.value || 'auto';
+      let splitStatements = usaChunkingSql({ fileName: source.name, dbType: tab.dbType, engine });
+      if (splitStatements === null) {
+        const prefisso = new TextDecoder('utf-8', { fatal: false }).decode(await source.slice(0, snippetBytes).arrayBuffer());
+        if (openings.get(doc) !== opening) return;
+        splitStatements = usaChunkingSql({ fileName: source.name, dbType: tab.dbType, engine, prefix: prefisso });
+      }
+      const chunker = new SqlChunker(source, 1024 * 1024, tab.dbType, { splitStatements });
       const file = { chunker, index: 0, running: false, cancelled: false, tab, collTabId, document: doc };
       doc.file = file;
       if (documentoVisibile(tab, collTabId)) activeSqlFile = file;
@@ -679,7 +717,7 @@ function initSqlChunking() {
       }
       await ready;
     } catch (err) {
-      if (openings.get(doc) === opening) notifica(`Impossibile aprire ${source.name}: ${err.message}`, { tipo: 'errore', titolo: 'File SQL' });
+      if (openings.get(doc) === opening) notifica(`Impossibile aprire ${source.name}: ${err.message}`, { tipo: 'errore', titolo: azioneApriFileQuery(tab.dbType).titoloNotifica });
     }
   });
   prev.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index - 1));
@@ -2066,6 +2104,7 @@ const ETICHETTA_MOTORE = {
 export function renderQueryTarget() {
   renderMongosh();
   renderNativeTargets();
+  aggiornaControlliFileQuery(state.dbType);
   const el = $('#query-target-label');
   if (!el) return;
   const { db, coll } = queryTarget();

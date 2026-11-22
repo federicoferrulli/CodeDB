@@ -10,10 +10,32 @@ async function leggiUtf8(blob, finale = true) {
   // separatore viene misurato solo sul prefisso decodificato per intero.
   const bytes = await blob.arrayBuffer();
   try { return decoder.decode(bytes, { stream: !finale }); }
-  catch { throw new Error('Il file SQL contiene testo non valido in UTF-8. Verifica la codifica del file.'); }
+  catch { throw new Error('Il file contiene testo non valido in UTF-8. Verifica la codifica del file.'); }
 }
 
-export async function indicizzaBlocco({ file, start, target, dbms, delimiter }) {
+async function indicizzaFileIntero(file) {
+  if (file.size > MAX_SQL_STATEMENT_BYTES) {
+    throw new Error(
+      `Il file (${formatBytes(file.size)}) supera il limite di ${formatBytes(MAX_SQL_STATEMENT_BYTES)} per una singola esecuzione: `
+      + 'gli script JavaScript e i documenti JSON non possono essere suddivisi sui punti e virgola.'
+    );
+  }
+  const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+  const finestra = 1024 * 1024;
+  let haContenuto = false;
+  for (let pos = 0; pos < file.size; pos += finestra) {
+    const end = Math.min(pos + finestra, file.size);
+    const bytes = await file.slice(pos, end).arrayBuffer();
+    let testo;
+    try { testo = decoder.decode(bytes, { stream: end < file.size }); }
+    catch { throw new Error('Il file contiene testo non valido in UTF-8. Verifica la codifica del file.'); }
+    if (!haContenuto && /\S/.test(testo)) haContenuto = true;
+  }
+  return { start: 0, end: file.size, size: file.size, delimiter: ';', nextDelimiter: ';', statements: haContenuto ? 1 : 0 };
+}
+
+export async function indicizzaBlocco({ file, start, target, dbms, delimiter, splitStatements = true }) {
+  if (splitStatements === false) return indicizzaFileIntero(file);
   let bytes = Math.min(target, file.size - start);
   for (;;) {
     const eof = start + bytes === file.size;
@@ -73,10 +95,11 @@ function analizza(params) {
 
 /** Indice progressivo: conserva soltanto i confini dei blocchi già scoperti. */
 export class SqlChunker {
-  constructor(file, targetChunkSize = 1024 * 1024, dbms = '') {
-    if (!file) throw new Error('Seleziona un file SQL da leggere.');
+  constructor(file, targetChunkSize = 1024 * 1024, dbms = '', { splitStatements = true } = {}) {
+    if (!file) throw new Error('Seleziona un file da leggere.');
     this.file = file;
     this.dbms = dbms;
+    this.splitStatements = splitStatements !== false;
     this.targetChunkSize = Math.max(PRIMA_LETTURA, Math.min(targetChunkSize, 10 * 1024 * 1024));
     this.chunks = [];
     this.complete = false;
@@ -92,7 +115,8 @@ export class SqlChunker {
         const last = this.chunks.at(-1);
         this.pending = analizza({ file: this.file, start: last?.end ?? 0,
           target: last ? this.targetChunkSize : PRIMA_LETTURA,
-          dbms: this.dbms, delimiter: last?.nextDelimiter ?? ';' }).then(meta => {
+          dbms: this.dbms, delimiter: last?.nextDelimiter ?? ';',
+          splitStatements: this.splitStatements }).then(meta => {
           this.chunks.push({ ...meta, index: this.chunks.length });
           this.complete = meta.end === this.file.size;
         }).finally(() => { this.pending = null; });
@@ -125,7 +149,8 @@ export class SqlChunker {
 
   getFileInfo() {
     return { name: this.file.name, size: this.file.size, formattedSize: formatBytes(this.file.size),
-      chunkCount: this.chunks.length, targetChunkSize: this.targetChunkSize };
+      chunkCount: this.chunks.length, targetChunkSize: this.targetChunkSize,
+      splitStatements: this.splitStatements };
   }
 }
 

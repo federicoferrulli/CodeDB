@@ -1343,7 +1343,7 @@
                       <button type="button" id="query-show-both" role="tab" data-tab-id="both" aria-selected="true" aria-controls="query-surface-content"><i data-lucide="panels-top-left"></i> Entrambi</button>
                     </div>
                         <div class="editor-tools">
-                          <input type="file" id="query-open-sql-input" accept=".sql,.txt,.queries" style="display: none;" />
+                          <input type="file" id="query-open-sql-input" accept=".sql,.js,.mongodb,.json,.mql,.txt,.queries" style="display: none;" />
                           <button id="query-format-btn" class="mini-btn" title="Formatta il codice (Ctrl+Shift+F)"><i data-lucide="sparkles"></i> Formatta</button>
                           <button id="query-minify-btn" class="mini-btn" title="Minifica: tutto su una riga (Ctrl+Shift+M)"><i data-lucide="minimize-2"></i></button>
                           <span class="query-history-wrap toolbar-dropdown-wrap">
@@ -1353,7 +1353,7 @@
                               <button id="qe-history-btn" class="dropdown-item" type="button"
                                 title="Cronologia delle query eseguite in questa tab"><i data-lucide="history"></i> Cronologia query</button>
                               <button id="query-open-sql-btn" class="dropdown-item" type="button"
-                                title="Apri ed esegui file SQL"><i data-lucide="folder-open"></i> Apri file SQL…</button>
+                                title="Apri file query o script"><i data-lucide="folder-open"></i> Apri file query…</button>
                               <button id="query-save-sql-btn" class="dropdown-item" type="button"
                                 title="Scarica il testo della query (Ctrl+S)"><i data-lucide="save"></i> Salva query…</button>
                               <button id="query-snippet-btn" class="dropdown-item" type="button"
@@ -1398,7 +1398,7 @@
                         </div>
                       </div>
                       <div class="editor-body">
-                        <pre id="chunk-preview" class="chunk-preview" tabindex="0" aria-label="Anteprima iniziale del blocco SQL" hidden></pre>
+                        <pre id="chunk-preview" class="chunk-preview" tabindex="0" aria-label="Anteprima iniziale del file query" hidden></pre>
                         <div class="query-editor-wrapper">
                           <!-- Numeri di riga: servono da quando gli errori del
                                runner e dell'interprete dicono "riga N". -->
