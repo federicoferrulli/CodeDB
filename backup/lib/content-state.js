@@ -46,6 +46,7 @@ async function caricaStatoCatena(backupDir, controllo) {
     if (!integrity.valid) {
       throw new Error(`La base ${layer.manifest.id} non supera la verifica di integrità.`);
     }
+    for (const nome of layer.manifest.entityInventory?.removed || []) states.delete(nome);
     const data = layer.manifest.files.filter(file => file.kind === 'data');
     for (const file of data) {
       if (file.mode === 'full' || !states.has(file.collection)) states.set(file.collection, new Map());

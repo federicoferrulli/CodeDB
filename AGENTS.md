@@ -37,6 +37,12 @@ In pratica:
 
 ---
 
+## Contesto del codice
+
+Usa [ELEPHANT.json](ELEPHANT.json), nella radice del repository, come grafo dell’applicazione quando devi ricostruire un flusso, diagnosticare un problema tra moduli o valutare l’impatto di una modifica. Parti dai nodi elencati in `steps` dell’attività pertinente in `entrypoints`. Se conosci già il file, cercalo nel campo `sources` dei nodi. Segui gli archi pertinenti in `edges`, anche quelli entranti per individuare chi dipende dal nodo. Verifica il comportamento nei file indicati da `sources` e `tests`.
+
+Se cambiano contratti, relazioni o percorsi descritti dal grafo, aggiorna il JSON e i passaggi interessati della [guida](ELEPHANT.md). Dalla radice, rigenera l’[atlante web](ELEPHANT.html) con `node tools/sincronizza-elephant.cjs` e verificane la coerenza con `node tools/sincronizza-elephant.cjs --check`.
+
 ## Comandi Principali
 
 ```bash

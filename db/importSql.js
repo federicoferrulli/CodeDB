@@ -119,7 +119,7 @@ function creaLettoreSql({ dbType }) {
   const mysql = dbType === 'mysql';
   if (!mysql && dbType !== 'postgresql') throw new Error('Un dump SQL richiede una connessione MySQL o PostgreSQL.');
   const artifact = { formato: 'codedb-database', versione: 1, origineFormato: 'sql', dbType, db: '', collections: [], objects: {}, avvisi: [] };
-  const tables = new Map(), columns = new Map(), dropped = [], seqOwners = new Map(), seqDefaults = [];
+  const tables = new Map(), views = new Map(), columns = new Map(), dropped = [], seqOwners = new Map(), seqDefaults = [];
   let loCurrent = null;
   let pending = '', statement = '', delimiter = ';', quote = null, block = false, version = '', line = 0, copy = null;
   let backslash = mysql;
@@ -137,7 +137,7 @@ function creaLettoreSql({ dbType }) {
   function table(name) {
     if (!tables.has(name)) {
       const t = { name, ddl: null, docs: [], postDdl: [], identity: null };
-      tables.set(name, t); artifact.collections.push(t);
+      tables.set(name, t);
     }
     return tables.get(name);
   }
@@ -228,14 +228,22 @@ function creaLettoreSql({ dbType }) {
     if ((m = match(sql, `^COPY\\s+(${NOME})\\s*\\(([^)]+)\\)\\s+FROM\\s+stdin$`))) {
       copy = { t: table(nome(m[1])), cols: ids(m[2]) }; return;
     }
-    if ((m = match(sql, `^DROP (TABLE|VIEW|PROCEDURE|FUNCTION|TRIGGER|EVENT) IF EXISTS\\s+(${NOME})$`))) {
-      const name = nome(m[2]);
-      dropped.push(name);
-      if (m[1].toUpperCase() !== 'TABLE') {
-        for (const field of ['views', 'routines', 'triggers', 'events']) {
-          if (artifact.objects[field]) artifact.objects[field] = artifact.objects[field].filter(o => o.name !== name);
-        }
-      } else if (tables.get(name)?.docs.length) throw new Error('DROP TABLE dopo i dati: il dump eliminerebbe righe già importate.');
+    if ((m = match(sql, `^DROP\\s+(TABLE|VIEW|PROCEDURE|FUNCTION|TRIGGER|EVENT)\\s+(IF\\s+EXISTS\\s+)?(${NOME})$`))) {
+      const kind = m[1].toUpperCase();
+      const name = nome(m[3]);
+      const field = { VIEW: 'views', PROCEDURE: 'routines', FUNCTION: 'routines', TRIGGER: 'triggers', EVENT: 'events' }[kind];
+      const relation = kind === 'TABLE' ? tables : kind === 'VIEW' ? views : null;
+      if (!m[2] && !(relation ? relation.has(name) : artifact.objects[field]?.some(o => o.name === name))) {
+        throw new Error(`DROP di "${name}" senza dichiarazione nel dump.`);
+      }
+      dropped.push({ name, field: relation ? null : field });
+      if (kind === 'TABLE') {
+        if (tables.get(name)?.docs.length) throw new Error('DROP TABLE dopo i dati: il dump eliminerebbe righe già importate.');
+        // phpMyAdmin descrive le colonne di una vista in una tabella provvisoria.
+        tables.delete(name);
+        columns.delete(name);
+      } else if (kind === 'VIEW') views.delete(name);
+      else if (artifact.objects[field]) artifact.objects[field] = artifact.objects[field].filter(o => o.name !== name);
       return;
     }
     if (/^(?:GRANT|REVOKE|COMMENT ON)\b/i.test(sql) || /^ALTER\s+(?:TABLE|SCHEMA|SEQUENCE|VIEW|FUNCTION|PROCEDURE|TYPE|DOMAIN|LARGE OBJECT).*\sOWNER TO\s/i.test(sql)) {
@@ -292,6 +300,12 @@ function creaLettoreSql({ dbType }) {
           const clause = sql.slice(sql.search(/\bADD\s/i)).replace(/^ADD\s+/i, '');
           const end = t.ddl.lastIndexOf(')'); t.ddl = t.ddl.slice(0, end) + ', ' + clause + t.ddl.slice(end); struttura(t);
         } else t.postDdl.push(sql);
+      } else if (target.kind === 'create-view') {
+        if (views.has(name) && !/^CREATE\s+OR\s+REPLACE\b/i.test(sql)) throw new Error(`Vista "${name}" dichiarata più volte.`);
+        const materialized = /^CREATE\s+MATERIALIZED\s+VIEW\b/i.test(sql);
+        views.set(name, materialized
+          ? { name, ddl: sql.replace(/\s+WITH NO DATA\s*$/i, ''), materialized: true }
+          : { name, ddl: sql });
       } else {
         if (['create-type', 'create-domain'].includes(target.kind)) {
           const types=artifact.objects.types ||= [];
@@ -301,10 +315,10 @@ function creaLettoreSql({ dbType }) {
           else types.push({ name, kind: target.kind.slice(7), ddl: shell ? '' : sql, ...(shell?{shell:true}:{}) });
           return;
         }
-        const field = { 'create-view': 'views', 'create-function': 'routines', 'create-procedure': 'routines', 'create-trigger': 'triggers', 'create-event': 'events', 'create-sequence': 'sequences', 'create-collation': 'collations' }[target.kind];
+        const field = { 'create-function': 'routines', 'create-procedure': 'routines', 'create-trigger': 'triggers', 'create-event': 'events', 'create-sequence': 'sequences', 'create-collation': 'collations' }[target.kind];
         if (!field) throw new Error('Oggetto SQL non supportato.');
         const ddl = target.kind === 'create-sequence' ? sql.replace(/^CREATE SEQUENCE\s+(?!IF NOT EXISTS)/i, 'CREATE SEQUENCE IF NOT EXISTS ') : sql;
-        (artifact.objects[field] ||= []).push({ name, ddl: ddl.replace(/\s+WITH NO DATA\s*$/i, ''), ...(target.table ? { table: target.table.name } : {}), ...(/MATERIALIZED VIEW/i.test(sql) ? { materialized: true } : {}) });
+        (artifact.objects[field] ||= []).push({ name, ddl, ...(target.table ? { table: target.table.name } : {}) });
       }
       return;
     }
@@ -371,7 +385,13 @@ function creaLettoreSql({ dbType }) {
       if (pending) riga(pending);
       if (copy || quote || block) throw new Error('Dump SQL incompleto: stringa, commento o COPY non terminato.');
       esegui(statement);
-      for (const name of dropped) if (!tables.get(name)?.ddl && !Object.values(artifact.objects).some(values => values.some(o => o.name === name))) throw new Error(`DROP senza CREATE per "${name}".`);
+      for (const name of views.keys()) {
+        if (tables.has(name)) throw new Error(`"${name}" compare come tabella e vista nello stesso dump. Manca il DROP del segnaposto.`);
+      }
+      for (const { name, field } of dropped) {
+        const ricreato = field ? artifact.objects[field]?.some(o => o.name === name) : tables.get(name)?.ddl || views.has(name);
+        if (!ricreato) throw new Error(`DROP senza CREATE per "${name}".`);
+      }
       for (const d of seqDefaults) {
         const t = tables.get(d.table);
         const seq = artifact.objects.sequences?.find(s => s.name === d.seq);
@@ -384,7 +404,9 @@ function creaLettoreSql({ dbType }) {
         seq.ownerTable = owner.table; seq.ownerColumn = owner.col;
       }
       if (!artifact.db) artifact.db = mysql ? 'importato' : 'public';
-      if (!artifact.collections.length) throw new Error('Il dump non contiene tabelle importabili.');
+      artifact.collections = [...tables.values()];
+      if (views.size) artifact.objects.views = [...views.values()];
+      if (!tables.size && !views.size) throw new Error('Il dump non contiene tabelle o viste importabili.');
       return artifact;
     },
   };

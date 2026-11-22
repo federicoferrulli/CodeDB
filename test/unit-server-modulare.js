@@ -56,6 +56,126 @@ module.exports = (async () => {
     console.log('  OK   Server modulare: ' + nome);
   }
   try {
+    await prova('quota socket separata per client del proxy e rilascio alla disconnessione', async () => {
+      const config = { rootDir: path.join(__dirname, '..'), env: { CODEDB_TRUST_PROXY_TLS: '1', CODEDB_TRUST_PROXY_CIDRS: '192.0.2.7' } };
+      const reale = require('../server/trasporto').createModule({ config });
+      const io = new EventEmitter();
+      io.engine = { clientsCount: 0 };
+      const budget = { ...require('../server/budget').createModule(), MAX_SOCKETS_PER_IP: 1 };
+      const contesti = [];
+      const modulo = giuntura([ctx => contesti.push(ctx)], { trasporto: { io, ipClient: reale.ipClient }, budget });
+      function apri(peer, inoltrato) {
+        const socket = contestoFinto().socket;
+        socket.handshake.address = peer;
+        socket.request = { socket: { remoteAddress: peer }, headers: { 'x-forwarded-for': inoltrato } };
+        io.emit('connection', socket);
+        return socket;
+      }
+      try {
+        const primo = apri('192.0.2.7', '198.51.100.1');
+        assert(!primo.chiuso);
+        assert(apri('192.0.2.7', '198.51.100.1').chiuso);
+        assert(!apri('192.0.2.7', '198.51.100.2').chiuso);
+        assert(!apri('192.0.2.8', '198.51.100.3').chiuso);
+        assert.deepStrictEqual(contesti.map(ctx => ctx.ip), ['198.51.100.1', '198.51.100.2', '192.0.2.8']);
+        for (const handler of primo.handler.get('disconnect')) handler();
+        assert(!apri('192.0.2.7', '198.51.100.1').chiuso);
+      } finally { await modulo.close(); reale.io.close(); }
+    });
+    await prova('ripresa del trasporto legata alla pagina e al login, con scadenza e revoca', async () => {
+      let tempo = 0;
+      const io = new EventEmitter();
+      io.engine = { clientsCount: 0 };
+      const aperti = new Map(), chiusi = [];
+      const modulo = giuntura([(ctx, lifecycle) => {
+        aperti.set(ctx.socket, ctx);
+        lifecycle.safeOn('prova', (_payload, cb) => cb({ ok: true }));
+      }], {
+        trasporto: { io }, now: () => tempo,
+        identita: { principalOf: socket => socket.principal },
+        connessioni: { teardownConnection: async sess => chiusi.push(sess) },
+      });
+      const chiave = '1'.repeat(32);
+      function apri(key = chiave, token = 'login', id = 'utente') {
+        const s = contestoFinto().socket;
+        s.handshake.auth = { recoveryKey: key, token };
+        s.principal = { ...ROOT_PRINCIPAL, id };
+        io.emit('connection', s);
+        return s;
+      }
+      function cadi(s, motivo = 'transport close') {
+        for (const fn of s.handler.get('disconnect')) fn(motivo);
+      }
+      try {
+        const primo = apri();
+        const sessione = sessioneFinta();
+        sessione.dbSessionId = 'sessione-originale';
+        const handle = {}, istruzione = {}, cancellate = [];
+        const terminaQuery = differita();
+        sessione.inflight = new Map([['query', handle]]);
+        sessione.scripts = new Map([['script', {
+          abort() {}, currentStatement: { opHandle: istruzione }, completion: terminaQuery.promise,
+        }]]);
+        sessione.strategy.cancelQuery = async op => {
+          cancellate.push(op);
+          if (op === istruzione) terminaQuery.resolve();
+        };
+        aperti.get(primo).sessions.set('tab', sessione);
+        cadi(primo);
+        await modulo.drain();
+        assert.deepStrictEqual(chiusi, [], 'la perdita del trasporto deve conservare il driver');
+        for (const altro of [apri('2'.repeat(32)), apri(chiave, 'altro-login'), apri(chiave, 'login', 'altro')]) {
+          assert.equal(aperti.get(altro).sessions.size, 0);
+          cadi(altro);
+        }
+        const secondo = apri();
+        assert.equal(aperti.get(secondo).sessions.get('tab'), sessione);
+        assert.equal(aperti.get(primo).socket, secondo, 'i push dei run in corso seguono il nuovo trasporto');
+        assert.equal((await secondo.chiama('prova', { tabId: 'tab', dbSessionId: 'sessione-originale' })).ok, true);
+        assert.equal((await secondo.chiama('prova', { tabId: 'tab', dbSessionId: 'sessione-sostituita' })).ok, false);
+        cadi(secondo);
+        tempo += 600001;
+        const scaduto = apri();
+        await new Promise(resolve => setImmediate(resolve));
+        try {
+          assert.deepStrictEqual(new Set(cancellate), new Set([handle, istruzione]),
+            'alla scadenza vanno interrotte anche le istruzioni bloccate nel driver');
+        } finally { terminaQuery.resolve(); }
+        await modulo.drain();
+        assert.equal(aperti.get(scaduto).sessions.size, 0);
+        assert.deepStrictEqual(chiusi, [sessione]);
+        const revocata = sessioneFinta();
+        aperti.get(scaduto).sessions.set('tab', revocata);
+        cadi(scaduto);
+        modulo.chiudiSessioniSospese('utente');
+        assert.equal(aperti.get(apri()).sessions.size, 0);
+        await modulo.drain();
+        assert.deepStrictEqual(chiusi, [sessione, revocata]);
+        const volontaria = apri('3'.repeat(32));
+        const chiusa = sessioneFinta();
+        aperti.get(volontaria).sessions.set('tab', chiusa);
+        cadi(volontaria, 'client namespace disconnect');
+        await modulo.drain();
+        assert.deepStrictEqual(chiusi, [sessione, revocata, chiusa]);
+        const logout = apri('4'.repeat(32), 'secondo-login');
+        const uscita = sessioneFinta();
+        aperti.get(logout).sessions.set('tab', uscita);
+        cadi(logout);
+        modulo.chiudiLogin('login');
+        assert.equal(aperti.get(logout).sessions.size, 1);
+        modulo.chiudiLogin('secondo-login');
+        await modulo.drain();
+        assert.deepStrictEqual(chiusi, [sessione, revocata, chiusa, uscita]);
+        // Il telefono può riaprire il trasporto prima che il server rilevi la caduta del vecchio.
+        const inAttesaDiPing = apri('5'.repeat(32));
+        const viva = sessioneFinta();
+        aperti.get(inAttesaDiPing).sessions.set('tab', viva);
+        inAttesaDiPing.disconnect = () => cadi(inAttesaDiPing, 'server namespace disconnect');
+        const sostituto = apri('5'.repeat(32));
+        assert.equal(aperti.get(sostituto).sessions.get('tab'), viva);
+        assert.equal((await inAttesaDiPing.chiama('prova')).ok, false);
+      } finally { await modulo.close(); }
+    });
     await prova('informazioni licenza delle dipendenze installate', async () => {
       const { datiLicenza } = require('../server/informazioni').createModule({
         config: { rootDir: path.resolve(__dirname, '..') },

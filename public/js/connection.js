@@ -1,14 +1,14 @@
 import { initCollegamento } from './collegamento.js';
-import { socket } from './socket.js';
+import { socket, statoRipresaSocket } from './socket.js';
 import { tabs, activeTab, createTab, closeAllTabs } from './tabs.js';
-import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc, dbTypeIcon, lucideIconHtml as ICO, refreshLucideIcons, chiediTesto, scaricaFile, notifica } from './utils.js';
+import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc, dbTypeIcon, lucideIconHtml as ICO, refreshLucideIcons, chiediTesto, scaricaFile, notifica, chiudiNotifica } from './utils.js';
 import { loadSavedConnections, elencoConnessioni } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
 import { startSchemaWatch } from './live.js';
 import { restoreSession, persistSession, restoreInProgress } from './session-restore.js';
 import { segnaTraguardo } from './onboarding-stato.js';
-import { riepilogoUri } from './riepilogo-uri.mjs';
+import { riepilogoUri, nomePredefinitoConnessione, nomeSalvataggioConnessione } from './riepilogo-uri.mjs';
 import { chiediConferma } from './conferma.js';
 import { startConnection } from '../arc/ui.js';
 
@@ -32,6 +32,17 @@ let sshKeyCheck = null;
 let sshKeyInfo = null;
 let connFormGeneration = 0;
 let currentStep = 1;
+const wizardErrorId = 'connessione-wizard';
+
+function clearWizardFeedback() {
+  chiudiNotifica(wizardErrorId);
+  $('#connect-error').classList.add('hidden');
+  $('#connect-test-msg').classList.add('hidden');
+}
+
+function notifyWizardError(error, titolo) {
+  notifica(error.message, { tipo: 'errore', titolo, id: wizardErrorId });
+}
 
 export function setWizardStep(step) {
   const sshOn = $('#conn-ssh-toggle')?.checked;
@@ -62,8 +73,7 @@ export function setWizardStep(step) {
 
   updateWizardActions();
 
-  $('#connect-error')?.classList.add('hidden');
-  $('#connect-test-msg')?.classList.add('hidden');
+  clearWizardFeedback();
 
   if (currentStep === 3) {
     updateWizardSummary();
@@ -90,12 +100,13 @@ function updateWizardSummary() {
     const retained = savedSecrets[field] && (['sshPassphrase', 'sshSecurityKeyPin'].includes(field) ? sameSavedSshKey(cfg) : field !== 'sshPassword' || cfg.sshAuth === savedSshAuth);
     return cfg[field] ? '•••••• · Inserita' : retained ? 'Invariata · Già salvata' : 'Non impostata';
   };
+  const defaultPort = { mongodb: '27017', mysql: '3306', postgresql: '5432', postgres: '5432' }[cfg.dbType] || '27017';
   const rows = [];
   if (cfg.connectionMode === 'uri') {
     rows.push(['Modalità', 'URI completa'], ['URI', cfg.uri.trim() ? riepilogoUri(cfg.uri) : savedUriPreview || secret('uri')]);
   } else {
     rows.push(['Host', cfg.host.trim() || 'localhost'],
-      ['Porta', cfg.port || { mongodb: '27017', mysql: '3306', postgresql: '5432' }[cfg.dbType]],
+      ['Porta', cfg.port || defaultPort],
       ['Utente', cfg.username || 'Non impostato'], ['Password', secret('password')],
       cfg.dbType === 'mongodb' ? ['Auth source', cfg.authSource || 'admin'] : ['Database', cfg.database || 'Non specificato']);
   }
@@ -110,14 +121,15 @@ function updateWizardSummary() {
     ['Passphrase chiave', secret('sshPassphrase')]);
     if (cfg.sshAuth !== 'password' && sshKeyInfo?.securityKey) rows.push(['PIN dispositivo', secret('sshSecurityKeyPin')]);
     rows.push(['Impronta host SSH', cfg.sshHostKey || 'Da rilevare e confermare al collegamento']);
-    rows.push(['Forwarding locale', cfg.sshLocalPort ? `127.0.0.1:${cfg.sshLocalPort} → ${cfg.host || 'localhost'}:${cfg.port || { mongodb: '27017', mysql: '3306', postgresql: '5432' }[cfg.dbType]}` : 'Disattivato']);
+    rows.push(['Forwarding locale', cfg.sshLocalPort ? `127.0.0.1:${cfg.sshLocalPort} → ${cfg.host || 'localhost'}:${cfg.port || defaultPort}` : 'Disattivato']);
   }
   summaryBox.innerHTML = `<strong class="connection-summary-engine">${dbIcon} ${esc(dbTypeName)}</strong>
     <dl class="connection-summary-fields">${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>`;
-  const saved = cfg.saveAs && (cfg.saveAs === editingConn || elencoConnessioni().some(conn => conn.name === cfg.saveAs));
-  $('#conn-save-status').textContent = cfg.saveAs
-    ? `${saved ? 'La connessione salvata verrà aggiornata' : 'La connessione verrà salvata'} come “${cfg.saveAs}”${cfg.folder ? ` nella cartella “${cfg.folder}”` : ''}, solo se il collegamento riesce.`
-    : 'La connessione non verrà salvata. Sarà disponibile solo per questa sessione.';
+  const defaultName = nomePredefinitoConnessione(cfg, savedUriPreview);
+  const saveName = nomeSalvataggioConnessione(cfg, savedUriPreview);
+  $('#connect-form').elements.saveAs.placeholder = `(predefinito: ${defaultName})`;
+  const saved = saveName === editingConn || elencoConnessioni().some(conn => conn.name === saveName);
+  $('#conn-save-status').textContent = `${saved ? 'La connessione salvata verrà aggiornata' : 'La connessione verrà salvata'} come “${saveName}”${cfg.folder ? ` nella cartella “${cfg.folder}”` : ' senza cartella'}, solo se il collegamento riesce.`;
   refreshLucideIcons(summaryBox);
 }
 
@@ -201,8 +213,7 @@ function scheduleSshKeyValidation(event) {
     $('#connect-form').elements.sshSecurityKeyPin.value = '';
   }
   resetSshKeyValidation();
-  $('#connect-test-msg').classList.add('hidden');
-  $('#connect-error').classList.add('hidden');
+  clearWizardFeedback();
   syncSshAuth();
   const cfg = readConnForm();
   if (cfg.ssh !== 'true' || cfg.sshAuth === 'password' || sshKeyLoading || cfg.sshAuth === 'upload' && sshKeyError) return;
@@ -347,9 +358,6 @@ function readConnForm() {
 
 export function openConnModal() {
   cancelEditConn();
-  setWizardStep(1);
-  $('#connect-error').classList.add('hidden');
-  $('#connect-test-msg').classList.add('hidden');
   $('#connect-overlay').classList.remove('hidden');
 }
 
@@ -410,6 +418,13 @@ async function conImprontaSsh(cfg, invia) {
 }
 
 export function connectAndOpenTab(cfg) {
+  if (!cfg.saved) {
+    cfg = {
+      ...cfg,
+      saveAs: nomeSalvataggioConnessione(cfg, savedUriPreview),
+      folder: String(cfg.folder || '').trim(),
+    };
+  }
   const current = activeTab();
   const reuse = current && !current.state.connected ? current : null;
   const tabId = reuse ? reuse.id : safeUUID();
@@ -417,7 +432,7 @@ export function connectAndOpenTab(cfg) {
   const request = { ...cfg, tabId };
   const saved = cfg.saved;
   const feedbackConnection = startConnection(saved || cfg.saveAs || cfg.host || 'database',
-    () => saved ? startEditConn(saved) : openConnModal(), !saved);
+    saved ? () => startEditConn(saved) : undefined, saved ? undefined : wizardErrorId);
   if (!feedbackConnection && cfg.saved) toast(`Connessione a "${cfg.saved}"…`);
   return conImprontaSsh(request, () => new Promise((resolve, reject) => {
     socket.emit('mongo:connect', request, res => res.ok ? resolve(res)
@@ -438,6 +453,7 @@ export function connectAndOpenTab(cfg) {
     tab.label = tab.connName || res.label || 'Connessione';
     Object.assign(tab.state, {
       connected: true,
+      dbSessionId: res.dbSessionId,
       connLabel: res.label || '',
       dbType: tab.dbType,
       databases: res.databases || [],
@@ -509,8 +525,6 @@ export function startEditConn(name) {
     $('#conn-edit-banner').classList.remove('hidden');
     $('#conn-edit-hint').classList.remove('hidden');
     $('#conn-save-btn').classList.remove('hidden');
-    $('#connect-error').classList.add('hidden');
-    $('#connect-test-msg').classList.add('hidden');
     $('#connect-overlay').classList.remove('hidden');
     if (savedSecrets.sshSecurityKeyPin) scheduleSshKeyValidation();
   }).catch((err) => notifica(err.message, { tipo: 'errore', titolo: "Connessioni" }));
@@ -544,6 +558,7 @@ function cancelEditConn() {
   form.elements.uri.placeholder = '';
   form.elements.sshPassword.placeholder = '';
   form.elements.sshPassphrase.placeholder = '(se la chiave è protetta)';
+  form.elements.saveAs.placeholder = '(predefinito: localhost:27017)';
   syncConnForm();
   setWizardStep(1);
   $('#conn-edit-banner').classList.add('hidden');
@@ -571,14 +586,14 @@ export function initConnection() {
   $('#conn-ssh-key-select').addEventListener('click', () => $('#conn-ssh-key-upload').click());
   $('#conn-ssh-key-upload').addEventListener('change', () => { sshKeyReadPromise = readSshKeyFile(); });
   $('#connect-form').addEventListener('input', event => {
+    chiudiNotifica(wizardErrorId);
     if (['sshKeyFile', 'sshPassphrase', 'sshSecurityKeyPin'].includes(event.target.name)) scheduleSshKeyValidation(event);
     if (currentStep === 3) updateWizardSummary();
   });
 
   $('#conn-test-btn')?.addEventListener('click', () => {
     const btn = $('#conn-test-btn');
-    $('#connect-error').classList.add('hidden');
-    $('#connect-test-msg').classList.add('hidden');
+    clearWizardFeedback();
 
     // Etichetta salvata e ripristinata da `conCaricamento`: prima "⚡ Testa
     // Connessione" era una stringa letterale ripetuta in tre punti, e bastava
@@ -595,11 +610,7 @@ export function initConnection() {
         msg.textContent = `✓ Connessione riuscita! (${res.dbType.toUpperCase()}, ${res.databases} DB trovati)`;
         msg.classList.remove('hidden');
       })
-      .catch((err) => {
-        const errorEl = $('#connect-error');
-        errorEl.textContent = `Errore di connessione: ${err.message}`;
-        errorEl.classList.remove('hidden');
-      });
+      .catch((err) => notifyWizardError(err, 'Test di connessione non riuscito'));
   });
 
   $('#connect-form').addEventListener('submit', (e) => {
@@ -610,10 +621,12 @@ export function initConnection() {
       return;
     }
     const btn = $('#connect-btn');
-    $('#connect-error').classList.add('hidden');
+    clearWizardFeedback();
     conCaricamento(btn, async () => {
       if (!await validateSshKey()) return null;
       const cfg = readConnForm();
+      cfg.saveAs = nomeSalvataggioConnessione(cfg, savedUriPreview);
+      cfg.folder = (cfg.folder || '').trim();
       if (editingConn) cfg.keepPasswordFrom = editingConn;
       return connectAndOpenTab(cfg);
     }, 'Connessione…').then((res) => {
@@ -621,10 +634,7 @@ export function initConnection() {
       cancelEditConn();
       closeConnModal();
     }).catch((err) => {
-      if (err.connectionFeedback) return;
-      const errorEl = $('#connect-error');
-      errorEl.textContent = err.message;
-      errorEl.classList.remove('hidden');
+      if (!err.connectionFeedback) notifyWizardError(err, 'Connessione non riuscita');
     });
   });
 
@@ -643,11 +653,12 @@ export function initConnection() {
   });
 
   $('#conn-save-btn').addEventListener('click', () => {
+    clearWizardFeedback();
     conCaricamento($('#conn-save-btn'), async () => {
       if (!await validateSshKey(true)) return null;
       const cfg = readConnForm();
-      const name = (cfg.saveAs || '').trim();
-      if (!name) throw new Error('Indica un nome nel campo "Salva come".');
+      const name = nomeSalvataggioConnessione(cfg, savedUriPreview);
+      cfg.folder = (cfg.folder || '').trim();
       await emit('connections:save', { name, oldName: editingConn, cfg });
       return name;
     }, 'Salvo…').then((name) => {
@@ -656,11 +667,7 @@ export function initConnection() {
       cancelEditConn();
       closeConnModal();
       loadSavedConnections();
-    }).catch((err) => {
-      const errorEl = $('#connect-error');
-      errorEl.textContent = err.message;
-      errorEl.classList.remove('hidden');
-    });
+    }).catch((err) => notifyWizardError(err, 'Salvataggio della connessione non riuscito'));
   });
 
   // L'export apre una modale: si può indicare la passphrase con cui cifrare i
@@ -730,7 +737,13 @@ export function initConnection() {
       await restoreSession();
       return;
     }
-    // Riconnessione del socket a runtime: le sessioni server sono andate perse.
+    try {
+      if (await statoRipresaSocket()) return;
+    } catch (err) {
+      if (err.code !== 'SOCKET_DISCONNECTED') notifica(err.message, { tipo: 'errore', titolo: 'Ripresa della connessione' });
+      return;
+    }
+    // Il server ha confermato che la sessione è scaduta o apparteneva all'istanza precedente.
     // Si cattura il layout attuale, si svuotano i tab (sessioni morte) e si
     // riapre tutto riconnettendosi — l'utente resta operativo senza fare nulla.
     //

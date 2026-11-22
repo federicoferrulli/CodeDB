@@ -11,6 +11,8 @@ const esclusioni = {
   'e2e-mongosh-runtime.js': 'Eseguito nel profilo native: usa il MongoDB dedicato sulla porta 27039.',
   'e2e-mongosh-ui.js': 'Eseguito nel profilo native: usa il MongoDB dedicato sulla porta 27039.',
   'e2e-conteggi-navigatore.js': 'Richiede controllo Docker dall’host; il runner di base non monta il socket Docker.',
+  'e2e-dati-docker.js': 'La prova di migrazione del volume viene eseguita nel job host-docker con l’immagine appena costruita.',
+  'e2e-schema-dialogs.js': 'Il job host-docker avvia i tre container temporanei usati dai dialoghi di schema.',
   'e2e-mongosh-advanced.cjs': 'Richiede Atlas Search locale, replica multipla e sharding della fixture mongo-advanced.',
   'e2e-mongosh-kerberos.cjs': 'Richiede KDC Kerberos dedicato e fixture mongo-kerberos.',
   'e2e-sql-mongo-failover.js': 'Richiede replica MongoDB a tre nodi e controllo Docker per elezione forzata.',

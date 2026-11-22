@@ -321,7 +321,10 @@ const cases = [
   }],
   ['import: risposta persa non significa righe fallite', async () => {
     const { importaBlocco } = await import(require('url').pathToFileURL(path.join(__dirname, '../public/js/import-batch.js')).href);
-    const { context, nodes } = frontend({ emit: async () => { throw new Error('risposta persa'); },
+    const { leggiJsonEsatto } = await import('../public/js/insert-json.mjs');
+    const richieste = [];
+    const { context, nodes } = frontend({ TextEncoder, leggiJsonEsatto,
+      emit: async (_evento, payload) => { richieste.push(payload); throw new Error('risposta persa'); },
       importaBlocco: (emit, payload) => importaBlocco(emit, payload, { attesa: async () => {}, tentativi: 1 }),
     });
     vm.runInContext(`
@@ -330,6 +333,8 @@ const cases = [
       $('#import-text').value = '[{"_id":1}]';
     `, context);
     await vm.runInContext('runImport()', context);
+    assert.deepStrictEqual(richieste.map(r => Boolean(r.statusOnly)), [false, true],
+      'La prova deve raggiungere la scrittura e poi consultare una sola ricevuta');
     assert.match(nodes.get('#import-report').innerHTML, /con esito incerto/i,
       'il report deve distinguere esito incerto da rifiuto certo');
     assert.strictEqual(nodes.get('#import-report').attributes.role, 'alert', 'L’esito incerto deve essere annunciato');

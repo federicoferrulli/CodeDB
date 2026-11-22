@@ -187,6 +187,79 @@ const ok = (cond, etichetta, dettaglio = '') => {
     ok(inviati.condizione && inviati.condizione.cercaOvunque === undefined,
       'modalità condizione: la ricerca globale NON parte');
 
+    const cancellazioni = await page.evaluate(async () => {
+      const { activeTab } = await import('/js/tabs.js');
+      const { impostaSocket } = await import('/js/socket.js');
+      const { runQuery, deleteAllWithFilter } = await import('/js/grid.js');
+      const st = activeTab().state;
+      st.activeCollId = 'candidati';
+      st.collTabs = [{ id: 'candidati', db: st.db, coll: st.coll }];
+      let eventi = [], guasto = false, primaDellaRisposta;
+      const filtro = p => p.cercaOvunque?.valore || p.filter || '*';
+      impostaSocket({ on() {}, off() {}, emit(evento, p, ack) {
+        if (evento === 'collection:find') {
+          const parola = filtro(p);
+          eventi.push('find:' + parola);
+          if (primaDellaRisposta) primaDellaRisposta();
+          if (guasto) return ack({ ok: false, error: 'Anteprima fallita' });
+          ack({ ok: true, docs: [{ _id: 1, nome: parola }], columns: ['_id', 'nome'],
+            total: parola === '*' ? 7 : 1, skip: 0, limit: 25 });
+        }
+        if (evento === 'collection:deleteMany') {
+          eventi.push('delete:' + filtro(p));
+          // La risposta resta differita: qui si controlla l'ordine fino alla scrittura.
+        }
+      } });
+      const input = document.querySelector('#filter-input');
+      function bozza(testo, modo) {
+        document.querySelector('[data-filter-mode="' + modo + '"]').click();
+        input.value = testo;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      window.confirm = testo => { eventi.push('conferma:' + testo); return true; };
+      async function scenario(prima, dopo, modo, errore = false, modifica) {
+        st.activeCollId = 'candidati';
+        primaDellaRisposta = null;
+        guasto = false;
+        bozza(prima, 'rapido');
+        await runQuery();
+        eventi = [];
+        guasto = errore;
+        primaDellaRisposta = modifica;
+        bozza(dopo, modo);
+        await deleteAllWithFilter();
+        return [...eventi];
+      }
+      return {
+        restringi: await scenario('', 'Luca', 'rapido'),
+        amplia: await scenario('Anna', '', 'rapido'),
+        modo: await scenario('nome', 'nome', 'condizione'),
+        invariato: await scenario('Anna', 'Anna', 'rapido'),
+        errore: await scenario('Anna', 'Luca', 'rapido', true),
+        navigazione: await scenario('Anna', 'Luca', 'rapido', false, () => { st.activeCollId = 'altro'; }),
+        superata: await scenario('Anna', 'Luca', 'rapido', false, () => {
+          primaDellaRisposta = null;
+          bozza('successiva', 'rapido');
+          runQuery();
+        }),
+      };
+    });
+    const ordine = (voci, criterio, conteggio) => voci.length === 3 && voci[0] === 'find:' + criterio
+      && voci[1].startsWith('conferma:') && voci[1].includes(conteggio + ' ')
+      && voci[2] === 'delete:' + criterio;
+    ok(ordine(cancellazioni.restringi, 'Luca', 1) && cancellazioni.restringi[1].includes('Luca'),
+      'Da tutte le righe a Luca: anteprima, conteggio, conferma e scrittura col nuovo filtro', JSON.stringify(cancellazioni.restringi));
+    ok(ordine(cancellazioni.amplia, '*', 7) && /TUTT/.test(cancellazioni.amplia[1]),
+      'Dal filtro a tutte le righe: la conferma presenta il nuovo totale', JSON.stringify(cancellazioni.amplia));
+    ok(ordine(cancellazioni.modo, 'nome', 1) && /condizione/.test(cancellazioni.modo[1]),
+      'La stessa parola in un’altra modalità richiede una nuova anteprima', JSON.stringify(cancellazioni.modo));
+    ok(cancellazioni.invariato.length === 2 && cancellazioni.invariato[1] === 'delete:Anna',
+      'La bozza invariata riusa l’ultima lettura riuscita', JSON.stringify(cancellazioni.invariato));
+    for (const caso of ['errore', 'navigazione', 'superata']) {
+      ok(cancellazioni[caso].includes('find:Luca') && cancellazioni[caso].every(e => e.startsWith('find:')),
+        'Nessuna conferma o cancellazione dopo ' + caso, JSON.stringify(cancellazioni[caso]));
+    }
+
     ok(errori.length === 0, 'nessun errore JavaScript', errori.join('\n         '));
   } finally {
     await browser.close();

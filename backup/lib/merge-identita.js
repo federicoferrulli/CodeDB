@@ -47,7 +47,7 @@ async function contaIdentitaPreservate({ strategy, dbType, targetDb, collection,
 
   const mysql = dbType === 'mysql';
   const quota = name => quotaSempre(name, mysql ? 'mysql' : 'postgresql');
-  const qtable = `${quota(targetDb)}.${quota(collection)}`;
+  const qtable = `${!mysql && file.pgPhysical ? 'ONLY ' : ''}${quota(targetDb)}.${quota(collection)}`;
   const qtemp = mysql ? `${quota(targetDb)}.${quota(temp)}` : quota(temp);
   const columns = file.identity.columns;
   const qcols = columns.map(quota).join(', ');

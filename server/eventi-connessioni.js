@@ -1,9 +1,14 @@
 'use strict';
 
+const { randomUUID } = require('node:crypto');
+
 // CodeDB — eventi-connessioni. Stato e dipendenze appartengono alla singola istanza.
 
 function createModule({ lock, budget, identita, connessioni, vault }) {
   function registra(socketContext, lifecycle) {
+    lifecycle.safeOn('session:recovery', (_payload, cb) => cb({
+      ok: true, recovered: lifecycle.recuperato, sessionId: socketContext.sessionId,
+    }));
     // --- Connection -----------------------------------------------------------
 
     lifecycle.safeOn('mongo:connect', async (cfg, cb) => {
@@ -48,14 +53,17 @@ function createModule({ lock, budget, identita, connessioni, vault }) {
         }
 
         let released = false;
+        const dbSessionId = randomUUID();
         socketContext.sessions.set(tabId, {
           releaseGlobalSession() { if (!released) { released = true; budget.releaseGlobalSession(); } },
           tabId,
+          dbSessionId,
           emitMongosh(event) { socketContext.socket.emit('mongosh:event', { ...event, tabId }); },
           strategy: conn.strategy,
           tunnel: conn.tunnel,
           dbType: conn.dbType,
           effectiveCfg: conn.effective,
+          backupOriginId: cfg.saved && !cfg.keepPasswordFrom ? conn.effective.backupOriginId : null,
           principal: socketContext.principal,
           guardCtx,
           closed: false,
@@ -72,12 +80,14 @@ function createModule({ lock, budget, identita, connessioni, vault }) {
           if (saveAs) {
             vault.assertConnName(saveAs);
             const conns = vault.loadConnections(socketContext.principal.ownerId);
-            conns[saveAs] = vault.sanitizeConnCfg(conn.effective);
+            conns[saveAs] = vault.identificaOrigine(vault.sanitizeConnCfg(conn.effective), conns[saveAs]);
             vault.saveConnections(conns, socketContext.principal.ownerId);
+            socketContext.sessions.get(tabId).backupOriginId = conns[saveAs].backupOriginId;
           }
           cb({
             ok: true,
             tabId,
+            dbSessionId,
             label: vault.connLabel(conn.effective),
             dbType: conn.dbType,
             databases: await conn.strategy.listDatabases(),

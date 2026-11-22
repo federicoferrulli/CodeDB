@@ -1,6 +1,7 @@
 'use strict';
 const { VALORE_BSON, OGGETTO_HOST, FUNZIONE_SCRIPT, FUNZIONE_NATIVA } = require('./mongoScriptValori');
 const { escapeMongo } = require('./mongoStringhe');
+const { EJSON } = require('bson');
 
 const VOCABOLARIO_COSTRUTTORI = require('../public/js/costruttori-bson');
 const { eseguiRegexIsolata } = require('./regexIsolata');
@@ -67,7 +68,7 @@ const PAROLE_CHIAVE = new Set([
 // riconoscere `===` invece di `==` seguito da `=`.
 const OPERATORI = [
   '===', '!==', '**=', '...',
-  '==', '!=', '<=', '>=', '&&', '||', '??', '=>', '++', '--',
+  '?.', '==', '!=', '<=', '>=', '&&', '||', '??', '=>', '++', '--',
   '+=', '-=', '*=', '/=', '%=', '**',
   '+', '-', '*', '/', '%', '<', '>', '=', '!', '?', ':', '.', ',', ';',
   '(', ')', '[', ']', '{', '}',
@@ -193,8 +194,9 @@ function tokenize(src) {
       continue;
     }
 
-    // Operatori e punteggiatura
-    const op = OPERATORI.find((o) => s.startsWith(o, i));
+    // Operatori e punteggiatura (x ? .5 : 1 è ternario + decimale, non optional chaining)
+    let op = OPERATORI.find((o) => s.startsWith(o, i));
+    if (op === '?.' && /[0-9]/.test(s[i + 2] || '')) op = '?';
     if (op) {
       toks.push({ t: 'op', v: op, line });
       i += op.length;
@@ -213,6 +215,15 @@ function regexAmmessa(toks) {
   if (!t) return true;
   if (t.t === 'op') return !')]}'.includes(t.v) && t.v !== '++' && t.v !== '--';
   if (t.t === 'kw') return t.v !== 'true' && t.v !== 'false' && t.v !== 'null';
+  return false;
+}
+
+function haOptionalNellaCatena(nodo) {
+  let cur = nodo;
+  while (cur && (cur.type === 'Member' || cur.type === 'Call')) {
+    if (cur.optional) return true;
+    cur = cur.type === 'Member' ? cur.obj : cur.callee;
+  }
   return false;
 }
 
@@ -427,7 +438,7 @@ class Parser {
     const left = this.parseConditional();
     const t = this.peek();
     if (t && t.t === 'op' && ['=', '+=', '-=', '*=', '/=', '%='].includes(t.v)) {
-      if (left.type !== 'Ident' && left.type !== 'Member') {
+      if ((left.type !== 'Ident' && left.type !== 'Member') || haOptionalNellaCatena(left)) {
         throw errore('Assegnamento a un bersaglio non valido', t.line);
       }
       this.i++;
@@ -534,7 +545,21 @@ class Parser {
   parseCallMember() {
     let obj = this.parsePrimary();
     for (;;) {
-      if (this.isOp('.')) {
+      if (this.isOp('?.')) {
+        this.i++;
+        if (this.isOp('[')) {
+          this.i++;
+          const prop = this.parseExpression();
+          this.expectOp(']');
+          obj = { type: 'Member', obj, prop, computed: true, optional: true, line: this.line };
+        } else if (this.isOp('(')) {
+          const args = this.parseArgs();
+          obj = { type: 'Call', callee: obj, args, optional: true, line: this.line };
+        } else {
+          const name = this.expectIdent();
+          obj = { type: 'Member', obj, prop: { type: 'Str', value: name }, computed: false, optional: true, line: this.line };
+        }
+      } else if (this.isOp('.')) {
         this.i++;
         const name = this.expectIdent();
         obj = { type: 'Member', obj, prop: { type: 'Str', value: name }, computed: false, line: this.line };
@@ -1085,6 +1110,14 @@ function costruisciGlobali(ctx) {
       parse: fn('parse', (v) => JSON.parse(String(v))),
     }),
 
+    EJSON: oggetto('EJSON', {
+      parse: fn('parse', (v, opts) => EJSON.parse(String(v), opts && typeof opts === 'object' ? { relaxed: opts.relaxed !== false } : { relaxed: true })),
+      stringify: fn('stringify', (v, opts) => EJSON.stringify(
+        EJSON.deserialize(aEjson(v), { relaxed: false }),
+        opts && typeof opts === 'object' ? { relaxed: opts.relaxed !== false } : { relaxed: true }
+      )),
+    }),
+
     Math: oggetto('Math', {
       abs: fn('abs', Math.abs), ceil: fn('ceil', Math.ceil), floor: fn('floor', Math.floor),
       round: fn('round', Math.round), max: fn('max', (...a) => Math.max(...a)),
@@ -1099,6 +1132,7 @@ function costruisciGlobali(ctx) {
       values: fn('values', (o) => (o && typeof o === 'object' ? Object.values(o) : [])),
       entries: fn('entries', (o) => (o && typeof o === 'object' ? Object.entries(o) : [])),
       assign: fn('assign', (...a) => Object.fromEntries(a.filter(x => x && typeof x === 'object').flatMap(Object.entries))),
+      hasOwn: fn('hasOwn', (o, k) => !!(o != null && typeof o === 'object' && !NOMI_VIETATI.has(String(k)) && Object.prototype.hasOwnProperty.call(o, String(k)))),
     }),
 
     Array: oggetto('Array', {
@@ -1133,6 +1167,7 @@ function aEjson(v) {
   if (v instanceof RegExp) return { $regularExpression: { pattern: v.source, options: v.flags } };
   if (Array.isArray(v)) return v.map(aEjson);
   if (typeof v === 'object') {
+    if (v._bsontype) return EJSON.serialize(v, { relaxed: false });
     if (v[VALORE_BSON]) {
       switch (v[VALORE_BSON]) {
         case 'oid': return { $oid: v.valore };
@@ -1162,6 +1197,7 @@ function semplifica(v) {
   if (v instanceof Date) return v.toISOString();
   if (Array.isArray(v)) return v.map(semplifica);
   if (typeof v === 'object') {
+    if (v._bsontype) return EJSON.serialize(v, { relaxed: true });
     if (v[VALORE_BSON]) return String(v.valore);
     if (v[OGGETTO_HOST]) return `[${v.__nome}]`;
     if (v[FUNZIONE_SCRIPT] || v[FUNZIONE_NATIVA]) return '[Function]';

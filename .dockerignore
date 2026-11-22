@@ -22,3 +22,7 @@
 !public/**
 !bin
 !bin/**
+**/*.backup-signing-key*
+**/vault.json*
+**/connections.ini*
+**/.env*

@@ -72,6 +72,15 @@ services:
     environment:
       CODEDB_LAB_CONTAINER: '1'
       CODEDB_E2E_DESTRUCTIVE: '1'
+      CODEDB_E2E_MONGO_URI: mongodb://127.0.0.1:27017/?directConnection=true
+      E2E_MYSQL_PORT: '3306'
+      E2E_MYSQL_PASSWORD: lab_mysql
+      E2E_PG_PORT: '5432'
+      E2E_PG_PASSWORD: lab_postgres
+      CODEDB_REAL_CONNECTIONS: >-
+        [{"name":"MongoDB","cfg":{"dbType":"mongodb","host":"mongo-auth","port":27017,"username":"labadmin","password":"lab_mongo_auth","authSource":"admin"}},
+         {"name":"MySQL","cfg":{"dbType":"mysql","host":"127.0.0.1","port":3306,"username":"root","password":"lab_mysql"}},
+         {"name":"PostgreSQL","cfg":{"dbType":"postgresql","host":"127.0.0.1","port":5432,"username":"postgres","password":"lab_postgres","database":"postgres"}}]
       MONGO_PORT: '27017'
       MONGO_URI: mongodb://127.0.0.1:27017/?directConnection=true
       MONGODB_URI: mongodb://127.0.0.1:27017/?directConnection=true

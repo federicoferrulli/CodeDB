@@ -488,18 +488,20 @@ function createModule({ config, errori, dependencies }) {
     }
   }
 
-  function loadConnections(ownerId) {
+  function loadConnections(ownerId, origineDaAprire) {
+    let sections;
     try {
-      const sections = parseIni(fs.readFileSync(connectionsFileFor(ownerId), 'utf8'));
+      sections = parseIni(fs.readFileSync(connectionsFileFor(ownerId), 'utf8'));
       for (const sec of Object.values(sections)) {
         for (const f of SECRET_FIELDS) {
           if (sec[f]) sec[f] = decryptSecret(sec[f]);
         }
       }
-      return sections;
     } catch {
       return {}; // file assente o illeggibile: nessuna connessione salvata
     }
+    if (origineDaAprire && config.rbacOn()) connessioneSalvata(origineDaAprire, sections, ownerId);
+    return sections;
   }
 
   // Cifra i segreti (password, credenziali SSH) di una copia profonda delle
@@ -530,11 +532,38 @@ function createModule({ config, errori, dependencies }) {
     // se dopo una migrazione corrotta arriva un ulteriore salvataggio dalla UI.
     try {
       fs.copyFileSync(file + '.bak', file + '.bak2');
+      try { fs.chmodSync(file + '.bak2', 0o600); } catch { /* permessi POSIX best-effort */ }
     } catch { /* nessun .bak precedente: niente da ruotare */ }
     try {
       fs.copyFileSync(file, file + '.bak');
+      try { fs.chmodSync(file + '.bak', 0o600); } catch { /* permessi POSIX best-effort */ }
     } catch { /* file ancora inesistente: nessun backup da fare */ }
-    fs.writeFileSync(file, stringifyIni(toSave), 'utf8');
+    fs.writeFileSync(file, stringifyIni(toSave), { encoding: 'utf8', mode: 0o600 });
+    try { fs.chmodSync(file, 0o600); } catch { /* permessi POSIX best-effort */ }
+  }
+
+  function identificaOrigine(next, previous) {
+    // Una modifica del bersaglio sposta il nome su una nuova origine. Cartella,
+    // sola lettura e rotazione delle password nei parametri conservano l'identità.
+    const bersaglio = cfg => [connDbType(cfg), connMode(cfg), String(cfg.uri || '').replace(/^(mongodb(?:\+srv)?:\/\/[^:/?#@]+):[^@/?#]*@/i, '$1@'),
+      ...['host', 'port', 'username', 'authSource', 'database'].map(f => String(cfg[f] || '')),
+      ...(sshEnabled(cfg) ? ['ssh', cfg.sshHost, cfg.sshPort, cfg.sshUser] : [])];
+    const stessa = previous?.backupOriginId && JSON.stringify(bersaglio(previous)) === JSON.stringify(bersaglio(next));
+    next.backupOriginId = stessa ? previous.backupOriginId : require('node:crypto').randomUUID();
+    return next;
+  }
+
+  function connessioneSalvata(name, sections, ownerId) {
+    const cfg = sections[name];
+    if (cfg && !cfg.backupOriginId) {
+      identificaOrigine(cfg);
+      try { saveConnections(sections, ownerId); }
+      catch (err) {
+        if (!['EROFS', 'EACCES', 'EPERM'].includes(err.code)) throw err;
+        delete cfg.backupOriginId;
+      }
+    }
+    return cfg;
   }
 
   function assertConnName(name) {
@@ -572,7 +601,8 @@ function createModule({ config, errori, dependencies }) {
 
   // dbType assente nelle connessioni salvate prima del supporto multi-db.
   function connDbType(cfg) {
-    return String(cfg.dbType || 'mongodb').trim().toLowerCase();
+    const tipo = String(cfg.dbType || 'mongodb').trim().toLowerCase();
+    return tipo === 'postgres' ? 'postgresql' : tipo;
   }
 
   function sshEnabled(cfg) {
@@ -735,6 +765,8 @@ function createModule({ config, errori, dependencies }) {
     loadConnections,
     encryptSections,
     saveConnections,
+    connectionsFileFor,
+    identificaOrigine,
     assertConnName,
     sanitizeConnCfg,
     connDbType,

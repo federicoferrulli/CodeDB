@@ -10,8 +10,13 @@ const flags = process.argv;
 if (flags.includes('--worker')) {
   const mutant = process.env.LAB_SELETTIVO_MUTANT;
   const Module = require('node:module');
-  const filename = path.join(root, ['dipendenze', 'prerequisiti'].includes(mutant) ? 'db/backupRestoreAdapter.js'
-    : mutant === 'colonne' ? 'db/schema-merge.js' : mutant === 'quotatura' ? 'db/pg-schema-compare.js' : 'backup/lib/restore.js');
+  const moduli = {
+    dipendenze: 'db/backupRestoreAdapter.js', prerequisiti: 'db/backupRestoreAdapter.js',
+    colonne: 'db/schema-merge.js', quotatura: 'db/pg-schema-compare.js',
+    trigger: 'backup/lib/restore.js', routine: 'backup/lib/restore-postgres.js',
+    precaricamento: 'backup/lib/restore-oggetti.js',
+  };
+  const filename = path.join(root, moduli[mutant]);
   let source = fs.readFileSync(filename, 'utf8');
   const before = source;
   if (mutant === 'trigger') {

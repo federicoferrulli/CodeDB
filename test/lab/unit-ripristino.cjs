@@ -12,7 +12,7 @@ const payload = ['destinazione', 'drop', 'selezione', 'origine', 'connessione', 
 const leases = ['tab', 'socket'].flatMap(x => ['successo/1', 'errore/1', 'successo/2'].map(y => x + '/' + y));
 const suites = [
   { file: 'unit-backup-lease.js', count: 7, mutants: { '--mutant': leases, '--mutant-preparazione': ['preparazione-fallita'] } },
-  { file: 'unit-backup-registro.js', count: 21, mutants: {
+  { file: 'unit-backup-registro.js', count: 22, mutants: {
     '--mutant=ripetizione': ['idempotenza-in-corso', 'idempotenza-concluso', 'idempotenza-richiesta-equivalente', ...payload],
     // La connessione viene dalla sessione: alterare il payload non la cambia.
     '--mutant=payload-ignorato': payload.filter(id => id !== 'payload-diverso-connessione'),

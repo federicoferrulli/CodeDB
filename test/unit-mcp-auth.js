@@ -15,12 +15,14 @@ const express = require('express');
 const { makePrincipal } = require('../auth/principal');
 const { allowedConnections } = require('../auth/permissions');
 const { attachMcp, MCP_PATH } = require('../mcp/McpGateway');
+const { createModule: creaTrasporto } = require('../server/trasporto');
 
 console.log('--- Test Gate Autenticazione MCP ---');
 
 const owner = makePrincipal({ _id: 'o1', type: 'owner', ownerId: 'o1', email: 'o@x.it' }, []);
 
 const deps = {
+  env: { HOST: '0.0.0.0', CODEDB_PUBLIC_BIND: '127.0.0.1', CODEDB_ALLOWED_ORIGINS: 'https://squadra.test' },
   audit: () => {},
   loadConnections: () => ({}),
   connLabel: () => '',
@@ -66,6 +68,13 @@ module.exports = (async () => {
 
   let completa;
   try {
+    const trasporto = creaTrasporto({ config: { env: deps.env, rootDir: __dirname } });
+    try {
+      for (const [host, ok] of [['localhost', true], ['squadra.test', true], ['altro.test', false]]) {
+        assert.strictEqual(trasporto.checkOrigin({ headers: { host } }).ok, ok, `Host Socket.IO: ${host}`);
+        assert.strictEqual((await post({ Host: host })).status, ok ? 401 : 403, `Host MCP: ${host}`);
+      }
+    } finally { await new Promise(resolve => trasporto.io.close(resolve)); }
     assert.strictEqual((await post({})).status, 401, 'MCP senza API key → 401');
     assert.strictEqual((await post({ Authorization: 'Bearer cdb_sbagliata' })).status, 401, 'API key non valida → 401');
     assert.notStrictEqual((await post({ Authorization: 'Bearer cdb_valida' })).status, 401, 'API key valida accettata');

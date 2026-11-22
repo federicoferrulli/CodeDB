@@ -72,10 +72,7 @@ const stato = (page) => page.evaluate(() => {
   };
 });
 
-// I vertici si disegnano con clic in posizioni NOTE della mappa: premere di
-// nuovo lo stesso punto centra la maniglia che ci è nata sopra. Il gesto è
-// quello vero (mousedown sul vertice = selezione + inizio trascinamento), senza
-// bisogno di frugare dentro Leaflet dal test.
+// Le frazioni del canvas scelgono lo sfondo sul quale disegnare.
 const PUNTI = [[0.35, 0.35], [0.55, 0.35], [0.55, 0.6]];
 
 async function premiPunto(page, [fx, fy], dx = 0) {
@@ -83,6 +80,14 @@ async function premiPunto(page, [fx, fy], dx = 0) {
   await page.mouse.click(box.x + box.width * fx + dx, box.y + box.height * fy);
   await page.waitForTimeout(150);
 }
+
+// Dopo un ridimensionamento la stessa coordinata geografica cambia pixel.
+const proietta = (page, coordinata) => page.evaluate(([lng, lat]) => {
+  const mappa = window.mappaEditor;
+  const r = mappa.getContainer().getBoundingClientRect();
+  const p = mappa.latLngToContainerPoint([lat, lng]);
+  return { x: r.left + p.x, y: r.top + p.y };
+}, coordinata);
 
 // Tre clic distinti dentro la mappa: bastano a chiudere un anello (il quarto
 // vertice lo aggiunge l'editor duplicando il primo).
@@ -100,7 +105,13 @@ async function disegnaTreVertici(page, dx = 0) {
     page.on('pageerror', (err) => errori.push(String(err && err.message ? err.message : err)));
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#geomap-overlay', { state: 'attached', timeout: 15000 });
-    await page.waitForTimeout(800);
+    await page.waitForSelector('html[data-arc-ready="true"]');
+    await page.evaluate(async () => {
+      const L = await (await import('/js/geo-leaflet.js')).caricaLeaflet();
+      L.Map.addInitHook(function () {
+        if (this.getContainer().id === 'geomap-canvas') window.mappaEditor = this;
+      });
+    });
 
     /* --- Il tipo della colonna decide la forma di partenza ------------ */
 
@@ -178,7 +189,8 @@ async function disegnaTreVertici(page, dx = 0) {
     const senzaSelezione = s.disattivati['del-vertex'] && s.disattivati['insert-vertex']
       && s.geo.coordinates[0].length === 4;
 
-    await premiPunto(page, PUNTI[1]); // il secondo vertice, in una posizione nota
+    const secondo = await proietta(page, s.geo.coordinates[0][1]);
+    await page.mouse.click(secondo.x, secondo.y);
     s = await stato(page);
     ok(senzaSelezione && !s.disattivati['del-vertex'] && !s.disattivati['insert-vertex'],
       'i bottoni sul vertice si accendono solo quando un vertice è scelto',
@@ -234,25 +246,25 @@ async function disegnaTreVertici(page, dx = 0) {
     s = await stato(page);
     const azzerata = s.disattivati['del-vertex'];
     const box = await page.locator('#geomap-canvas').boundingBox();
-    await page.mouse.click(box.x + box.width * PUNTI[2][0] + 18, box.y + box.height * PUNTI[2][1]);
-    await page.waitForTimeout(200);
+    const vertice = await proietta(page, s.geo.coordinates[0][2]);
+    await page.mouse.click(vertice.x + 18, vertice.y);
     s = await stato(page);
     ok(azzerata && !s.disattivati['del-vertex'],
       'un clic a 18 px dal vertice lo sceglie lo stesso', `${s.selezione} · ${JSON.stringify(s.disattivati)}`);
 
     // Lontano da ogni vertice la scelta si azzera: l'aggancio ha un raggio, non
     // è «il vertice più vicino comunque».
-    await page.mouse.click(box.x + box.width * PUNTI[2][0] + 90, box.y + box.height * PUNTI[2][1]);
-    await page.waitForTimeout(200);
+    await page.mouse.click(vertice.x + 90, vertice.y);
     s = await stato(page);
     ok(s.disattivati['del-vertex'], 'lontano da ogni vertice la scelta si azzera');
 
     // Il cursore dichiara la presa: passando sopra una maniglia cambia forma.
-    await page.mouse.move(box.x + box.width * PUNTI[2][0], box.y + box.height * PUNTI[2][1]);
-    await page.waitForTimeout(200);
+    const maniglia = await proietta(page, s.geo.coordinates[0][2]);
+    await page.mouse.move(maniglia.x, maniglia.y, { steps: 8 });
+    await page.waitForFunction(() => document.querySelector('#geomap-canvas').style.cursor === 'grab');
     const cursore = await page.evaluate(() => document.querySelector('#geomap-canvas').style.cursor);
-    await page.mouse.move(box.x + 20, box.y + box.height - 20);
-    await page.waitForTimeout(200);
+    await page.mouse.move(box.x + 20, box.y + box.height - 20, { steps: 8 });
+    await page.waitForFunction(() => document.querySelector('#geomap-canvas').style.cursor !== 'grab');
     const cursoreFuori = await page.evaluate(() => document.querySelector('#geomap-canvas').style.cursor);
     ok(cursore === 'grab' && cursoreFuori !== 'grab',
       'sopra una maniglia il cursore dichiara che si può prendere', `${cursore} / ${cursoreFuori}`);
@@ -260,9 +272,10 @@ async function disegnaTreVertici(page, dx = 0) {
     // Scegliere un vertice NON è una modifica: premerlo tre volte non deve
     // lasciare tre passi nella storia, altrimenti «Annulla» andrebbe premuto
     // quattro volte per disfare una modifica sola.
-    await premiPunto(page, PUNTI[1]);
-    await premiPunto(page, PUNTI[2]);
-    await premiPunto(page, PUNTI[1]);
+    for (const i of [1, 2, 1]) {
+      const p = await proietta(page, s.geo.coordinates[0][i]);
+      await page.mouse.click(p.x, p.y);
+    }
     await page.click('#geomap-undo');
     await page.waitForTimeout(150);
     s = await stato(page);
@@ -343,6 +356,17 @@ async function disegnaTreVertici(page, dx = 0) {
     ok(s.modoAttivo && s.modoCoerente && s.geo.coordinates[0].length === 6,
       'scelto «Disegna» nel controllo segmentato, il clic torna ad aggiungere',
       JSON.stringify({ modo: s.modo, n: s.geo.coordinates[0].length }));
+    const coord = s.geo.coordinates[0][1];
+    const presa = await proietta(page, coord);
+    await page.mouse.move(presa.x, presa.y);
+    await page.mouse.down();
+    await page.mouse.move(presa.x + 24, presa.y + 12, { steps: 3 });
+    await page.mouse.up();
+    s = await stato(page);
+    ok(s.geo.coordinates[0].length === 6 && JSON.stringify(s.geo.coordinates[0][1]) !== JSON.stringify(coord),
+      'trascinare un vertice in modalità Disegna lo sposta senza aggiungerne un altro al rilascio');
+    await premiPunto(page, [0.75, 0.75]);
+    ok((await stato(page)).geo.coordinates[0].length === 7, 'il clic successivo al rilascio disegna subito');
     await page.click('#geomap-cancel');
     await page.waitForTimeout(100);
 

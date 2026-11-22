@@ -206,6 +206,9 @@ function estraiBersaglio(sql) {
 function validaRiferimentiCrossDatabase(target, database, dbType, sql) {
   const keywords = new Set(['FROM', 'JOIN', 'REFERENCES', 'UPDATE', 'INTO', 'LIKE']);
   for (let i = 0; i < target.tokens.length; i++) {
+    if (keyword(target.tokens[i], 'PARTITION') && keyword(target.tokens[i + 1], 'OF')) {
+      validaQualificatore(leggiNome(target.tokens, i + 2), database, dbType, sql);
+    }
     if (keyword(target.tokens[i], 'SEQUENCE') && keyword(target.tokens[i + 1], 'NAME')) {
       validaQualificatore(leggiNome(target.tokens, i + 2), database, dbType, sql);
     }
@@ -399,6 +402,15 @@ function normalizzaExportDatabase(input, { expectedDbType = null, owned = false 
   parsed.objects = normalizzaOggetti(parsed.objects, {
     dbType: motore, database: parsed.db, collections: names, allowUnsafeSchema: false,
   });
+  // Nei vecchi export MongoDB le definizioni selezionate erano già in views,
+  // ma il catalogo interno poteva comparire una seconda volta tra i dati.
+  // MongoDB lo rigenera quando creiamo le viste, anche nello staging.
+  if (motore === 'mongodb' && names.has('system.views') && Array.isArray(parsed.objects?.views)) {
+    parsed.collections = parsed.collections.filter(c => c.name !== 'system.views');
+    if (parsed.objects.collectionOptions) {
+      parsed.objects.collectionOptions = parsed.objects.collectionOptions.filter(c => c.name !== 'system.views');
+    }
+  }
   if (parsed.largeObjects != null) {
     if (motore !== 'postgresql') throw new Error('Large Objects ammessi soltanto per PostgreSQL.');
     require('./pg-references').validateLargeObjects(parsed.largeObjects);

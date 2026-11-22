@@ -85,9 +85,15 @@ public class MainActivity extends Activity {
         int foreground = cached ? prefs.getInt("foreground", dark ? 0xffe2e8f0 : 0xff1f2937) : dark ? 0xffe2e8f0 : 0xff1f2937;
         int accent = cached ? prefs.getInt("accent", 0xff585aee) : 0xff585aee;
         splash = new AvvioView(this, background, foreground, accent, () -> {
+            if (Runtime.richiedeNuovoProcesso()) {
+                finishAndRemoveTask();
+                android.os.Process.killProcess(android.os.Process.myPid());
+                return;
+            }
             if (web != null && web.getUrl() != null && Runtime.error == null) { armLoadTimeout(); web.reload(); }
             else {
                 if (web != null) { content.removeView(web); web.destroy(); web = null; }
+                Runtime.start(this);
                 waitForServer();
             }
         });
@@ -138,7 +144,7 @@ public class MainActivity extends Activity {
     private void showStartupError(String message) {
         if (destroyed) return;
         handler.removeCallbacks(loadTimeout);
-        splash.errore(message);
+        splash.errore(message, Runtime.richiedeNuovoProcesso());
     }
 
     private void waitForServer() {

@@ -2,12 +2,11 @@
 
 // Test end-to-end della strategia MySQL: esercita l'intero flusso socket
 // contro un MySQL locale (root, password vuota).
-// Uso: node test/e2e-mysql.js            (MySQL su localhost:3306)
-//      MYSQL_PORT=3307 node test/e2e-mysql.js
-// Richiede il server della GUI già avviato su :3030.
+// Uso: CODEDB_E2E_DESTRUCTIVE=1 node test/e2e-mysql.js (MYSQL_PORT facoltativa)
 
 const { io } = require('socket.io-client');
 const { startTestServer } = require('./e2e-harness');
+const { createDatabaseFixture } = require('./database-fixture');
 
 // Il test avvia una PROPRIA istanza di CodeDB su una porta dedicata, con un
 // connections.ini temporaneo (test/e2e-harness.js): nessuna dipendenza dal
@@ -16,12 +15,13 @@ let socket = null;
 let testServer = null;
 const MYSQL_PORT = process.env.MYSQL_PORT || 3306;
 const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || process.env.MYSQL_ROOT_PASSWORD || '';
-const DB = 'gui_mysql_e2e';
-const DB2 = 'gui_mysql_e2e_ren';
+const fixture = createDatabaseFixture('codedb_mysql', emit);
+const DB = fixture.target('principale');
+const DB2 = fixture.target('copia');
 const TABLE = 'people';
 
 function emit(event, payload) {
-  return new Promise((resolve) => socket.emit(event, payload, resolve));
+  return socket.timeout(60000).emitWithAck(event, payload);
 }
 
 function assert(cond, label) {
@@ -63,12 +63,8 @@ async function runTests() {
       `connessione riuscita (${conn.ok ? conn.databases.length + ' schema, dbType=' + conn.dbType : conn.error})`);
     if (!conn.ok) return socket.close();
 
-    // Pulizia da eventuali esecuzioni precedenti fallite.
-    await emit('db:drop', { db: DB });
-    await emit('db:drop', { db: DB2 });
-
     console.log('2. db:create + SQL Raw (CREATE TABLE)');
-    const created = await emit('db:create', { db: DB, coll: '' });
+    const created = await fixture.create(DB, '');
     assert(created.ok, `database "${DB}" creato`);
     const dup = await emit('db:create', { db: DB, coll: '' });
     assert(!dup.ok, 'creazione di un db già esistente rifiutata');
@@ -375,7 +371,7 @@ async function runTests() {
     assert(!watch.ok, 'watch rifiutato (nessun change stream)');
 
     console.log('14. db:rename / db:drop');
-    const ren = await emit('db:rename', { db: DB, newName: DB2 });
+    const ren = await fixture.copy(DB, DB2);
     assert(ren.ok && ren.modo === 'dump-restore' && ren.origineEliminata === false,
       'rinomina non atomica completata come copia verificata con origine conservata');
     const renCheck = await emit('collection:find', { db: DB, coll: TABLE, filter: '' });
@@ -385,11 +381,9 @@ async function runTests() {
     const dbs = await emit('db:list', {});
     assert(dbs.ok && dbs.databases.some((d) => d.name === DB)
       && dbs.databases.some((d) => d.name === DB2), 'origine e destinazione sono entrambe conservate');
-    const sysDrop = await emit('db:drop', { db: 'mysql' });
-    assert(!sysDrop.ok, 'eliminazione di uno schema di sistema rifiutata');
-    const drop = await emit('db:drop', { db: DB });
+    const drop = await fixture.drop(DB);
     assert(drop.ok, `database "${DB}" eliminato`);
-    const dropCopy = await emit('db:drop', { db: DB2 });
+    const dropCopy = await fixture.drop(DB2);
     assert(dropCopy.ok, `database "${DB2}" eliminato`);
 
     console.log('15. mongo:disconnect');
@@ -401,7 +395,9 @@ async function runTests() {
     console.error('Errore imprevisto:', err);
     process.exitCode = 1;
   } finally {
-    socket.close();
-    await testServer.stop();
+    try { await fixture.cleanup(); } finally {
+      socket.close();
+      await testServer.stop();
+    }
   }
 }

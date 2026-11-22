@@ -8,10 +8,26 @@ const http = require('node:http');
 const vm = require('node:vm');
 const { spawn, execFileSync } = require('node:child_process');
 const { once } = require('node:events');
-const { fileApplicazione, estraiZip } = require('./prepare.cjs');
+const { copiaApplicazione, fileApplicazione, estraiZip } = require('./prepare.cjs');
 const { proteggi } = require('./mobile.cjs');
 const secret = 'a'.repeat(64);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function verificaSorgenti(directory) {
+  const repo = path.join(directory, 'repository'), copia = path.join(directory, 'runtime');
+  const inclusi = ['db/base.json', 'server/modulo-nuovo.js', 'backup/lib/lettore.cjs', 'public/js/pagina.mjs', 'public/arc/ui.css'];
+  const esclusi = ['server/prova-locale.js', 'server/.env', 'db/credenziali.json', 'backup/lib/chiave.pem', 'public/backups/dump.js', 'tools/prova.js'];
+  for (const file of [...inclusi, ...esclusi]) {
+    fs.mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
+    fs.writeFileSync(path.join(repo, file), file);
+  }
+  fs.writeFileSync(path.join(repo, '.gitignore'), 'server/prova-locale.js\n');
+  execFileSync('git', ['init', '-q'], { cwd: repo });
+  execFileSync('git', ['add', '--', 'db/base.json'], { cwd: repo });
+  copiaApplicazione(repo, copia);
+  for (const file of inclusi) assert.equal(fs.readFileSync(path.join(copia, file), 'utf8'), file);
+  for (const file of esclusi) assert.equal(fs.existsSync(path.join(copia, file)), false, file);
+}
 
 async function verificaGate(gate) {
   const server = http.createServer((req, res) => res.end('privato'));
@@ -49,6 +65,7 @@ async function verificaDownload() {
 async function main() {
   const zipDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-zip-'));
   try {
+    verificaSorgenti(zipDir);
     // Piccolo ZIP reale, senza dipendere da librerie npm o tar.
     const zip = path.join(zipDir, 'prova.zip');
     fs.writeFileSync(zip, Buffer.from('UEsDBBQAAAAAALChNVuGphA2BQAAAAUAAAAJAAAAcHJvdmEudHh0aGVsbG9QSwECFAMUAAAAAACwoTVbhqYQNgUAAAAFAAAACQAAAAAAAAAAAAAAgAEAAAAAcHJvdmEudHh0UEsFBgAAAAABAAEANwAAACwAAAAAAA==', 'base64'));

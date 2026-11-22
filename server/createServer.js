@@ -15,21 +15,22 @@ function createServer(options = {}) {
   const vault = require('./vault').createModule({ config, dependencies, errori });
   const informazioni = require('./informazioni').createModule({ config });
   const connessioni = require('./connessioni').createModule({ vault, dependencies, errori, config });
-  const identita = require('./identita').createModule({ config, trasporto, audit, errori, dependencies });
+  const identita = require('./identita').createModule({ config, trasporto, audit, errori, dependencies,
+    chiudiSessioniSospese: id => socket.chiudiSessioniSospese(id), chiudiLogin: token => socket.chiudiLogin(token) });
   const operazioni = require('./operazioni').createModule({ config, identita });
   const query = require('./query').createModule({ config, connessioni, dependencies });
   const { mcpControl, mcpSettings } = require('./mcp').createModule({ trasporto, vault, connessioni, config, identita, budget });
   const registratori = [
     require('./eventi-connessioni').createModule({ lock, budget, identita, connessioni, vault }),
     require('./eventi-app').createModule({ informazioni, identita }),
-    require('./eventi-import').createModule({ operazioni, lock, identita, audit }),
+    require('./eventi-import').createModule({ operazioni, lock, identita, audit, dependencies }),
     require('./eventi-identita').createModule({ config, identita, vault }),
     require('./eventi-vault').createModule({ vault, identita, config }),
     require('./eventi-monitoraggio').createModule({ audit, errori, connessioni, lock, identita }),
     require('./eventi-mcp').createModule({ mcpControl, mcpSettings, config, identita, vault, trasporto }),
     require('./eventi-dati').createModule({ query, lock, identita, operazioni, audit }),
     require('./eventi-script').createModule({ lock, query, audit, dependencies, errori }),
-    require('./eventi-backup').createModule({ lock, identita, operazioni, audit, errori, config }),
+    require('./eventi-backup').createModule({ lock, identita, operazioni, audit, errori, config, vault }),
   ];
   const socket = require('./socket').createModule({
     identita, trasporto, budget, config, connessioni, lock, errori, query, audit, registratori,

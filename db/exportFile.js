@@ -30,10 +30,11 @@ async function creaFileExport({ archivio, ownerId, actorId, ...options }) {
     } });
     await flush();
     if (options.check) options.check();
+    const estensione = { 'codedb-json': 'codedb.json', sql: 'sql', mongosh: 'mongosh.js' }[options.plan.formato];
     const manifest = await archivio.finalizza(opened.uploadId, ownerId, {
       dimensioneAttesa: offset, digestAtteso: hash.digest('hex'), attore: actorId,
       check: options.check,
-      nome: `${options.plan.sourceDb}.${options.plan.formato === 'sql' ? 'sql' : 'codedb.json'}`,
+      nome: `${options.plan.sourceDb}.${estensione}`,
     });
     return { ...result, manifest };
   } catch (err) {

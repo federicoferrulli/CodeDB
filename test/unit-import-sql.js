@@ -34,6 +34,30 @@ assert.strictEqual(mysql.collections[0].docs[0].bin.$binary.base64, 'AP8=');
 assert.strictEqual(mysql.collections[0].docs[1].testo, '');
 assert.strictEqual(mysql.objects.routines.length, 1);
 
+// I dump esterni anticipano le viste con tabelle (phpMyAdmin) o viste
+// segnaposto (mysqldump). Deve arrivare allo staging soltanto la versione finale.
+for (const drop of ['DROP TABLE IF EXISTS v', 'DROP TABLE v']) {
+  const dump = parse(`CREATE TABLE t(n INT); CREATE TABLE v(n INT); ${drop};
+    CREATE ALGORITHM=UNDEFINED VIEW v AS SELECT n FROM t;`, 'mysql');
+  assert.deepStrictEqual(dump.collections.map(t => t.name), ['t']);
+  assert.deepStrictEqual(dump.objects.views.map(v => v.name), ['v']);
+}
+const viewOnly = parse(`/*!50001 CREATE VIEW v AS SELECT 1 AS n */;
+  /*!50001 DROP VIEW IF EXISTS v */;
+  /*!50001 CREATE ALGORITHM=UNDEFINED */
+  /*!50013 DEFINER=\`test\`@\`localhost\` SQL SECURITY DEFINER */
+  /*!50001 VIEW v AS SELECT 2 AS n */;`, 'mysql');
+assert.deepStrictEqual(viewOnly.collections, []);
+assert.match(viewOnly.objects.views[0].ddl, /SELECT 2 AS n/);
+assert.strictEqual(viewOnly.objects.views.length, 1);
+const sostituita = parse('CREATE VIEW v AS SELECT 1 AS n; CREATE OR REPLACE VIEW v AS SELECT 2 AS n;', 'mysql');
+assert.deepStrictEqual(sostituita.objects.views.map(v => v.ddl), ['CREATE OR REPLACE VIEW v AS SELECT 2 AS n']);
+assert.throws(() => parse('CREATE TABLE v(n int); CREATE VIEW v AS SELECT 2 AS n;', 'mysql'), /tabella e vista/);
+assert.strictEqual(parse('CREATE MATERIALIZED VIEW v AS SELECT 2 AS n WITH NO DATA;', 'postgresql').objects.views[0].materialized, true);
+assert.throws(() => parse('CREATE TABLE v(n int); INSERT INTO v VALUES (1); DROP TABLE v; CREATE VIEW v AS SELECT 2 AS n;', 'mysql'), /righe/);
+assert.throws(() => parse('CREATE TABLE v(n int); DROP TABLE v;', 'mysql'), /DROP senza CREATE/);
+assert.throws(() => parse('SET NAMES utf8mb4;', 'mysql'), /non contiene/);
+
 const pg = parse(String.raw`CREATE SCHEMA origine;
 SET standard_conforming_strings = on;
 CREATE TABLE origine.t (id bigint NOT NULL, testo text, bin bytea, dt timestamp(6));

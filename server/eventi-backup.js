@@ -6,13 +6,14 @@ const { parseStorage, uploadBackupDir } = require('../backup/lib/storage');
 const { createLogger, formatDuration } = require('../backup/lib/logger');
 const path = require('path');
 const { runBackup } = require('../backup/lib/engine');
+const { origineSessione, filtraCatalogo, verificaOrigine, erroreVerificaOrigine, proprietario } = require('../backup/lib/origine');
 const { notifySlack } = require('../backup/lib/notify');
 const { readCatalog, verifyBackupDir, formatBytes, parseCollectionSelection } = require('../backup/lib/util');
 const fs = require('fs');
 const { runRestoreViaPlan } = require('../db/backupRestoreAdapter');
 const { createRestoreOperationRegistry, sanitizeRestoreResult, improntaRipristino } = require('../db/restoreOperations');
 
-function createModule({ lock, identita, operazioni, audit, errori, config }) {
+function createModule({ lock, identita, operazioni, audit, errori, config, vault }) {
   // Anche le giunture leggere usano un registro per istanza, condiviso fra
   // socket; il server completo lo possiede e lo chiude in operazioni.
   const restoreOperations = operazioni.restoreOperations ||= createRestoreOperationRegistry();
@@ -73,6 +74,7 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
         const summary = await log.run(`backup ${type} conn=${connName} db=${db} (via UI)`, async () => {
           const result = await runBackup({
             session: { strategy: sess.strategy, dbType: sess.dbType || sess.strategy.type }, connName, db, type, onlyCollections,
+            origine: origineSessione(vault, socketContext.principal, sess.connName, sess.backupOriginId),
             sinceField: payload.sinceField ? String(payload.sinceField).trim() : null,
             destRoot, compress, level, log, signal: controller.signal, onProgress,
           });
@@ -121,7 +123,8 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
         for (const entry of fs.readdirSync(destRoot, { withFileTypes: true })) {
           if (!entry.isDirectory()) continue;
           const { backups } = readCatalog(path.join(destRoot, entry.name));
-          if (backups.length) groups[entry.name] = backups;
+          const visibili = filtraCatalogo(backups, path.join(destRoot, entry.name), socketContext.principal, destRoot, vault);
+          if (visibili.length) groups[entry.name] = visibili;
         }
       }
       cb({ ok: true, groups });
@@ -150,6 +153,15 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
         backupDir = operazioni.resolveBackupPath(socketContext.principal,
           path.join(operazioni.backupRootOf(socketContext.principal), group, backupId), 'origine');
       }
+      const onlyCollections = parseCollectionSelection(payload.collections)?.sort() || null;
+      const filtraErroreOrigine = err => erroreVerificaOrigine(
+        err, socketContext.principal, backupDir, operazioni.backupRootOf(socketContext.principal), vault);
+      const verificaSorgente = async () => {
+        if (lifecycle.rivalidaPrincipal && !await lifecycle.rivalidaPrincipal(true)) throw new Error('Sessione non più valida.');
+        identita.assertWholeConnection(socketContext.principal, sess.connName, 'manage', 'ripristinare un backup');
+        verificaOrigine(socketContext.principal, backupDir, onlyCollections, operazioni.backupRootOf(socketContext.principal), vault);
+      };
+      if (backupDir) await verificaSorgente();
       if (!backupDir || !fs.existsSync(path.join(backupDir, 'manifest.json'))) {
         throw new Error('Cartella backup non valida o manifest.json mancante.');
       }
@@ -157,7 +169,6 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
 
       const destRoot = operazioni.resolveBackupPath(socketContext.principal, payload.dest, 'destinazione');
       const webhook = resolveSlackWebhook(payload.slackWebhook, config.env);
-      const onlyCollections = parseCollectionSelection(payload.collections)?.sort() || null;
       const targetDb = String(payload.targetDb || '').trim() || null;
       const drop = !!payload.drop;
       const recoveryRoot = path.join(operazioni.backupRootOf(socketContext.principal), 'import-recovery');
@@ -172,7 +183,7 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
       const fingerprint = improntaRipristino({ connection: connName, dbType, backupDir, targetDb, drop,
         collections: onlyCollections, recoveryRoot });
       const ack = await restoreOperations.start({ operationId, ownerId, actorId, tabId, connection: connName, backupId,
-        targetDb, fingerprint, execute: async progress => {
+        targetDb, fingerprint, source: { dir: backupDir, collections: onlyCollections }, execute: async progress => {
       lifecycle.acquisisciLeaseOperazione?.(sess);
       let log;
       let redact = value => String(value);
@@ -205,12 +216,14 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
       };
 
         const summary = await log.run(`restore conn=${connName} da=${path.basename(backupDir)} (via UI)`, async () => {
+          await verificaSorgente();
           return await runRestoreViaPlan({
             session: { strategy: sess.strategy, dbType }, backupDir,
             targetDb,
             // Il DDL del backup viene eseguito sul database: dall'interfaccia non
             // si può scavalcare la validazione, la deroga resta solo nella CLI.
             onlyCollections, drop, log: logUi, connName, recoveryRoot,
+            verificaSorgente, filtraErroreOrigine,
             onProgress: (event) => { progress(event); inviaProgresso(`${event.phase} ${event.status}`, false); },
           });
         });
@@ -237,17 +250,24 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
       cb(ack);
     });
 
+    function verificaStato(principal, operation) {
+      identita.assertWholeConnection(principal, operation.connection, 'manage', 'vedere lo stato di un ripristino');
+      if (proprietario(principal)) return;
+      const source = restoreOperations.sourceOf(operation.operationId, principal.ownerId, principal.id);
+      verificaOrigine(principal, source.dir, source.collections, operazioni.backupRootOf(principal), vault);
+    }
+
     lifecycle.safeOn('backup:restore:state', (payload, cb) => {
       const principal = socketContext.principal;
       const operation = restoreOperations.get(payload.operationId, principal.ownerId, principal.id);
-      identita.assertWholeConnection(principal, operation.connection, 'manage', 'vedere lo stato di un ripristino');
+      verificaStato(principal, operation);
       cb({ ok: true, operation });
     });
 
     lifecycle.safeOn('backup:restore:list', (_payload, cb) => {
       const principal = socketContext.principal;
       const operations = restoreOperations.list(principal.ownerId, principal.id).filter(operation => {
-        try { identita.assertWholeConnection(principal, operation.connection, 'manage', 'vedere i ripristini recuperabili'); return true; }
+        try { verificaStato(principal, operation); return true; }
         catch (_) { return false; }
       });
       cb({ ok: true, operations });
@@ -262,8 +282,9 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
         if (!/^[\w.-]+$/.test(group) || !/^[\w.-]+$/.test(backupId)) {
           throw new Error('Parametri "group" o "backupId" non validi.');
         }
-        backupDir = path.join(operazioni.backupRootOf(socketContext.principal), group, backupId);
+        backupDir = operazioni.resolveBackupPath(socketContext.principal, path.join(operazioni.backupRootOf(socketContext.principal), group, backupId), 'origine');
       }
+      if (backupDir) verificaOrigine(socketContext.principal, backupDir, null, operazioni.backupRootOf(socketContext.principal), vault);
       if (!backupDir || !fs.existsSync(path.join(backupDir, 'manifest.json'))) {
         throw new Error('Cartella backup non trovata o manifest.json mancante.');
       }

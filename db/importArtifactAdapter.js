@@ -10,6 +10,7 @@ const {
 } = require('../backup/lib/restore');
 const { verifyBackupDir } = require('../backup/lib/util');
 const { quotaSempre } = require('./identificatori');
+const { collectionDiSistema } = require('./DbStrategy');
 const {
   scegliIdentitaSql, identityCompatibile, validaIdentity, chiaveIdentita,
 } = require('../backup/lib/identity');
@@ -61,6 +62,9 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
   let largeObjectMap = new Map();
   let promotionTx = null;
   let pendingPhysicalDb = null;
+  let immaginiMerge = null;
+  let merge = null;
+  let ddlMerge = false;
   let promotionRetainsStaging = false;
 
   async function inventarioSql(db, strategy = primaryStrategy) {
@@ -81,6 +85,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
   }
 
   async function validaIdentitaMerge(plan) {
+    const presenti = new Set((await strategy.listCollections(plan.targetDb, { includeCounts:false })).map(item => item.name));
     for (const collection of plan.artifact.collections) {
       const planned = plan.collections.find((item) => item.name === collection.name);
       const expected = planned && planned.identity;
@@ -98,7 +103,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
         }
         identities.add(key);
       });
-      if (type === 'mongodb') continue;
+      if (type === 'mongodb' || !presenti.has(collection.name)) continue;
       const info = await strategy.tableColumnsInfo(plan.targetDb, collection.name);
       const primary = await strategy.primaryKey(plan.targetDb, collection.name);
       const uniques = await strategy.uniqueIndexes(plan.targetDb, collection.name);
@@ -219,8 +224,9 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     }
   }
 
-  async function verifica(plan, db, strategy = primaryStrategy) {
-    const actual = (await strategy.listCollections(db)).filter((c) => c.type !== 'view');
+  async function verifica(plan, db, strategy = primaryStrategy, mongoSession = null) {
+    const actual = (await strategy.listCollections(db, { includeCounts: false }))
+      .filter(c => c.type !== 'view' && !collectionDiSistema(type, c.name));
     const actualNames = new Set(actual.map((c) => c.name));
     const expectedNames = new Set(plan.collections.map((c) => c.name));
     const extras = [...actualNames].filter((name) => !expectedNames.has(name));
@@ -230,7 +236,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     for (const collection of plan.collections) {
       const identity = plan.artifact.collections.find((item) => item.name === collection.name).identity;
       const counts = await cardinalitaDestinazione({
-        strategy, dbType: type, targetDb: db, collection: collection.name, identity,
+        strategy, dbType: type, targetDb: db, collection: collection.name, identity, mongoSession,
       });
       const count = counts.cardinality;
       rows += count;
@@ -313,6 +319,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
   }
 
   return {
+    ...require('./importCleanup').puliziaImport({ strategy, type, recoveryRoot, connName }),
     setSignal(next) { activeSignal = next; },
     async validatePlan(plan) {
       if (plan.dbType !== type) throw new Error(`Piano ${plan.dbType} incompatibile con la strategia ${type}.`);
@@ -346,7 +353,8 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     destinationExists: (plan) => exists(plan.targetDb),
 
     async createRecovery(plan) {
-      const physical = (await strategy.listCollections(plan.targetDb)).filter((item) => item.type !== 'view');
+      const physical = (await strategy.listCollections(plan.targetDb, { includeCounts: false }))
+        .filter(c => c.type !== 'view' && !collectionDiSistema(type, c.name));
       const inventory = objectInventory(await readSchemaObjects(strategy, type, plan.targetDb));
       const objectCount = Object.values(inventory).reduce((sum, names) => sum + names.length, 0);
       if (!physical.length && objectCount === 0) {
@@ -375,6 +383,9 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
       } else if (type !== 'mongodb') {
         await strategy.createDatabase(db);
       }
+      if (plan.kind === 'import-database' && type !== 'postgresql' && !plan.drop && targetExists) {
+        immaginiMerge = await require('./promozioneMerge').immaginiIniziali(strategy, type, plan, db);
+      }
       return { db, retained: true, ...(copiedObjects.length ? { largeObjects: copiedObjects } : {}) };
     },
 
@@ -387,11 +398,13 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     },
 
     async verify(plan, where, staging) {
+      if (where === 'destinazione' && merge) return verifica(plan, plan.targetDb, merge.strategy, merge.session);
       return verifica(plan, where === 'staging' ? staging.db : plan.targetDb,
         where !== 'staging' && promotionTx?.state === 'aperta' ? promotionTx.strategy : strategy);
     },
     verificationStrategy() { return promotionTx?.state === 'aperta' ? promotionTx.strategy : strategy; },
     async finalize(_plan, staging, recovery) {
+      if (merge) return merge.commit();
       if (!promotionTx) return;
       await promotionTx.commit();
       staging.retained = promotionRetainsStaging;
@@ -399,6 +412,21 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     },
 
     async promote(plan, staging, recovery) {
+      if (immaginiMerge) {
+        // Solo le identità dichiarate nel file entrano nella destinazione viva.
+        // La copia di recupero serve al confronto, mai a sostituire il database.
+        const presenti = new Set((await strategy.listCollections(plan.targetDb, { includeCounts:false })).map(item => item.name));
+        const incompleto = plan.collections.some(c => !presenti.has(c.name));
+        if (incompleto || !(await verifica(plan, plan.targetDb)).schemaObjects) {
+          ddlMerge = true;
+          const soloSchema = { ...plan.artifact, collections:plan.artifact.collections.map(c => ({ ...c, docs:[] })) };
+          await applicaArtefatto({ ...plan, artifact:soloSchema }, plan.targetDb, { upsert:true });
+        }
+        merge = await require('./promozioneMerge').apriMerge(strategy, type);
+        if (ddlMerge) merge.segnaDdl();
+        await merge.applica(plan, immaginiMerge, staging.db, () => abortIf(activeSignal));
+        return;
+      }
       if (type === 'postgresql') {
         promotionTx = await require('./pg-restore-transaction').apriTransazioneRipristino(strategy);
         const client = promotionTx.strategy.pool;
@@ -451,6 +479,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
         if (!verified.valid) throw new Error('Lo staging non produce una copia promuovibile verificata.');
         staging.backupDir = stagedBackup.backupDir;
         if (await exists(plan.targetDb)) {
+          if (plan.kind === 'import-database' && !plan.drop) throw new Error('La destinazione è comparsa durante lo staging. Ripetere il merge sulla destinazione attuale.');
           targetMutationStarted = true;
           try { await strategy.dropDatabase(plan.targetDb); }
           catch (err) { if (err && !err.target) err.target = plan.targetDb; throw err; }
@@ -467,6 +496,14 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     },
 
     async restore(plan, recovery) {
+      if (!recovery && plan.kind === 'import-database' && !plan.drop && type !== 'postgresql') {
+        throw new Error('Verificare la nuova destinazione dopo l’errore: contiene eventuali scritture concorrenti.');
+      }
+      if (immaginiMerge) {
+        if (merge) return merge.rollback();
+        if (ddlMerge) throw new Error('Verificare lo schema applicato prima del merge. La destinazione è stata conservata.');
+        return;
+      }
       if (promotionTx) {
         await promotionTx.rollback();
         pendingPhysicalDb = null;

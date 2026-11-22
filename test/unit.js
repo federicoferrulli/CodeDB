@@ -16,6 +16,8 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-sql-sessioni');
   await require('./unit-query-audit');
   await require('./unit-query-error');
+  await require('./unit-query-file');
+  await require('./unit-mongosh-auto');
   await require('./unit-feedback-messaggi');
   await require('./unit-query-export-json');
   require('./sql-to-mql');
@@ -31,6 +33,7 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-sql-integrita-righe');
   await require('./unit-insert-values');
   await require('./unit-server-modulare');
+  await require('./unit-architettura-modulare');
   await require('./unit-creazione-collection');
   await require('./unit-conteggi-navigatore');
   await require('./unit-ssh-keys');
@@ -42,6 +45,7 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-ssh-config');
   await require('./unit-conn-config');
   await require('./unit-mcp-auth');
+  await require('./unit-hardening-produzione');
   // Test 1: DbFactory instanziamento e helper
   const mongoStrategy = DbFactory.getStrategy('mongodb');
   assert.strictEqual(mongoStrategy.type, 'mongodb', 'MongoDbStrategy type deve essere mongodb');
@@ -1613,6 +1617,7 @@ console.log('--- Test Unitari CodeDB ---');
   // L'import risponde subito con un id, vive oltre il tab, espone progresso e
   // stato recuperabile e usa un AbortSignal per l'annullamento cooperativo.
   await require('./unit-operazione-import');
+  await require('./unit-mcp-esito-import');
 
   // Socket e contesto finti invocano l'evento reale: ack anticipato, lease
   // oltre la chiusura del tab e stato recuperato da un nuovo contesto.

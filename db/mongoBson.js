@@ -38,13 +38,35 @@ async function scriviRaw(database, coll, raw, options, replace = false) {
   return result;
 }
 
+// Sui nodi standalone l'annullamento deve toccare soltanto il documento
+// immutato dopo il nostro intervento. Il filtro e il valore sono BSON grezzo.
+async function sostituisciSeInvariato(database, coll, prima, dopo) {
+  if (!prima) {
+    try { return (await scriviRaw(database, coll, dopo, {})).n === 1; }
+    catch (err) { if (err.code === 11000) return false; throw err; }
+  }
+  const element = (name, value, tag = 3) => Buffer.concat([Buffer.from([tag]), Buffer.from(name + '\0'), value]);
+  const literal = document([element('$literal', prima)]);
+  const array = document([BSON.serialize({ 0:'$$ROOT' }).subarray(4,-1), element('1',literal)]);
+  const expr = document([element('$eq',array,4)]);
+  const query = document([inspect(prima).id.subarray(4,-1),element('$expr',expr)]);
+  const sequence = new DocumentSequence(dopo ? 'updates' : 'deletes');
+  const simple = BSON.serialize({ locale:'simple' });
+  sequence.push({}, document([element('q', query), dopo ? element('u', dopo)
+    : BSON.serialize({ limit:1 }).subarray(4,-1), element('collation',simple)]));
+  const response = await database.command({ [dopo ? 'update' : 'delete']:coll, [sequence.field]:sequence, ordered:true });
+  checkWrite(response);
+  if (response.writeErrors?.length) throw new Error(response.writeErrors[0].errmsg);
+  return response.n === 1;
+}
+
 function inspect(raw) {
   if (!Buffer.isBuffer(raw) || raw.length < 5 || raw.length > 16 * 1024 * 1024 || raw.readInt32LE() !== raw.length) throw new Error('Documento BSON non valido.');
   const elements = BSON.onDemand.parseToElements(raw);
   const ids = elements.filter(e => raw.toString('utf8', e[1], e[1] + e[2]) === '_id');
   if (ids.length !== 1) throw new Error('Il documento BSON deve contenere un solo _id.');
   // Valida anche documenti annidati, lunghezze e UTF-8; non riusa i valori convertiti.
-  BSON.deserialize(raw, { promoteValues: false, validation: { utf8: true } });
+  BSON.deserialize(raw, { promoteValues: false, bsonRegExp: true, validation: { utf8: true } });
   const e = ids[0];
   return { id: document([raw.subarray(e[1] - 1, e[3] + e[4])]), columns: elements.map(e => raw.toString('utf8', e[1], e[1] + e[2])) };
 }
@@ -138,4 +160,4 @@ async function importRows(client, db, coll, rows, upsert = false, options = {}, 
   return { inserted, failed: rows.length - inserted, errors };
 }
 
-module.exports = { ENCODING, encode, decode, decodeId, inspect, importRows, deleteRows, sostituisciCampi, scriviRaw };
+module.exports = { ENCODING, encode, decode, decodeId, inspect, importRows, deleteRows, sostituisciCampi, scriviRaw, sostituisciSeInvariato };

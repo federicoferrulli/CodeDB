@@ -361,7 +361,7 @@ async function main() {
     await page.click('#conn-test-btn');
     
     // Attendi la comparsa del feedback
-    const testResultLocator = page.locator('#connect-test-msg:not(.hidden), #connect-error:not(.hidden)').first();
+    const testResultLocator = page.locator('#connect-test-msg:not(.hidden), #feedback-container .feedback-message[role="alert"]').first();
     await testResultLocator.waitFor({ state: 'visible', timeout: 8000 });
     const testResultText = await testResultLocator.innerText();
     assert(testResultText.length > 0, 'Feedback del comando "Testa Connessione" visualizzato correttamente', testResultText);

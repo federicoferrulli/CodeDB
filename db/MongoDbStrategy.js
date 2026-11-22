@@ -1,14 +1,10 @@
 'use strict';
 const { opzioniLettura, opzioniDriver } = require('./mongoOpzioni');
 const scritturaVincolata = require('./sqlScrittureMongo').esegui;
-
-const { assertImportOutcomeKnown } = require('./importFailure');
-
 const { MongoClient, ObjectId } = require('mongodb');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { LIMITE_RIGHE, stimaConteggio, conteggioLimitato, completaConteggi } = require('./conteggiNavigatore');
-const { isGeoJson } = require('./geometry');
 // Il filtro come DATO, accanto al documento MQL storico: vedi db/filtro.js.
 const { normalizzaFiltro, rendiMongo } = require('./filtro');
 const {
@@ -16,15 +12,9 @@ const {
   catalogoValido, filtroMongo,
 } = require('./ricercaGlobale');
 const sessioni = require('./sessioni');
-
-// Quanti documenti si guardano per DEDURRE i campi di una collection. È una
-// costante dichiarata e non un numero scritto nella chiamata, perché viaggia
-// fino all'interfaccia: la vista che mostra questi campi deve poter dire su
-// quanti documenti sono stati osservati.
-const CAMPIONE_SCHEMA = 50;
-const {
-  pianificaDuplicazione, calcolaNuovoValore, documentoSorgente, applicaRicalcolo, valoreSemplice, riavvolgi,
-} = require('./duplica');
+const { sampleSchema, installaCatalogoMongo } = require('./mongo-catalogo-schema');
+const { installaTrasferimentoMongo } = require('./mongo-trasferimento-shell');
+const { installaSessioniStreamMongo } = require('./mongo-sessioni-stream');
 
 const SYSTEM_DBS = new Set(['admin', 'config', 'local']);
 
@@ -36,11 +26,9 @@ function isMaxTimeError(err) {
 }
 
 /* ---------------------------------------------------------------------------
- * Helpers MongoDB (EJSON, URI, schema campionato)
+ * Helpers MongoDB (EJSON, URI, promozione ObjectId)
  * ------------------------------------------------------------------------- */
 
-// Builds a MongoDB connection URI from the form fields, unless a full URI
-// is provided directly.
 function buildUri(cfg) {
   if (cfg.uri && cfg.uri.trim()) return cfg.uri.trim();
 
@@ -54,32 +42,15 @@ function buildUri(cfg) {
   }
   const params = new URLSearchParams();
   if (cfg.username) params.set('authSource', cfg.authSource || 'admin');
-  // Connessione diretta a un singolo nodo (es. dietro tunnel SSH): evita la
-  // topology discovery verso host del replica set non raggiungibili.
   if (cfg.directConnection) params.set('directConnection', 'true');
   const qs = params.toString();
   return `mongodb://${auth}${host}:${port}/${qs ? '?' + qs : ''}`;
 }
 
-// Parses a user supplied filter/sort/projection string. Accepts Extended
-// JSON ({"_id": {"$oid": "..."}}) as well as plain JSON. Plain 24-hex
-// strings used as _id are promoted to ObjectId automatically.
-/**
- * Il filtro di una lettura: il documento MQL storico e quello STRUTTURATO,
- * conviventi.
- *
- * Quando ci sono entrambi valgono entrambi, uniti da $and: e' la condizione
- * che permette di migrare un chiamante per volta senza che gli altri cambino
- * comportamento (ticket 21).
- */
 function filtroDiLettura(payload, fallback = {}) {
   const documento = parseQueryObject(payload.filter, fallback, !payload.shell);
   const strutturato = normalizzaFiltro(payload.filtro);
   if (!strutturato) return documento;
-  // I valori arrivano in Extended JSON: qui tornano tipi BSON nativi, e le
-  // stringhe di 24 esadecimali su _id diventano ObjectId. Senza, un riferimento
-  // a un _id verrebbe confrontato con l'oggetto { $oid: … } e non troverebbe
-  // mai la riga.
   const reso = EJSON.deserialize(rendiMongo(strutturato), { relaxed: false });
   promoteObjectIds(reso);
   const haDocumento = documento && Object.keys(documento).length > 0;
@@ -112,25 +83,16 @@ function promoteObjectIds(obj) {
 }
 
 const HEX24_RE = /^[0-9a-fA-F]{24}$/;
-// Operatori il cui valore (o i cui elementi) sono confronti col campo corrente.
 const COMPARISON_OPS = new Set(['$eq', '$ne', '$gt', '$gte', '$lt', '$lte']);
 const LIST_OPS = new Set(['$in', '$nin', '$all']);
 const LOGICAL_OPS = new Set(['$and', '$or', '$nor']);
-const OID_PROBE_SAMPLE = 100; // documenti letti al massimo dal probe
+const OID_PROBE_SAMPLE = 100;
 const OID_PROBE_TTL_MS = 60_000;
 
-// Oggetto "semplice" del filtro: esclude array, Date e tipi BSON già
-// tipizzati (ObjectId, Long, Binary...), dentro cui non bisogna ricorrere.
 function isPlainFilterObject(v) {
   return !!v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date) && !v._bsontype;
 }
 
-// Cammina il filtro e promuove in loco a ObjectId le stringhe di 24
-// esadecimali (valore diretto, $eq/$ne/$gt/... o $in/$nin/$all — mai $regex
-// e simili) i cui campi risultano memorizzati come ObjectId secondo
-// isOidField(percorso). Gli operatori non estendono il percorso campo
-// ($not, $elemMatch...); $and/$or/$nor lo azzerano perché i loro elementi
-// sono sotto-filtri completi.
 async function promoteHexStrings(node, path, isOidField) {
   const promote = async (holder, key, fieldPath) => {
     if (fieldPath && HEX24_RE.test(holder[key]) && (await isOidField(fieldPath))) {
@@ -156,26 +118,17 @@ async function promoteHexStrings(node, path, isOidField) {
   }
 }
 
-// Parses the _id sent by the client (serialized as relaxed EJSON string).
 function parseId(rawId) {
-  const val = EJSON.parse(rawId, { relaxed: false });
-  if (typeof val === 'string' && /^[0-9a-fA-F]{24}$/.test(val)) return new ObjectId(val);
-  return val;
+  // Il tipo EJSON della chiave distingue anche stringhe e ObjectId omonimi.
+  return EJSON.parse(rawId, { relaxed: false });
 }
 
-// Aggiunge al filtro un vincolo sul cursore keyset (`_id <op> val`) senza
-// sovrascrivere un eventuale `_id` già presente nel filtro utente (in tal caso
-// si combina con $and).
 function withIdBound(filter, op, val) {
-  const cond = { _id: { [op]: val } };
-  if (filter && Object.prototype.hasOwnProperty.call(filter, '_id')) {
-    return { $and: [filter, cond] };
-  }
-  return { ...filter, ...cond };
+  // Il confronto fra espressioni segue l'ordine BSON completo dell'indice _id.
+  const cond = { $expr: { [op]: ['$_id', { $literal: val }] } };
+  return filter && Object.keys(filter).length ? { $and: [filter, cond] } : cond;
 }
 
-// Relaxed: i numeri restano numeri JSON, ObjectId e Date restano in forma
-// estesa ($oid / $date) così il client li riconosce e li preserva.
 // BSON Long oltre i 53 bit non deve attraversare Number in relaxed mode (CDB-04):
 // fuori da [-2^53+1, 2^53-1] deve essere serializzato come {$numberLong: "..."}.
 const { Long } = require('bson');
@@ -200,28 +153,6 @@ function serialize(value) {
   return require('./mongoEjson').serializza(value);
 }
 
-// Tipi ammessi da $convert per la conversione dei campi.
-const MONGO_CONVERT_TYPES = new Set(['string', 'int', 'long', 'double', 'decimal', 'bool', 'date', 'objectId']);
-
-// Valore "libero" digitato dall'utente: prova il parse EJSON/JSON
-// (numeri, booleani, {"$date": ...}), altrimenti è una stringa semplice.
-function parseLooseValue(text) {
-  try {
-    return EJSON.parse(String(text), { relaxed: false });
-  } catch {
-    return String(text);
-  }
-}
-
-function errMsgSafe(err) {
-  return (err && err.message) || String(err);
-}
-
-// Ripiego quando manca il permesso listDatabases: prova a leggere il nome
-// del db dalla URI di connessione. Le URI reali possono contenere caratteri
-// che new URL() rifiuta (credenziali non percent-encoded, host particolari):
-// in tal caso torna null invece di lanciare, per non rompere il ripiego con
-// un errore diverso da quello originale.
 function dbNameFromUri(uri) {
   try {
     const name = new URL(String(uri || '').replace(/^mongodb(\+srv)?:\/\//, 'http://')).pathname.replace('/', '');
@@ -235,61 +166,6 @@ function assertDbName(name) {
   if (!name || /[\\/. "$*<>:|?]/.test(name)) {
     throw new Error(`Nome di database non valido: "${name}"`);
   }
-}
-
-// Tipo BSON "leggibile" di un valore, per lo schema dedotto dal campione.
-function bsonTypeOf(v) {
-  if (v === null || v === undefined) return 'null';
-  if (Array.isArray(v)) return 'array';
-  if (v instanceof Date) return 'date';
-  if (typeof v === 'object') {
-    const t = v._bsontype;
-    if (t === 'ObjectId') return 'objectId';
-    if (t === 'Long') return 'long';
-    if (t === 'Int32') return 'int';
-    if (t === 'Double') return 'double';
-    if (t === 'Decimal128') return 'decimal';
-    if (t === 'Binary') return 'binary';
-    if (t === 'Timestamp') return 'timestamp';
-    if (t) return String(t).toLowerCase();
-    // Un GeoJSON è un `object` come tutti gli altri, ma è l'unico che la UI sa
-    // aprire su una mappa: distinguerlo qui è ciò che permette al form di
-    // inserimento di proporre l'editor geografico invece di una textarea JSON
-    // (su MySQL/PostgreSQL lo dice il tipo della colonna, qui no).
-    if (isGeoJson(v)) return 'geojson';
-    return 'object';
-  }
-  if (typeof v === 'number') return Number.isInteger(v) ? 'int' : 'double';
-  return typeof v; // string, boolean
-}
-
-// Schema dedotto da un campione di documenti: per ogni campo, tipi e presenza %.
-async function sampleSchema(collection, sampleSize = 100) {
-  let docs;
-  try {
-    docs = await collection.aggregate([{ $sample: { size: sampleSize } }]).toArray();
-  } catch {
-    docs = await collection.find().limit(sampleSize).toArray();
-  }
-  const fields = new Map();
-  for (const doc of docs) {
-    for (const key in doc) {
-      const val = doc[key];
-      let f = fields.get(key);
-      if (!f) fields.set(key, (f = { name: key, types: new Set(), count: 0 }));
-      f.count += 1;
-      f.types.add(bsonTypeOf(val));
-    }
-  }
-  const out = [...fields.values()].map((f) => ({
-    name: f.name,
-    types: [...f.types].sort(),
-    presence: docs.length ? Math.round((f.count / docs.length) * 100) : 0,
-  }));
-  out.sort((a, b) =>
-    a.name === '_id' ? -1 : b.name === '_id' ? 1 : b.presence - a.presence || a.name.localeCompare(b.name)
-  );
-  return { fields: out, sampled: docs.length, catalogo: catalogoDaDocumenti(docs) };
 }
 
 async function filtroRicercaGlobale(strategy, collection, db, coll, input) {
@@ -493,344 +369,6 @@ class MongoDbStrategy extends DbStrategy {
       const n = await collection.countDocuments({}, { limit, maxTimeMS: restante });
       return conteggioLimitato(n, estimate);
     });
-  }
-
-  async createCollection(db, name, options = {}) {
-    const client = this.requireClient();
-    const coll = String(name || '').trim();
-    if (!coll) throw new Error('Nome della collection mancante.');
-    DbStrategy.assertCreatableName(coll, 'della collection');
-    const opts = EJSON.deserialize(options, { relaxed: false });
-    if (Object.hasOwn(opts, 'session')) throw new Error('La sessione della collezione è gestita dallo script.');
-    require('../auth/capabilities').assertNoMongoServerJs(opts, 'Opzioni della collezione');
-    await client.db(db).createCollection(coll, opzioniDriver(opts, {}, DbStrategy.queryTimeoutMs(this.env)));
-  }
-
-  async renameCollection(db, coll, newName) {
-    const client = this.requireClient();
-    const to = String(newName || '').trim();
-    if (!to) throw new Error('Nuovo nome della collection mancante.');
-    DbStrategy.assertCreatableName(to, 'della collection');
-    await client.db(db).renameCollection(coll, to);
-  }
-
-  async dropCollection(db, coll) {
-    const client = this.requireClient();
-    const ok = await client.db(db).collection(coll).drop(opzioniDriver({}, {}, DbStrategy.queryTimeoutMs(this.env)));
-    if (!ok) throw new Error(`Impossibile eliminare la collection "${coll}".`);
-  }
-
-  /* "Colonne" in MongoDB = campi dei documenti: le operazioni agiscono su
-   * tutti i documenti della collection. */
-
-  // Aggiunge il campo (con un eventuale valore iniziale) ai documenti che
-  // non lo hanno già.
-  async addColumn(db, coll, column) {
-    const client = this.requireClient();
-    const name = String((column && column.name) || '').trim();
-    if (!name) throw new Error('Nome del campo mancante.');
-    if (name === '_id') throw new Error('Il campo "_id" esiste già in ogni documento.');
-    let value = null;
-    if (column.default != null && String(column.default).trim() !== '') {
-      value = parseLooseValue(column.default);
-    }
-    const res = await client.db(db).collection(coll)
-      .updateMany({ [name]: { $exists: false } }, { $set: { [name]: value } });
-    return { modified: res.modifiedCount };
-  }
-
-  // Rinomina il campo ($rename) e/o ne converte il tipo ($convert via update
-  // con pipeline, MongoDB >= 4.2). I valori non convertibili restano invariati.
-  async alterColumn(db, coll, payload) {
-    const client = this.requireClient();
-    const oldName = String((payload && payload.oldName) || '').trim();
-    const column = (payload && payload.column) || {};
-    const newName = String(column.name || '').trim() || oldName;
-    if (!oldName) throw new Error('Nome del campo da modificare mancante.');
-    if (oldName === '_id' || newName === '_id') throw new Error('Il campo "_id" non può essere modificato.');
-
-    const collection = client.db(db).collection(coll);
-    let modified = 0;
-    if (newName !== oldName) {
-      const res = await collection.updateMany({ [oldName]: { $exists: true } }, { $rename: { [oldName]: newName } });
-      modified = Math.max(modified, res.modifiedCount);
-    }
-    const to = String(column.type || '').trim();
-    if (to) {
-      if (!MONGO_CONVERT_TYPES.has(to)) {
-        throw new Error(`Tipo di conversione non valido: "${to}". Tipi ammessi: ${[...MONGO_CONVERT_TYPES].join(', ')}.`);
-      }
-      const res = await collection.updateMany(
-        { [newName]: { $exists: true } },
-        [{ $set: { [newName]: { $convert: { input: `$${newName}`, to, onError: `$${newName}`, onNull: null } } } }]
-      );
-      modified = Math.max(modified, res.modifiedCount);
-    }
-    if (newName === oldName && !to) throw new Error('Nessuna modifica da applicare.');
-    return { modified };
-  }
-
-  // Rimuove il campo da tutti i documenti ($unset).
-  async dropColumn(db, coll, name) {
-    const client = this.requireClient();
-    const field = String(name || '').trim();
-    if (!field) throw new Error('Nome del campo da eliminare mancante.');
-    if (field === '_id') throw new Error('Il campo "_id" non può essere eliminato.');
-    const res = await client.db(db).collection(coll)
-      .updateMany({ [field]: { $exists: true } }, { $unset: { [field]: '' } });
-    return { modified: res.modifiedCount };
-  }
-
-  async createIndex(db, coll, payload) {
-    const client = this.requireClient();
-    const spec = parseQueryObject(payload.fields, null);
-    if (!spec || typeof spec !== 'object' || Array.isArray(spec) || !Object.keys(spec).length) {
-      throw new Error('Specifica dei campi non valida: usa ad es. {"email": 1}.');
-    }
-    const options = {};
-    if (payload.unique) options.unique = true;
-    const name = String(payload.name || '').trim();
-    if (name) options.name = name;
-    // Le altre opzioni dell'indice, quando il chiamante le dichiara. L'elenco
-    // e' chiuso di proposito: `createIndex` e' anche un evento del browser, e
-    // inoltrare al driver un oggetto arbitrario sarebbe una superficie in piu'.
-    // Senza queste, l'import ricreava ogni indice come indice semplice e
-    // perdeva TTL, indici parziali, sparsi e la collation — divergenze che la
-    // verifica poi segnalava, ma soprattutto vincoli che non esistevano piu'.
-    if (payload.sparse) options.sparse = true;
-    if (Number.isFinite(payload.expireAfterSeconds)) options.expireAfterSeconds = payload.expireAfterSeconds;
-    if (payload.partialFilterExpression && typeof payload.partialFilterExpression === 'object') {
-      options.partialFilterExpression = payload.partialFilterExpression;
-    }
-    if (payload.collation && typeof payload.collation === 'object') options.collation = payload.collation;
-    if (payload.wildcardProjection && typeof payload.wildcardProjection === 'object') {
-      options.wildcardProjection = payload.wildcardProjection;
-    }
-    const created = await client.db(db).collection(coll).createIndex(spec, options);
-    return { name: created };
-  }
-
-  async dropIndex(db, coll, name) {
-    const client = this.requireClient();
-    if (name === '_id_') throw new Error('L\'indice "_id_" non può essere eliminato.');
-    await client.db(db).collection(coll).dropIndex(name);
-  }
-
-  async collectionStats(db, coll) {
-    const client = this.requireClient();
-    const collection = client.db(db).collection(coll);
-    let stats = null;
-    try {
-      const res = await collection.aggregate([{ $collStats: { storageStats: {} } }]).toArray();
-      const s = res[0] && res[0].storageStats;
-      if (s) {
-        stats = {
-          count: s.count,
-          size: s.size,
-          storageSize: s.storageSize,
-          avgObjSize: s.avgObjSize,
-          totalIndexSize: s.totalIndexSize,
-          nindexes: s.nindexes,
-        };
-      }
-    } catch { /* le view non supportano $collStats */ }
-    if (!stats) stats = { count: await collection.countDocuments().catch(() => null) };
-
-    let indexes = [];
-    try {
-      // Descrittori COMPLETI, non ridotti a `{name, key, unique}`: da qui passa
-      // anche l'export dell'intero database, e un indice TTL esportato senza
-      // `expireAfterSeconds` veniva ricreato come indice normale — cioe' una
-      // scadenza che non scade piu'. La vista Dettagli legge `unique` come
-      // valore di verita', quindi la sua assenza le va bene.
-      indexes = await this.indexList(db, coll);
-    } catch { /* le view non hanno indici */ }
-
-    const schema = await sampleSchema(collection);
-    return { stats, indexes, fields: schema.fields, sampled: schema.sampled };
-  }
-
-  /**
-   * Gli indici di una collection COSI' COME LI DICHIARA IL SERVER.
-   *
-   * Perche' i descrittori restano grezzi. Questo metodo esiste per la verifica
-   * di import e ripristino, che confronta l'indice ricreato con quello salvato
-   * nel backup: quel confronto normalizza entrambi i lati con lo stesso
-   * insieme di campi semantici (`name`, `key`, `unique`, `sparse`,
-   * `expireAfterSeconds`, `partialFilterExpression`, `collation`,
-   * `wildcardProjection`) e considera DIVERSO un campo presente da una parte e
-   * assente dall'altra. Normalizzare qui — per esempio `unique: !!i.unique`,
-   * come fa `collectionInfo` per la vista Dettagli — farebbe risultare
-   * `unique: false` su ogni indice non univoco letto dal vivo, contro
-   * l'assenza del campo nel file di backup: una divergenza inventata su
-   * ciascun indice. Si tolgono solo `v` e `ns`, che descrivono il formato
-   * interno e il namespace, non l'indice.
-   *
-   * Una collection inesistente non ha indici e non e' un errore: lo dice il
-   * confronto, che trovera' mancante cio' che era atteso.
-   */
-  async indexList(db, coll, { schemaBson = false } = {}) {
-    const client = this.requireClient();
-    try {
-      const indexes = await client.db(db).collection(coll).indexes(schemaBson ? { promoteValues: false } : {});
-      return indexes.map(({ v, ns, ...index }) => schemaBson
-        ? require('./mongoSchemaBson').codificaMetadati(index) : index);
-    } catch (err) {
-      if (/NamespaceNotFound/i.test(err.message) || err.code === 26) return [];
-      throw err;
-    }
-  }
-
-  async dbSchema(db) {
-    const client = this.requireClient();
-    const database = client.db(db);
-    const infos = (await database.listCollections({}, { nameOnly: true }).toArray())
-      .filter((c) => c.type !== 'view');
-    const collections = [];
-    for (const c of infos) {
-      const collection = database.collection(c.name);
-      const schema = await sampleSchema(collection, CAMPIONE_SCHEMA);
-      // Il conteggio viaggia con lo schema perche' il grafo deve poter
-      // nascondere le collection vuote (vedi la nota gemella in
-      // MySqlStrategy). `estimatedDocumentCount` legge i metadati e non
-      // scansiona; se il driver non risponde resta `null`, cioe' «non so»,
-      // e il chiamante non nasconde nulla.
-      let rowsApprox = null;
-      try {
-        rowsApprox = await collection.estimatedDocumentCount();
-      } catch (err) {
-        console.warn(`Conteggio stimato non disponibile per ${c.name}:`, err.message);
-      }
-      collections.push({ name: c.name, fields: schema.fields, rowsApprox });
-    }
-    collections.sort((a, b) => a.name.localeCompare(b.name));
-    // I campi di una collection non sono DICHIARATI: sono osservati su un
-    // campione. Chi mostra questo schema deve poterlo dire, altrimenti un
-    // elenco campionato ha l'aria di un elenco esaustivo e un campo raro
-    // assente diventa indistinguibile da un campo che non esiste.
-    return {
-      collections,
-      relations: DbStrategy.detectRelations(collections),
-      campionamento: {
-        documenti: CAMPIONE_SCHEMA,
-        collezioni: collections.length,
-        quando: new Date().toISOString(),
-      },
-    };
-  }
-
-  // Riferimenti uscenti dalla sola collection indicata (pannello di riferimento
-  // della griglia). MongoDB non dichiara chiavi esterne: qui c'è la stessa
-  // euristica del diagramma UML — `cliente_id` verso `clienti`, un ObjectId che
-  // porta il nome di una collection — e per questo l'origine è 'euristica'.
-  // Il pannello lo mostra con un badge diverso: un'ipotesi presentata come
-  // certezza è il modo migliore per far fidare l'utente di un collegamento
-  // che non esiste.
-  //
-  // Il costo è un elenco di nomi più UN campionamento, non uno per collection
-  // come in `dbSchema`: questa risposta serve a ogni apertura di collection.
-  async columnRelations(db, coll) {
-    const client = this.requireClient();
-    const database = client.db(db);
-    const infos = (await database.listCollections({}, { nameOnly: true }).toArray())
-      .filter((c) => c.type !== 'view');
-    const schema = await sampleSchema(database.collection(coll), 50);
-    const byName = DbStrategy.indexCollectionNames(infos.map((c) => c.name));
-    const relations = DbStrategy.relationsForCollection({ name: coll, fields: schema.fields }, byName);
-    return relations.map((r) => ({
-      campo: r.field,
-      db,
-      tabella: r.to,
-      // L'euristica è per costruzione un riferimento all'`_id`: "cliente_id"
-      // significa "l'_id di un documento di clienti", mai un altro suo campo.
-      colonna: '_id',
-      origine: 'euristica',
-      molti: !!r.many,
-    }));
-  }
-
-  /**
-   * Documento pronto da inserire come duplicato di quello ricevuto.
-   *
-   * Su MongoDB le chiavi sono due cose: l'`_id` e gli indici unici. L'`_id` si
-   * rifà sempre — se è un ObjectId basta NON scriverlo (lo genera il server, ed
-   * è la chiave nuova migliore possibile); se è un numero o una stringa
-   * ometterlo cambierebbe il TIPO della chiave, quindi si calcola un valore
-   * dello stesso tipo. Gli indici unici valgono come chiavi solo nella modalità
-   * "senza chiavi", e lì `null` non è una via d'uscita come in SQL: su MongoDB
-   * il campo assente vale null nell'indice e collide con gli altri, per questo
-   * quei campi sono trattati come non annullabili e ricevono un valore nuovo.
-   */
-  async duplicatePlan(db, coll, payload) {
-    const client = this.requireClient();
-    const collection = client.db(db).collection(coll);
-    const doc = documentoSorgente(payload.doc);
-
-    let indici = [];
-    try {
-      indici = await collection.indexes();
-    } catch { /* collection appena creata o vista: nessun indice da rispettare */ }
-
-    // I percorsi annidati ("indirizzo.cap") non sono chiavi di primo livello:
-    // toccarli qui creerebbe un campo con il punto nel nome invece di
-    // modificare il sottodocumento. Restano fuori, dichiarandolo.
-    const unicheGrezze = indici
-      .filter((i) => i.unique && i.name !== '_id_')
-      .map((i) => Object.keys(i.key || {}));
-    const annidate = [...new Set(unicheGrezze.flat().filter((n) => n.includes('.')))];
-    const uniche = unicheGrezze.map((cols) => cols.filter((n) => !n.includes('.')));
-
-    const haId = Object.prototype.hasOwnProperty.call(doc, '_id');
-    const idObjectId = haId && !!doc._id && typeof doc._id === 'object' && typeof doc._id.$oid === 'string';
-    const colonne = [{
-      name: '_id',
-      tipo: '',
-      pk: true,
-      nullable: false,
-      // Omettere l'_id fa generare un ObjectId nuovo: vale come ricalcolo solo
-      // se l'originale era a sua volta un ObjectId.
-      generabile: !haId || idObjectId,
-      generata: false,
-    }];
-    for (const nome of new Set(uniche.flat())) {
-      if (nome === '_id') continue;
-      colonne.push({ name: nome, tipo: '', pk: false, nullable: false, generabile: false, generata: false });
-    }
-
-    const piano = pianificaDuplicazione({
-      doc, colonne, uniche, conChiavi: payload.conChiavi === true, idVirtuale: false,
-    });
-    if (annidate.length && payload.conChiavi !== true) {
-      piano.note.push(`Chiavi uniche su campi annidati non toccate: ${annidate.map((n) => `«${n}»`).join(', ')}.`);
-    }
-
-    for (const nome of piano.ricalcola) {
-      const originale = valoreSemplice(doc[nome]);
-      const nuovo = await calcolaNuovoValore({
-        tipo: '',
-        originale,
-        massimo: async () => {
-          // Solo fra i valori NUMERICI: in una collection con _id misti
-          // (ObjectId e numeri) l'ordinamento BSON mette gli ObjectId sopra i
-          // numeri, e il "massimo" sarebbe una stringa esadecimale — cioe' un
-          // NaN, cioe' una chiave nuova che riparte da 1 sopra quelle esistenti.
-          const soloNumeri = { [nome]: { $type: ['int', 'long', 'double', 'decimal'] } };
-          const r = await collection
-            .find(soloNumeri, { projection: { [nome]: 1 }, sort: { [nome]: -1 }, limit: 1 })
-            .toArray();
-          return r.length ? valoreSemplice(EJSON.serialize(r[0], { relaxed: true })[nome]) : null;
-        },
-        esiste: async (v) => (await collection.countDocuments({ [nome]: v }, { limit: 1 })) > 0,
-      });
-      applicaRicalcolo(piano, nome, nuovo && { ...nuovo, valore: riavvolgi(doc[nome], nuovo.valore) }, {
-        pk: nome === '_id',
-        etichetta: `tipo ${typeof originale}`,
-      });
-    }
-    // JSON.stringify e non EJSON.stringify: `piano.doc` NON contiene valori
-    // BSON ma il testo EJSON gia' pronto arrivato dal client, e i campi non
-    // toccati devono tornare a `docInsert` esattamente come erano.
-    return { doc: JSON.stringify(piano.doc), note: piano.note, azioni: piano.azioni };
   }
 
   // Il campo è memorizzato come ObjectId? Probe a costo fisso pensato per
@@ -1103,100 +641,6 @@ class MongoDbStrategy extends DbStrategy {
     return ultimo === '$out' || ultimo === '$merge';
   }
 
-  async cancelQuery(opHandle) {
-    if (!opHandle || !opHandle.runId || !this.client) return { cancelled: false };
-    try {
-      const admin = this.client.db('admin');
-      const ops = await admin.aggregate([
-        { $currentOp: { allUsers: true, idleConnections: false } },
-        { $match: { $or: [{ "command.comment": opHandle.runId }, { comment: opHandle.runId },
-          { 'command.comment.codedbRunId': opHandle.runId }, { 'comment.codedbRunId': opHandle.runId }] } }
-      ]).toArray();
-
-      if (!ops || ops.length === 0) return { cancelled: false };
-
-      let cancelled = false;
-      for (const op of ops) {
-        if (op.opid !== undefined) {
-          await admin.command({ killOp: 1, op: op.opid }).catch(() => {});
-          cancelled = true;
-        }
-      }
-      return { cancelled };
-    } catch (err) {
-      return { cancelled: false };
-    }
-  }
-
-  /* --- Monitor delle sessioni ---------------------------------------------
-   * `$currentOp` mostra solo le operazioni IN CORSO: MongoDB non ha un
-   * equivalente della connessione "addormentata" di MySQL o della sessione
-   * "idle in transaction" di PostgreSQL, e `idleConnections: false` lo rende
-   * esplicito invece di riempire la tabella di righe senza contenuto. Su un
-   * server tranquillo il monitor sarà quindi quasi vuoto: è la verità, non un
-   * malfunzionamento, e l'interfaccia lo dichiara nella nota.
-   * ---------------------------------------------------------------------- */
-  async listSessions() {
-    const client = this.requireClient();
-    const admin = client.db('admin');
-
-    let ops;
-    let nota = null;
-    try {
-      ops = await admin.aggregate([
-        { $currentOp: { allUsers: true, idleConnections: false, idleSessions: false } },
-      ]).toArray();
-    } catch (err) {
-      // `allUsers: true` richiede il privilegio `inprog` su cluster: senza, si
-      // ripiega sulle sole operazioni dell'utente collegato DICENDOLO. Restare
-      // in silenzio darebbe una lista corta e credibile — cioè la risposta
-      // sbagliata a "chi sta bloccando il database".
-      ops = await admin.aggregate([
-        { $currentOp: { allUsers: false, idleConnections: false, idleSessions: false } },
-      ]).toArray();
-      nota = 'Vengono mostrate solo le operazioni dell\'utente collegato: al ruolo manca il privilegio "inprog" sul cluster, necessario per vedere quelle degli altri utenti.';
-    }
-
-    // Si ordina PRIMA di troncare: al contrario si scarterebbero righe a caso,
-    // e fra quelle scartate ci sarebbe proprio l'operazione lenta che si sta
-    // cercando. Le fonti SQL ottengono lo stesso con ORDER BY … LIMIT.
-    const tutte = sessioni.ordina(sessioni.normalizzaMongo(ops));
-    const troncato = tutte.length > sessioni.MAX_SESSIONI;
-    const lista = tutte.slice(0, sessioni.MAX_SESSIONI);
-    return {
-      sessioni: lista,
-      // MongoDB sa fermare l'OPERAZIONE (killOp) ma non chiudere la
-      // connessione di un altro client: non esiste un comando che lo faccia.
-      // `saBloccanti: false` = non sa dire CHI tiene il lock che un'altra
-      // operazione sta aspettando (`waitingForLock` dice solo che aspetta):
-      // l'interfaccia lo dichiara invece di lasciar credere che non ci siano
-      // blocchi in corso.
-      capacita: { annullaQuery: true, terminaConnessione: false, saBloccanti: false },
-      troncato,
-      nota,
-    };
-  }
-
-  async killSession(id, modo, identitaOsservata) {
-    const client = this.requireClient();
-    if (modo === 'connessione') {
-      throw new Error('MongoDB non permette di chiudere la connessione di un altro client: si può solo annullare l\'operazione in corso.');
-    }
-    // L'opid è numerico sul server singolo e una stringa "shard:numero" via
-    // mongos: `killOp` accetta entrambe le forme, ma non la stringa "123" al
-    // posto del numero 123 — da qui la riconversione.
-    const raw = String(id);
-    const op = /^\d+$/.test(raw) ? Number(raw) : raw;
-    const correnti = await client.db('admin').aggregate([
-      { $currentOp: { allUsers: true, idleConnections: false, idleSessions: false } },
-      { $match: { opid: op } },
-    ]).toArray();
-    const corrente = sessioni.normalizzaMongo(correnti)[0];
-    sessioni.assertIdentitaSessione(identitaOsservata, corrente && corrente.identita);
-    const res = await client.db('admin').command({ killOp: 1, op });
-    return { terminata: !!(res && res.ok), modo: 'query' };
-  }
-
   // Piano di esecuzione: explain() sul find o sull'aggregate corrente,
   // con gli stessi parametri di collectionFind/collectionAggregate.
   // Un filtro vuoto è valido: è l'explain del find senza condizioni.
@@ -1296,121 +740,6 @@ class MongoDbStrategy extends DbStrategy {
     return { deleted: res.deletedCount };
   }
 
-  /**
-   * Scritture della shell eseguite da uno SCRIPT (db/MongoScriptRunner.js).
-   *
-   * Un metodo solo, con l'operazione nel payload, invece di dieci metodi nuovi:
-   * così c'è **un unico punto** da autorizzare (`METHOD_CAPABILITY.shellWrite`,
-   * capability decisa dall'operazione) e le scritture dello script non possono
-   * scavalcare il Proxy per una svista.
-   *
-   * Non è un doppione di docInsert/docUpdate: quelli servono la griglia e
-   * lavorano su un `_id` singolo con `$set`, mentre qui servono filtri e
-   * operatori di aggiornamento arbitrari, che sono il senso di uno script.
-   */
-  async shellWrite(db, coll, payload) {
-    const client = this.requireClient();
-    const parse = (text, fallback) => parseQueryObject(text, fallback, !payload.nativeResult);
-    const op = String(payload.op || '');
-    // Il filtro è OBBLIGATORIO. Senza questa riga `db.c.deleteMany()` — il
-    // campo `filter` semplicemente assente nel payload — ripiegava su `{}`, che
-    // per MongoDB significa "tutti i documenti": l'intera collezione spariva,
-    // l'operazione risultava riuscita e nell'audit compariva come una normale
-    // scrittura. Il vero mongosh, che questo interprete imita, rifiuta la
-    // chiamata. Stessa forma di difesa dell'aggiornamento senza operatori qui
-    // sotto, e stessa motivazione.
-    const filtro = () => {
-      const f = parse(payload.filter, null);
-      if (f === null || f === undefined) {
-        throw new Error(`${op} richiede un filtro: per agire su TUTTI i documenti scrivilo esplicitamente, ${op}({}).`);
-      }
-      if (typeof f !== 'object' || Array.isArray(f)) {
-        throw new Error(`${op}: il filtro deve essere un oggetto.`);
-      }
-      return f;
-    };
-    if (!['insertOne', 'insertMany'].includes(op)) filtro();
-    return scritturaVincolata(client, db, coll, payload, this.env, async (options, c) => {
-    const opzioni = () => ({ ...parse(payload.options, {}), ...options });
-
-    // Un "aggiornamento" senza operatori ($set, $inc…) sostituirebbe l'intero
-    // documento: in mongosh è un errore, e qui lo è a maggior ragione — è la
-    // differenza fra correggere un campo e cancellare tutti gli altri.
-    const aggiornamento = () => {
-      const u = parse(payload.update, null);
-      if (Array.isArray(u)) {
-        if (!u.length || u.some(s => !s || typeof s !== 'object' || Array.isArray(s) || Object.keys(s).length !== 1)) {
-          throw new Error('La pipeline di aggiornamento richiede stadi non vuoti con un solo operatore.');
-        }
-        return u;
-      }
-      if (!u || typeof u !== 'object') {
-        throw new Error('Aggiornamento non valido: serve un oggetto con operatori (es. { $set: { … } }).');
-      }
-      if (!Object.keys(u).some((k) => k.startsWith('$'))) {
-        throw new Error('Aggiornamento senza operatori: usa { $set: { … } }. Per sostituire l\'intero documento serve replaceOne().');
-      }
-      return u;
-    };
-
-    switch (op) {
-      case 'insertOne': {
-        const doc = parse(payload.doc, null);
-        if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('insertOne richiede un documento.');
-        const res = await c.insertOne(doc, opzioni());
-        return payload.nativeResult ? serialize(res) : { acknowledged: res.acknowledged, insertedId: EJSON.stringify(res.insertedId), inserted: 1 };
-      }
-      case 'insertMany': {
-        const docs = parse(payload.docs, null);
-        if (!Array.isArray(docs) || !docs.length) throw new Error('insertMany richiede un array di documenti non vuoto.');
-        const res = await c.insertMany(docs, opzioni());
-        return payload.nativeResult ? serialize(res) : { acknowledged: res.acknowledged, inserted: res.insertedCount };
-      }
-      case 'updateOne': {
-        const res = await c.updateOne(filtro(), aggiornamento(), opzioni());
-        return payload.nativeResult ? serialize(res) : { matched: res.matchedCount, modified: res.modifiedCount, upserted: res.upsertedCount || 0 };
-      }
-      case 'updateMany': {
-        const res = await c.updateMany(filtro(), aggiornamento(), opzioni());
-        return payload.nativeResult ? serialize(res) : { matched: res.matchedCount, modified: res.modifiedCount, upserted: res.upsertedCount || 0 };
-      }
-      case 'replaceOne': {
-        const doc = parse(payload.doc, null);
-        if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('replaceOne richiede un documento.');
-        const res = await c.replaceOne(filtro(), doc, opzioni());
-        return payload.nativeResult ? serialize(res) : { matched: res.matchedCount, modified: res.modifiedCount, upserted: res.upsertedCount || 0 };
-      }
-      case 'deleteOne': {
-        const res = await c.deleteOne(filtro(), opzioni());
-        return payload.nativeResult ? serialize(res) : { deleted: res.deletedCount };
-      }
-      case 'deleteMany': {
-        const res = await c.deleteMany(filtro(), opzioni());
-        return payload.nativeResult ? serialize(res) : { deleted: res.deletedCount };
-      }
-      case 'findOneAndUpdate':
-      case 'findOneAndReplace': {
-        const opts = opzioni();
-        const value = op === 'findOneAndUpdate' ? aggiornamento() : parse(payload.doc, null);
-        if (op === 'findOneAndReplace' && (!value || typeof value !== 'object' || Array.isArray(value))) throw new Error('findOneAndReplace richiede un documento.');
-        const res = await c[op](filtro(), value, opts);
-        // Driver MongoDB 6: per default torna direttamente il documento;
-        // le versioni/configurazioni con includeResultMetadata usano `.value`.
-        const doc = opts.includeResultMetadata ? res?.value : res;
-        return payload.nativeResult ? serialize(doc) : { doc: doc ? serialize(doc) : null };
-      }
-      case 'findOneAndDelete': {
-        const opts = opzioni();
-        const res = await c.findOneAndDelete(filtro(), opts);
-        const doc = opts.includeResultMetadata ? res?.value : res;
-        return payload.nativeResult ? serialize(doc) : { doc: doc ? serialize(doc) : null };
-      }
-      default:
-        throw new Error(`Operazione di scrittura non supportata: "${op}".`);
-    }
-    });
-  }
-
   async collectionDeleteMany(db, coll, payload) {
     const client = this.requireClient();
     const collection = client.db(db).collection(coll);
@@ -1422,159 +751,13 @@ class MongoDbStrategy extends DbStrategy {
     return { deleted: res.deletedCount };
   }
 
-  // Esporta un blocco di documenti come righe EJSON (una per documento):
-  // il client li assembla in un array JSON. Paginazione con skip/limit.
-  // Paginazione keyset su _id (sempre presente e indicizzato): evita la
-  // scansione O(n²) di skip su collection grandi. payload.after = EJSON
-  // (relaxed:false) dell'ultimo _id ricevuto; omesso per la prima pagina.
-  // `countDocuments()` costa una scansione (COLLSCAN se non ci sono filtri
-  // indicizzabili, altrimenti l'indice comunque attraversato per intero): si
-  // chiede solo alla prima pagina, e `total` viaggia SOLO in quella risposta —
-  // chi pagina lo riusa da lì invece di aspettarselo su ogni blocco.
-  async collectionExport(db, coll, payload) {
-    const client = this.requireClient();
-    const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 500, 1), 1000);
-    const collection = client.db(db).collection(coll);
-    const primaPagina = payload.after == null || payload.after === '';
-    const filter = {};
-    if (!primaPagina) {
-      let afterId;
-      try {
-        afterId = EJSON.parse(String(payload.after), { relaxed: false });
-      } catch {
-        throw new Error('Cursore di paginazione non valido.');
-      }
-      filter._id = { $gt: afterId };
-    }
-    const docs = await collection.find(filter, {promoteValues:false}).sort({ _id: 1 }).limit(limit).toArray();
-    // EJSON canonico è il formato interoperabile. Per fedeltà BSON byte per
-    // byte (anche tag storici e date fuori dal range JS) usare CodeDB completo.
-    const lines = docs.map((d) => EJSON.stringify(d, { relaxed: false }));
-    const total = primaPagina ? await collection.countDocuments() : undefined;
-    const nextAfter = docs.length ? EJSON.stringify(docs[docs.length - 1]._id, { relaxed: false }) : null;
-    return { lines, count: docs.length, total, format: 'json', nextAfter };
-  }
-
-  // Importa un blocco di documenti (payload.docs = array di oggetti Extended
-  // JSON serializzati). relaxed: false preserva i tipi BSON ($oid, $date...).
-  async collectionImport(db, coll, payload) {
-    const client = this.requireClient();
-    return scritturaVincolata(client, db, coll, payload, this.env, async (options, c, triggers) => {
-    if (payload.encoding === require('./mongoBson').ENCODING) return require('./mongoBson').importRows(client, db, coll, payload.docs, payload.upsert, options, triggers);
-    const raw = Array.isArray(payload.docs) ? payload.docs : [];
-    if (!raw.length) throw new Error('Nessun documento da importare nel blocco.');
-    const errors = [];
-    const docs = [];
-    raw.forEach((d, i) => {
-      try {
-        const doc = EJSON.deserialize(d, { relaxed: false });
-        if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
-          throw new Error('il documento deve essere un oggetto JSON');
-        }
-        docs.push(doc);
-      } catch (err) {
-        errors.push(`Documento ${i + 1}: ${err.message}`);
-      }
-    });
-    let inserted = 0;
-    if (docs.length) {
-      try {
-        if (payload.upsert) {
-          const invalid = docs.findIndex((doc) => doc._id == null);
-          if (invalid >= 0) throw new Error(`Documento ${invalid + 1}: _id mancante o null.`);
-          const res = await c.bulkWrite(
-            docs.map((doc) => ({ replaceOne: { filter: { _id: doc._id }, replacement: doc, upsert: true } })),
-            { ordered: false, ...options },
-          );
-          inserted = (res.upsertedCount || 0) + (res.modifiedCount || 0) + (res.matchedCount || 0);
-          // matchedCount include anche replacement identici: dal punto di vista
-          // dell'import sono documenti applicati con successo.
-          if (inserted > docs.length) inserted = docs.length;
-        } else {
-          const res = await c.insertMany(docs, { ordered: false, ...options });
-          inserted = res.insertedCount;
-        }
-      } catch (err) {
-        // BulkWriteError: alcuni documenti possono comunque essere entrati.
-        if (options.session) throw err;
-        assertImportOutcomeKnown(err);
-        inserted = (err.result && (err.result.insertedCount ?? err.result.nInserted)) || 0;
-        for (const we of (err.writeErrors || []).slice(0, 10)) {
-          errors.push(we.errmsg || we.message || String(we));
-        }
-        if (!(err.writeErrors || []).length) errors.push(errMsgSafe(err));
-      }
-    }
-    return { inserted, failed: raw.length - inserted, errors: errors.slice(0, 10) };
-    });
-  }
-
-  // Ogni superficie possiede il suo stream: cambiare un pannello non spegne gli altri.
-  watch(db, coll, { onChange, onUnavailable, watchId = 'default' }) {
-    const client = this.requireClient();
-    this.unwatch(watchId);
-    const stream = client.db(db).collection(coll).watch([], { fullDocument: 'updateLookup' });
-    this.changeStreams.set(watchId, stream);
-    stream.on('change', (change) => {
-      if (this.changeStreams.get(watchId) !== stream) return;
-      onChange({
-        operationType: change.operationType,
-        documentKey: change.documentKey ? serialize(change.documentKey) : null,
-      });
-    });
-    stream.on('error', () => {
-      if (this.changeStreams.get(watchId) !== stream) return;
-      this.unwatch(watchId);
-      onUnavailable();
-    });
-  }
-
-  unwatch(watchId) {
-    const ids = watchId === undefined ? [...this.changeStreams.keys()] : [watchId];
-    for (const id of ids) {
-      this.changeStreams.get(id)?.close().catch(() => {});
-      this.changeStreams.delete(id);
-    }
-  }
-
-  // Change stream a livello di cluster filtrato sulle sole operazioni DDL:
-  // tiene aggiornata la sidebar quando lo schema cambia dall'esterno.
-  // Richiede un replica set; su server standalone degrada con onUnavailable.
-  watchSchema({ onChange, onUnavailable }) {
-    const client = this.requireClient();
-    this.unwatchSchema();
-    const pipeline = [{ $match: { operationType: { $in: ['create', 'drop', 'rename', 'dropDatabase'] } } }];
-    const open = (expanded) => {
-      // showExpandedEvents (MongoDB ≥ 6.0) aggiunge l'evento "create"; sui
-      // server più vecchi lo stream fallirebbe: si riprova senza l'opzione.
-      const stream = client.watch(pipeline, expanded ? { showExpandedEvents: true } : {});
-      stream.on('change', (change) => {
-        onChange({
-          operationType: change.operationType,
-          db: change.ns ? change.ns.db : null,
-          coll: (change.ns && change.ns.coll) || null,
-        });
-      });
-      stream.on('error', () => {
-        stream.close().catch(() => {});
-        if (this.schemaStream !== stream) return;
-        this.schemaStream = null;
-        if (expanded) this.schemaStream = open(false);
-        else onUnavailable();
-      });
-      return stream;
-    };
-    this.schemaStream = open(true);
-  }
-
-  unwatchSchema() {
-    if (this.schemaStream) {
-      this.schemaStream.close().catch(() => {});
-      this.schemaStream = null;
-    }
-  }
 }
+
+installaCatalogoMongo(MongoDbStrategy.prototype, { parseQueryObject });
+installaTrasferimentoMongo(MongoDbStrategy.prototype, { parseQueryObject, serialize, withIdBound });
+installaSessioniStreamMongo(MongoDbStrategy.prototype, { serialize });
 
 MongoDbStrategy.serialize = serialize;
 
 module.exports = MongoDbStrategy;
+

@@ -1,8 +1,9 @@
 import { state } from './state.js';
 import { feedbackQuery } from './feedback.js';
+import { eseguiQueryConRipresa } from './trasporto.js';
 import { renderDataEmpty } from '../arc/ui.js';
 import { configuraColonne } from './table-resize.js';
-import { activeTab } from './tabs.js';
+import { activeTab, tabs } from './tabs.js';
 import { initNativeTargets, renderNativeTargets } from './query-native.js';
 import { initMongosh, renderMongosh, risultatoMongosh } from './query-mongosh.js';
 import { queryDocument, documentoVisibile } from './query-document.js';
@@ -11,10 +12,11 @@ import { initSnippetManager } from './snippet-manager.js';
 import { serializzaJsonStandard } from './export-json.js';
 import { trackPending, markPaused } from './pending-queries.js';
 import { SqlChunker, formatBytes } from './sql-chunker.js';
+import { azioneApriFileQuery, nomeFileSalvaQuery, usaChunkingSql } from './query-file.js';
 import { highlightQueryCode } from './query-highlighter.js';
 import { intervalloErroreQuery } from './query-error.js';
 import { isScript, countStatements } from './sql-split.js';
-import { runScript, runScriptAndWait, abortScript, isScriptActive, nascondiPannelloScript } from './script-run.js';
+import { runScript, runScriptAndWait, abortScript, interrompiRunScript, isScriptActive, nascondiPannelloScript } from './script-run.js';
 import { initQeHistory, registraEsecuzione, aggiornaEsecuzione, connCorrente } from './qe-history.js';
 import { refreshDbTree } from './dbtree.js';
 import { formatCode, minifyCode } from './query-formatter.js';
@@ -72,7 +74,10 @@ export function registraErroreQuery(documento, errore, sorgente) {
   const range = offset != null && Number.isInteger(posizione?.start) && Number.isInteger(posizione?.end)
     && posizione.start >= 0 && posizione.end >= posizione.start
     ? { start: offset + posizione.start, end: offset + posizione.end } : null;
-  const riga = errore.line || rigaDaMessaggio(errore.message);
+  const rigaMsg = rigaDaMessaggio(errore.message);
+  const riga = (errore.line && rigaMsg)
+    ? (errore.line === 1 ? rigaMsg : errore.line)
+    : (errore.line || rigaMsg);
   documento.errorMark = { range, message: errore.message, code: sorgente?.code,
     line: offset != null && riga ? sorgente.code.slice(0, offset).split('\n').length - 1 + riga : 0 };
   return documento.errorMark;
@@ -91,7 +96,7 @@ export function mostraErroreQuery(mark) {
   return true;
 }
 
-function vaiAllEditorQuery() {
+export function vaiAllEditorQuery() {
   if ($('.query-main-panel')?.dataset.surface === 'results') setQuerySurface('editor');
   $('#query-editor-input')?.focus();
 }
@@ -153,6 +158,7 @@ let renderSqlFile = () => {};
 function chiudiFileSql() {
   activeSqlFile = null;
   renderSqlFile();
+  aggiornaModalitaScript($('#query-editor-input')?.value);
 }
 
 export function updateEditorHighlight() {
@@ -215,7 +221,7 @@ function aggiornaModalitaScript(code) {
   const script = $('#query-target-engine')?.value !== 'mongosh' && (troppoLungo || n > 1);
 
   if (label) label.textContent = script ? (n ? `Esegui Script (${n})` : 'Esegui Script') : 'Esegui Query';
-  if (wrap) wrap.classList.toggle('hidden', !script);
+  if (wrap) wrap.classList.toggle('hidden', !script && !activeSqlFile);
 }
 
 /**
@@ -516,12 +522,29 @@ export function initQueryTab() {
   initVerticalResizer();
 }
 
-// Inizializza ed aggancia la gestione del Chunking per File SQL Grandi
+// Aggiorna etichetta, tooltip e filtro file del menu editor in base al DBMS attivo.
+function aggiornaControlliFileQuery(dbType) {
+  const azione = azioneApriFileQuery(dbType);
+  const input = $('#query-open-sql-input');
+  if (input && input.accept !== azione.accept) input.accept = azione.accept;
+  const btn = $('#query-open-sql-btn');
+  if (btn) {
+    if (btn.title !== azione.title) btn.title = azione.title;
+    if (btn.dataset.label !== azione.label) {
+      btn.dataset.label = azione.label;
+      btn.innerHTML = `${ICO('folder-open')} ${esc(azione.label)}`;
+      refreshLucideIcons(btn);
+    }
+  }
+}
+
+// Inizializza ed aggancia la gestione del Chunking per File Grandi
 async function salvaQueryFile() {
   const code = $('#query-editor-input')?.value || '';
   const q = queryDocument();
+  const engine = $('#query-target-engine')?.value || 'auto';
   const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
-  const nome = `${(state.db || 'query').replace(/[^\w.-]/g, '_')}.sql`;
+  const nome = nomeFileSalvaQuery({ db: state.db, code, dbType: state.dbType, engine });
   if (!await scaricaFile(blob, nome)) return;
   if (q) { q.savedCode = code; q.dirty = q.code !== code; }
 }
@@ -535,35 +558,116 @@ function initSqlChunking() {
   const run = $('#chunk-run-all-btn');
   const cancel = $('#chunk-cancel-run-btn');
   const progress = $('#chunk-progress-container');
+  const barra = $('#chunk-progress-fill');
+
+  const next = $('#chunk-next-btn'), prev = $('#chunk-prev-btn');
+  const load = $('#chunk-load-editor-btn'), excerpt = $('#chunk-preview');
+  const openings = new WeakMap();
+  const snippetBytes = 4096;
+  const autoEditorBytes = 128 * 1024;
+  const attached = file => file.document.file === file && tabs.list.includes(file.tab)
+    && (file.collTabId == null || file.tab.state.collTabs.some(c => c.id === file.collTabId));
+  const refresh = file => { if (activeSqlFile === file) renderSqlFile(); };
+  const mostraCodice = (file, code) => {
+    file.document.code = code;
+    file.document.dirty = !!code;
+    if (activeSqlFile === file && documentoVisibile(file.tab, file.collTabId) && editor.value !== code) {
+      editor.value = code;
+      updateEditorHighlight();
+    }
+  };
 
   renderSqlFile = () => {
     const file = activeSqlFile;
     panel.classList.toggle('hidden', !file);
-    if (!file) { progress.classList.add('hidden'); return; }
+    if (!file) { progress.classList.add('hidden'); excerpt.hidden = true; excerpt.textContent = ''; return; }
     const info = file.chunker.getFileInfo();
+    const bloccoUnico = !info.splitStatements;
     $('#chunk-file-name').textContent = info.name;
     $('#chunk-file-size').textContent = info.formattedSize;
-    $('#chunk-count-badge').textContent = `${info.chunkCount} blocchi`;
-    select.replaceChildren(...file.chunker.chunks.map(c => new Option(`Blocco ${c.index + 1} / ${info.chunkCount} (${formatBytes(c.size)})`, c.index)));
-    select.value = file.index;
+    const conteggio = info.chunkCount === 1 ? '1 blocco' : `${info.chunkCount} blocchi`;
+    $('#chunk-count-badge').textContent = bloccoUnico
+      ? 'File intero'
+      : (file.chunker.complete ? conteggio : conteggio + (info.chunkCount === 1 ? ' indicizzato' : ' indicizzati'));
+    if (document.activeElement !== select || file.running) select.value = file.index + 1;
+    if (file.chunker.complete) select.max = info.chunkCount;
+    else select.removeAttribute('max');
+    select.disabled = file.running || bloccoUnico;
+    prev.disabled = file.running || bloccoUnico || file.index === 0;
+    next.disabled = file.running || bloccoUnico || (file.chunker.complete && file.index + 1 >= info.chunkCount);
+    load.disabled = file.running;
+    run.disabled = file.destination != null && file.destination !== file.index;
+    $('#query-stop-on-error-wrap')?.classList.remove('hidden');
+    run.querySelector('span').textContent = bloccoUnico
+      ? 'Esegui file'
+      : (file.index ? `Esegui dal blocco ${file.index + 1}` : 'Esegui tutti i blocchi');
     run.classList.toggle('hidden', file.running);
     cancel.classList.toggle('hidden', !file.running);
-    progress.classList.toggle('hidden', !file.message);
-    $('#chunk-progress-text').textContent = file.message || '';
-    $('#chunk-progress-fill').style.width = `${file.percent || 0}%`;
+    const message = file.loading || file.upload?.message || file.message || '';
+    progress.classList.toggle('hidden', !message);
+    $('#chunk-progress-text').textContent = message;
+    barra.hidden = !file.loading && file.percent == null && !file.upload;
+    if (file.loading) barra.removeAttribute('value');
+    else barra.value = file.upload?.percent ?? file.percent ?? 0;
     $('#chunk-byte-info').textContent = file.bytes || '';
+    excerpt.hidden = !file.excerpt;
+    if (excerpt.textContent !== (file.excerpt || '')) excerpt.textContent = file.excerpt || '';
   };
-  const preview = async (file, index) => {
-    if (!file || index < 0 || index >= file.chunker.getChunkCount()) return;
-    const data = await file.chunker.readChunk(index);
-    file.index = index;
-    file.bytes = `Byte ${formatBytes(data.startByte)} ? ${formatBytes(data.endByte)} / ${formatBytes(data.totalBytes)}`;
-    file.document.code = data.text;
-    file.document.dirty = true;
-    if (activeSqlFile === file && documentoVisibile(file.tab, file.collTabId)) {
-      editor.value = data.text; updateEditorHighlight(); renderSqlFile();
+
+  function mostraBlocco(file, data, forceEditor = false) {
+    file.index = data.index;
+    const breve = !forceEditor && data.endByte - data.startByte > autoEditorBytes;
+    file.bytes = `Byte ${formatBytes(data.startByte)} – ${formatBytes(data.endByte)} / ${formatBytes(data.totalBytes)}`
+      + (breve ? ' · Anteprima iniziale' : '');
+    file.excerpt = breve ? data.text.slice(0, snippetBytes) + '\n…' : '';
+    const direttiva = data.delimiter && data.delimiter !== ';' ? `DELIMITER ${data.delimiter}\n` : '';
+    mostraCodice(file, breve ? '' : direttiva + data.text);
+    refresh(file);
+  }
+
+  const preview = async (file, index, forceEditor = false) => {
+    if (!file || file.running || !Number.isSafeInteger(index) || index < 0) return;
+    const request = file.request = Symbol();
+    file.destination = index;
+    const current = () => file.request === request && attached(file);
+    file.loading = `Caricamento del blocco ${index + 1} da ${file.chunker.file.name}…`;
+    refresh(file);
+    try {
+      // Un salto lontano si può interrompere chiudendo il file o scegliendo un altro blocco.
+      while (file.chunker.getChunkCount() <= index && !file.chunker.complete) {
+        await file.chunker.ensureChunk(file.chunker.getChunkCount());
+        if (!current()) return;
+      }
+      const found = Math.min(index, file.chunker.getChunkCount() - 1);
+      const meta = file.chunker.chunks[found];
+      const limit = !forceEditor && meta.size > autoEditorBytes ? snippetBytes : Infinity;
+      const data = await file.chunker.readChunk(found, limit);
+      if (current()) {
+        file.message = `Blocco ${found + 1} pronto`;
+        file.percent = null;
+        mostraBlocco(file, data, forceEditor);
+      }
+    } catch (err) {
+      if (current()) {
+        file.message = 'Caricamento del blocco interrotto';
+        file.percent = null;
+        notifica(`Impossibile leggere ${file.chunker.file.name}: ${err.message}`, { tipo: 'errore', titolo: azioneApriFileQuery(file.tab.dbType).titoloNotifica });
+      }
+    } finally {
+      if (current()) {
+        file.loading = ''; file.destination = null;
+        if (activeSqlFile === file) select.value = file.index + 1;
+        refresh(file);
+      }
     }
-    return data.text;
+  };
+
+  const stop = file => {
+    if (!file) return;
+    file.request = null;
+    file.cancelled = true;
+    file.stopReading?.();
+    if (file.running && file.executing) abortScript(file.document.scriptRunId);
   };
   $('#query-open-sql-btn')?.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', async () => {
@@ -571,33 +675,61 @@ function initSqlChunking() {
     if (!source) return;
     fileInput.value = '';
     const tab = activeTab(), collTabId = tab?.state.activeCollId;
-    const document = queryDocument(tab, collTabId);
+    const doc = queryDocument(tab, collTabId);
+    if (!doc) return;
+    if ($('.query-main-panel')?.dataset.surface === 'results') setQuerySurface('both');
+    const opening = Symbol();
+    openings.set(doc, opening);
+    stop(doc.file);
     try {
       if (source.size <= 1024 * 1024) {
-        document.code = await source.text(); document.dirty = true; document.file = null;
-        if (documentoVisibile(tab, collTabId)) { chiudiFileSql(); editor.value = document.code; updateEditorHighlight(); }
+        const code = await source.text();
+        if (openings.get(doc) !== opening) return;
+        doc.code = code; doc.dirty = true; doc.file = null;
+        if (documentoVisibile(tab, collTabId)) {
+          chiudiFileSql();
+          editor.value = code;
+          updateEditorHighlight();
+          aggiornaLint(editor, $('#query-lint'), { soloSeJson: true });
+        }
         return;
       }
-      const chunker = new SqlChunker(source, 1024 * 1024);
-      await chunker.init();
-      const file = { chunker, index: 0, running: false, cancelled: false, tab, collTabId, document };
-      document.file = file;
+      const engine = $('#query-target-engine')?.value || 'auto';
+      let splitStatements = usaChunkingSql({ fileName: source.name, dbType: tab.dbType, engine });
+      if (splitStatements === null) {
+        const prefisso = new TextDecoder('utf-8', { fatal: false }).decode(await source.slice(0, snippetBytes).arrayBuffer());
+        if (openings.get(doc) !== opening) return;
+        splitStatements = usaChunkingSql({ fileName: source.name, dbType: tab.dbType, engine, prefix: prefisso });
+      }
+      const chunker = new SqlChunker(source, 1024 * 1024, tab.dbType, { splitStatements });
+      const file = { chunker, index: 0, running: false, cancelled: false, tab, collTabId, document: doc };
+      doc.file = file;
       if (documentoVisibile(tab, collTabId)) activeSqlFile = file;
-      await preview(file, 0);
-    } catch (err) { notifica(`Impossibile aprire ${source.name}: ${err.message}`, { tipo: 'errore', titolo: "Risultati query" }); }
+      mostraCodice(file, '');
+      const ready = preview(file, 0);
+      const request = file.request;
+      // Anche la prima istruzione può pesare molti MB. Il frammento iniziale
+      // resta fuori dall'editor eseguibile finché il lexer ne cerca il confine.
+      const prefix = await chunker.readPrefix(snippetBytes);
+      if (attached(file) && file.request === request && !chunker.getChunkCount()) {
+        file.excerpt = prefix + '\n…';
+        refresh(file);
+      }
+      await ready;
+    } catch (err) {
+      if (openings.get(doc) === opening) notifica(`Impossibile aprire ${source.name}: ${err.message}`, { tipo: 'errore', titolo: azioneApriFileQuery(tab.dbType).titoloNotifica });
+    }
   });
-  $('#chunk-prev-btn')?.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index - 1));
-  $('#chunk-next-btn')?.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index + 1));
-  select.addEventListener('change', () => preview(activeSqlFile, Number(select.value)));
-  $('#chunk-load-editor-btn')?.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index));
-  const stop = file => {
-    if (!file) return;
-    file.cancelled = true;
-    if (file.running) abortScript(file.document.scriptRunId);
-  };
+  prev.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index - 1));
+  next.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index + 1));
+  select.addEventListener('change', () => preview(activeSqlFile, select.valueAsNumber - 1));
+  load.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index, true));
   $('#chunk-close-btn')?.addEventListener('click', () => {
-    stop(activeSqlFile);
-    if (activeSqlFile) activeSqlFile.document.file = null;
+    if (activeSqlFile) {
+      stop(activeSqlFile);
+      openings.delete(activeSqlFile.document);
+      activeSqlFile.document.file = null;
+    }
     chiudiFileSql();
   });
   cancel.addEventListener('click', () => stop(activeSqlFile));
@@ -607,29 +739,65 @@ function initSqlChunking() {
     const target = queryTarget();
     const engine = $('#query-target-engine')?.value || 'auto';
     const stopOnError = !!$('#query-stop-on-error')?.checked;
+    const dbSessionId = file.tab.state.dbSessionId;
+    file.request = null; file.loading = ''; file.destination = null;
     file.running = true; file.cancelled = false;
-    const total = file.chunker.getChunkCount();
-    let rows = 0;
-    let previousRunId;
+    let rows = 0, errors = 0;
+    let previousRunId, indice = file.index, transazioneAnnullata = false;
+    const conteggio = () => (rows === 1 ? '1 istruzione eseguita' : `${rows} istruzioni eseguite`)
+      + (errors === 1 ? ', 1 errore' : `, ${errors} errori`);
     try {
-      for (let i = file.index; i < total && !file.cancelled; i++) {
-        if (!file.tab.state.collTabs.some(c => c.id === file.collTabId)) { file.cancelled = true; break; }
-        file.percent = Math.round(i / total * 100);
-        file.message = `Blocco ${i + 1}/${total} ? ${rows} istruzioni eseguite`;
-        const code = await preview(file, i);
-        if (file.cancelled) break;
-        const result = await runScriptAndWait({ code, engine, ...target, stopOnError, previousRunId,
-          keepSqlSession: i < total - 1, tab: file.tab, collTabId: file.collTabId });
-        if (isSqlType(file.tab.dbType)) previousRunId = result?.id;
-        rows += result?.eseguiti || 0;
-        if (result?.status === 'aborted' || result?.status === 'paused' || result?.status === 'error') file.cancelled = true;
+      for (; !file.cancelled && attached(file); indice++) {
+        const i = indice;
+        file.loading = `Lettura blocco ${i + 1} · ${conteggio()}`;
+        refresh(file);
+        const stopReading = new Promise(resolve => { file.stopReading = () => resolve(null); });
+        const meta = await Promise.race([file.chunker.ensureChunk(i), stopReading]);
+        file.stopReading = null;
+        if (!meta || file.cancelled || !attached(file)) break;
+        const data = await file.chunker.readChunk(i);
+        if (file.cancelled || !attached(file)) break;
+        file.loading = '';
+        file.percent = Math.floor(data.startByte / data.totalBytes * 100);
+        file.message = `Esecuzione del blocco ${i + 1} · ${conteggio()}`;
+        mostraBlocco(file, data);
+        if (data.statements === 0) continue;
+        const prefix = data.delimiter && data.delimiter !== ';' ? `DELIMITER ${data.delimiter}\n` : '';
+        const sourceFile = file.chunker.file;
+        const fileChunk = { name: sourceFile.name, size: sourceFile.size, lastModified: sourceFile.lastModified,
+          index: i, startByte: data.startByte, endByte: data.endByte, prefix, statements: data.statements };
+        const keepSqlSession = isSqlType(file.tab.dbType) && data.endByte < data.totalBytes;
+        file.executing = true;
+        const result = await runScriptAndWait({ code: prefix + data.text, engine, ...target, stopOnError, previousRunId, dbSessionId,
+          keepSqlSession, fileChunk, sourceFile, tab: file.tab, collTabId: file.collTabId,
+          onUpload(inviati, totale) {
+            file.upload = inviati < totale ? { percent: 100 * inviati / totale,
+              message: `Invio al server del blocco ${i + 1} · ${formatBytes(inviati)} di ${formatBytes(totale)}` } : null;
+            refresh(file);
+          } });
+        file.executing = false;
+        if (!result) throw new Error('Esito del blocco SQL non disponibile.');
+        previousRunId = keepSqlSession && result.status === 'done' ? result.id : undefined;
+        transazioneAnnullata ||= !!result.transazioneAnnullata;
+        rows += result.eseguiti || 0;
+        errors += result.falliti || 0;
+        if (result.errore || result.status === 'error') throw new Error(result.errore || result.error || 'Esecuzione del blocco non riuscita.');
+        if (result.status === 'aborted') file.cancelled = true;
       }
-      file.message = file.cancelled ? 'Sequenza interrotta' : `Completato ? ${rows} istruzioni eseguite`;
-      if (!file.cancelled) file.percent = 100;
-    } catch (err) { file.message = `Interrotto: ${err.message}`; }
+      file.message = `${file.cancelled || !attached(file) ? 'Sequenza interrotta' : 'Completato'} · ${conteggio()}`;
+      if (!file.cancelled && attached(file)) file.percent = 100;
+    } catch (err) { file.message = `Interrotto al blocco ${indice + 1}: ${err.message} · ${conteggio()}`; }
     finally {
-      if (previousRunId) await emit('script:abort', { runId: previousRunId, tabId: file.tab.id }).catch(() => {});
-      file.running = false; if (activeSqlFile === file) renderSqlFile();
+      file.stopReading = null;
+      if (previousRunId) {
+        try {
+          const esito = await interrompiRunScript({ runId: previousRunId, tabId: file.tab.id, dbSessionId });
+          transazioneAnnullata ||= !!esito?.transazioneAnnullata;
+        } catch (err) { file.message += ` · Chiusura della sessione SQL non confermata: ${err.message}`; }
+      }
+      if (transazioneAnnullata) file.message += ' · Transazione aperta senza COMMIT, modifiche annullate.';
+      file.loading = ''; file.upload = null; file.executing = false; file.running = false; refresh(file);
+      if (rows && activeTab() === file.tab) refreshDbTree();
     }
   });
 }
@@ -781,9 +949,15 @@ function allargaRisultatiPerDisegno() {
   risultati.style.height = '';
 }
 
+export function mostraInvioQuery(inviati, totale) {
+  const badge = $('#query-status-badge');
+  if (badge) badge.textContent = inviati < totale
+    ? `Invio al server · ${formatBytes(inviati)} di ${formatBytes(totale)}` : 'Esecuzione…';
+}
+
 // Aggiorna badge e metriche
-export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg = null) {
-  currentMetrics = [status, timeMs, count, errorMsg];
+export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg = null, truncated = false) {
+  currentMetrics = [status, timeMs, count, errorMsg, truncated];
   const view = $('#view-query');
   if (view) view.dataset.queryState = status;
   if (status === 'running') {
@@ -808,7 +982,7 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
       const tableView = $('#query-table-view');
       if (tableView) showSkeletonGrid(tableView, 10, 5);
     }
-    else if (status === 'success') statusBadge.textContent = '✓ Completato';
+    else if (status === 'success') statusBadge.textContent = truncated ? '✓ Completato · risultato parziale' : '✓ Completato';
     else if (status === 'error') statusBadge.textContent = 'Errore';
     else if (status === 'cancelled') statusBadge.textContent = 'Annullata';
     else if (status === 'paused') statusBadge.textContent = 'In pausa';
@@ -1930,6 +2104,7 @@ const ETICHETTA_MOTORE = {
 export function renderQueryTarget() {
   renderMongosh();
   renderNativeTargets();
+  aggiornaControlliFileQuery(state.dbType);
   const el = $('#query-target-label');
   if (!el) return;
   const { db, coll } = queryTarget();
@@ -1985,7 +2160,7 @@ export function cancelActiveQuery() {
     q.runId = null;
     q.metrics = ['cancelled'];
     const currentTabId = curTab ? curTab.id : undefined;
-    emit('query:cancel', { tabId: currentTabId, runId: runIdToCancel })
+    emit('query:cancel', { tabId: currentTabId, runId: runIdToCancel, dbSessionId: q.runDbSessionId })
       .catch((err) => console.warn('[QueryTab] Errore invio query:cancel:', err));
     markPaused(runIdToCancel);
     renderResults(currentResults, currentColumns);
@@ -2070,8 +2245,9 @@ export function runQuery(opzioni = {}) {
   if (isScriptActive(documentoRun.scriptRunId)) abortScript(documentoRun.scriptRunId);
   documentoRun.scriptRunId = null;
   nascondiPannelloScript();
-  if (documentoRun.runId) emit('query:cancel', { tabId: currentTabId, runId: documentoRun.runId }).catch(() => {});
+  if (documentoRun.runId) emit('query:cancel', { tabId: currentTabId, runId: documentoRun.runId, dbSessionId: documentoRun.runDbSessionId }).catch(() => {});
   documentoRun.runId = runId;
+  documentoRun.runDbSessionId = statoRun.dbSessionId;
   documentoRun.metrics = ['running'];
   const { db: targetDb, coll: targetColl } = queryTarget();
   const connName = curTab?.label || 'Connessione';
@@ -2089,14 +2265,17 @@ export function runQuery(opzioni = {}) {
   });
 
   // Emissione evento socket query:execute
-  return emit('query:execute', {
+  return eseguiQueryConRipresa({
     code,
     engine,
     db: targetDb,
     coll: targetColl,
     dbType: state.dbType,
     tabId: currentTabId,
+    dbSessionId: documentoRun.runDbSessionId,
     runId
+  }, () => documentoRun.runId === runId, (inviati, totale) => {
+    if (documentoRun.runId === runId && documentoVisibile(curTab, collTabId)) mostraInvioQuery(inviati, totale);
   })
     .then((res) => {
       const elapsed = Math.round(performance.now() - executionStartedAt);
@@ -2115,7 +2294,8 @@ export function runQuery(opzioni = {}) {
       // `columns` e' la dichiarazione del motore su QUESTO result set: e'
       // l'unica cosa che descrive una SELECT senza righe.
       const colonne = Array.isArray(res.columns) ? res.columns : [];
-      if (latest) Object.assign(documentoRun, { results: rows, columns: colonne, metrics: ['success', elapsed, rows.length] });
+      const metrics = ['success', elapsed, rows.length, null, !!res.truncated];
+      if (latest) Object.assign(documentoRun, { results: rows, columns: colonne, metrics });
       aggiornaEsecuzione(idStorico, { esito: 'ok', ms: elapsed, righe: rows.length });
 
       // Se il server segnala un cambio di database (es. via USE <dbname>).
@@ -2149,7 +2329,7 @@ export function runQuery(opzioni = {}) {
         }
       }
       if (stessoContesto && isForActiveTab(res)) {
-        updateQueryMetrics('success', elapsed, rows.length);
+        updateQueryMetrics(...metrics);
         feedbackQuery('success');
         renderResults(rows, colonne);
         mostraRisultatiQueryRiuscita();

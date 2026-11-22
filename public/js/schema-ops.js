@@ -77,12 +77,10 @@ export async function renameDb(name) {
     etichetta: `Nuovo nome per "${name}"`,
     valore: name,
     ok: 'Rinomina',
-    spunta: null,
   });
   if (input == null) return;
-  const testo = nativa ? input : input.testo;
   const eliminaOrigine = false;
-  const newName = String(testo || '').trim();
+  const newName = input.trim();
   if (!newName || newName === name) return;
   emit('db:rename', { tabId: origin.tabId, db: name, newName, eliminaOrigine }).then((res) => {
     // Lo stato da aggiornare è quello del tab che ha chiesto la rinomina, non di

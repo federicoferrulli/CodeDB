@@ -125,10 +125,14 @@ module.exports = (async () => {
 
   // Il restore non deve tenere una seconda copia della conversione, ne'
   // rileggere le righe dati in forma relaxed.
-  const restore = fs.readFileSync(require.resolve('../backup/lib/restore.js'), 'utf8');
-  assert.ok(!/function toSqlValue/.test(restore), 'restore.js non deve duplicare toSqlValue');
-  assert.ok(!/EJSON\.parse\(line, \{ relaxed: true \}\)/.test(restore),
-    'le righe dati del dump vanno lette in forma canonica');
+  const pathMod = require('path');
+  const dirBackupLib = pathMod.dirname(require.resolve('../backup/lib/restore.js'));
+  for (const nome of fs.readdirSync(dirBackupLib).filter((f) => /^restore.*\.js$/.test(f))) {
+    const restore = fs.readFileSync(pathMod.join(dirBackupLib, nome), 'utf8');
+    assert.ok(!/function toSqlValue/.test(restore), `${nome} non deve duplicare toSqlValue`);
+    assert.ok(!/EJSON\.parse\(line, \{ relaxed: true \}\)/.test(restore),
+      `le righe dati del dump in ${nome} vanno lette in forma canonica`);
+  }
   // Il ripiego di EXPLAIN aveva DUE return uno sopra l'altro: vinceva quello
   // che passava a serializeRow l'INDICE della riga al posto dei `fields`,
   // quindi il piano tornava senza la tipizzazione esatta delle colonne.

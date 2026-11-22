@@ -8,6 +8,8 @@ const VirtualJoinEngine = require('../db/VirtualJoinEngine');
 const { conSessioneSql } = require('../db/sqlSessione');
 const MongoScriptRunner = require('../db/MongoScriptRunner');
 const MongoShell = require('../db/MongoShell');
+const { richiedeMongoshNativo } = require('../db/mongoshRouting');
+const { isInstallAdmin } = require('../auth/permissions');
 const { EJSON } = require('bson');
 
 function documentoMongo(code) {
@@ -350,14 +352,14 @@ function createModule({ config, connessioni, dependencies }) {
     let { code, engine, db, coll, runId, opHandle, run } = payload;
     const codeOriginale = String(code || '').trim();
     // I commenti iniziali non decidono la lingua. Il testo originale resta nell'audit e nell'SQL inviato al driver.
-    const codeStr = codeOriginale.replace(/^(?:\s|--[^\n]*(?:\n|$)|\/\/[^\n]*(?:\n|$)|#[^\n]*(?:\n|$)|\/\*(?![!+])[\s\S]*?\*\/)*/, '').trim();
+    const codeStr = codeOriginale.replace(/^(?:\s|--[^\n]*(?:\n|$)|\/\/[^\n]*(?:\n|$)|#[^\n]*(?:\n|$)|\/\*(?![!+]|M!)[\s\S]*?\*\/)*/, '').trim();
 
     if (!codeStr) {
       throw new Error('Codice query vuoto.');
     }
 
-    const fatto = (res, category, op, dbUsato, collUsata) => {
-      if (res.truncated) {
+    const fatto = (res, category, op, dbUsato, collUsata, ammetteParziale = false) => {
+      if (res.truncated && !ammetteParziale) {
         throw new Error('Risultato incompleto: la query supera il budget di memoria dei risultati. '
           + 'Restringi la query con filtri o un LIMIT esplicito, oppure aumenta CODEDB_MAX_RESULT_BYTES.');
       }
@@ -370,7 +372,7 @@ function createModule({ config, connessioni, dependencies }) {
       return err;
     };
 
-    if (engine === 'mongosh') {
+    const eseguiMongosh = async () => {
       try {
         mongoshAccess(session);
         if (session.mongosh?.closing) await session.mongosh.closing;
@@ -386,6 +388,18 @@ function createModule({ config, connessioni, dependencies }) {
         const res = await session.mongosh.evaluate(codeOriginale, db, opHandle);
         return fatto(res, 'write', 'Runtime mongosh nativo', res.activeDb, coll);
       } catch (err) { throw conContesto(err, 'write', 'Runtime mongosh nativo', db, coll); }
+    };
+
+    if (engine === 'mongosh') return eseguiMongosh();
+
+    // In modalità Auto su MongoDB, gli script che richiedono API o sintassi
+    // native di mongosh (es. export CodeDB, rs/sh, Map/Set, spread/destructuring)
+    // vengono instradati automaticamente al runtime mongosh, mantenendo il
+    // controllo di autorizzazione per l'amministratore dell'installazione.
+    if ((!engine || engine === 'auto') && session.strategy.type === 'mongodb' && richiedeMongoshNativo(codeOriginale)) {
+      if (session.mongosh || session.strategy.uri || !isInstallAdmin(session.principal, config.env)) {
+        return eseguiMongosh();
+      }
     }
 
     if (['mysql', 'postgresql', 'mongodb'].includes(engine) && engine !== session.strategy.type) {
@@ -480,7 +494,7 @@ function createModule({ config, connessioni, dependencies }) {
       try {
         const res = await connessioni.executeWithReconnect(session, (strat) => strat.collectionAggregate(targetDb, targetColl, { pipeline: codeOriginale, maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
         if (res.activeDb) session.strategy.currentDb = res.activeDb;
-        return fatto(res, cat, op, targetDb, targetColl);
+        return fatto(res, cat, op, targetDb, targetColl, true);
       } catch (err) {
         throw conContesto(err, cat, op, targetDb, targetColl);
       }

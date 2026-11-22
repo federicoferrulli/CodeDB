@@ -21,7 +21,7 @@ import { riepilogoPiano } from './riepilogo-piano.js';
  * con uno screen reader come parte della pagina, e tronca il testo lungo —
  * proprio gli avvisi, che sono la parte che conta.
  */
-export function confermaPiano(piano, { titolo = null, azione = 'Procedi' } = {}) {
+export function confermaPiano(piano, { titolo = null, azione = 'Procedi', annullamento = 'Annulla' } = {}) {
   const r = riepilogoPiano(piano);
   $('#piano-titolo').textContent = titolo || r.titolo;
   $('#piano-voci').innerHTML = r.voci
@@ -31,6 +31,7 @@ export function confermaPiano(piano, { titolo = null, azione = 'Procedi' } = {})
   avvisi.classList.toggle('hidden', !r.avvisi.length);
   $('#piano-impronta').textContent = `Impronta del piano: ${r.fingerprint}`;
   $('#piano-ok').textContent = azione;
+  $('#piano-cancel').textContent = annullamento;
 
   return new Promise((resolve) => {
     const ok = $('#piano-ok');

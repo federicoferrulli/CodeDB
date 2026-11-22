@@ -1,5 +1,7 @@
 'use strict';
 
+const { collectionDiSistema } = require('./DbStrategy');
+
 const crypto = require('crypto');
 
 function pianoRinomina(dbType, nativa) {
@@ -16,7 +18,7 @@ function pianoRinomina(dbType, nativa) {
 async function improntaDatabase(strategy, db) {
   const hash = crypto.createHash('sha256');
   const collezioni = (await strategy.listCollections(db))
-    .filter((c) => c.type !== 'view' && !String(c.name).startsWith('system.'))
+    .filter((c) => c.type !== 'view' && !collectionDiSistema(strategy.type, c.name))
     .map((c) => String(c.name)).sort();
   let righe = 0;
   for (const coll of collezioni) {

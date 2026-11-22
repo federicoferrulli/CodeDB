@@ -1,0 +1,2818 @@
+{
+  "schemaVersion": 1,
+  "language": "it",
+  "guide": "ELEPHANT.md",
+  "root": "codedb",
+  "agent": {
+    "start": "Per seguire un flusso, parti dai nodi indicati in entrypoints per l'attività pertinente, nell'ordine di steps. Se conosci già il file, cerca il suo percorso in sources. Dal nodo trovato segui gli archi pertinenti al problema. Per una panoramica parti da nodes.codedb e attraversa contains.",
+    "lookup": "nodes è indicizzato per ID stabile. summary spiega la responsabilità, rules raccoglie gli invarianti, sources e tests sono percorsi relativi alla radice del repository. Ogni concept indica il capitolo in section, ogni section rimanda tramite anchor alla guida estesa.",
+    "traversal": "Un arco {from,rel,to} si legge dal soggetto all'oggetto. Per stimare l'impatto cerca anche gli archi entranti. I percorsi di lettura sono sequenze editoriali e possono attraversare più rami.",
+    "examples": {
+      "percorsi": "jq '.entrypoints | map_values(.title)' ELEPHANT.json",
+      "contesto": "jq '. as $g | $g.entrypoints[\"edit-cell\"].steps[] as $id | {id:$id} + $g.nodes[$id]' ELEPHANT.json",
+      "vicini": "jq --arg id cell-write '.edges[] | select(.from == $id or .to == $id)' ELEPHANT.json",
+      "senzaJq": "node -p \"require('./ELEPHANT.json').nodes['cell-write']\""
+    },
+    "maintenance": "Aggiorna questa fonte JSON insieme alla guida quando cambia un contratto. Rigenera il modello incorporato con node tools/sincronizza-elephant.cjs e verifica la coerenza con --check."
+  },
+  "entrypoints": {
+    "edit-cell": {
+      "title": "Modificare una cella",
+      "steps": [
+        "cell-write",
+        "row-identity",
+        "exact-values",
+        "socket-request",
+        "uncertain-outcome"
+      ]
+    },
+    "diagnose-error": {
+      "title": "Diagnosticare un errore",
+      "steps": [
+        "driver-diagnosis",
+        "query-error-range",
+        "dialog-feedback",
+        "partial-failure",
+        "test-selection"
+      ]
+    },
+    "new-event": {
+      "title": "Aggiungere un evento socket",
+      "steps": [
+        "event-families",
+        "socket-request",
+        "strategy-authorization",
+        "activity-audit",
+        "change-contract"
+      ]
+    },
+    "slow-grid": {
+      "title": "Indagare una griglia lenta",
+      "steps": [
+        "grid-page",
+        "typed-filter",
+        "data-grid",
+        "query-dispatch",
+        "live-monitoring"
+      ]
+    },
+    "query": {
+      "title": "Estendere l’editor di query",
+      "steps": [
+        "editor-navigation",
+        "query-dispatch",
+        "native-sql-session",
+        "mongo-query-languages",
+        "script-runs"
+      ]
+    },
+    "permissions": {
+      "title": "Verificare l’accesso ai dati",
+      "steps": [
+        "rbac-principal",
+        "strategy-authorization",
+        "sql-scope",
+        "vault-secrets",
+        "activity-audit"
+      ]
+    },
+    "restore": {
+      "title": "Ripristinare un backup",
+      "steps": [
+        "backup-chain",
+        "source-consistency",
+        "transfer-plan",
+        "restore-promotion",
+        "test-isolation"
+      ]
+    },
+    "mcp-write": {
+      "title": "Estendere una scrittura MCP",
+      "steps": [
+        "mcp-session",
+        "mcp-tools",
+        "mcp-confirmation",
+        "mcp-write-policy",
+        "strategy-authorization"
+      ]
+    },
+    "ui": {
+      "title": "Aggiungere un controllo UI",
+      "steps": [
+        "workspace-state",
+        "arc-controls",
+        "dialog-feedback",
+        "theme-accessibility",
+        "split-panes"
+      ]
+    },
+    "package": {
+      "title": "Verificare un pacchetto",
+      "steps": [
+        "release-packaging",
+        "docker-runtime",
+        "electron-runtime",
+        "android-runtime",
+        "test-selection"
+      ]
+    },
+    "tests": {
+      "title": "Scegliere una prova di regressione",
+      "steps": [
+        "change-contract",
+        "test-selection",
+        "test-isolation",
+        "test-sensitivity",
+        "reliability-lab"
+      ]
+    }
+  },
+  "relations": {
+    "contains": "contiene",
+    "calls": "invoca",
+    "depends_on": "dipende da",
+    "guards": "protegge",
+    "reads": "legge",
+    "writes": "scrive",
+    "invalidates": "invalida",
+    "recovers": "recupera",
+    "verifies": "verifica"
+  },
+  "nodes": {
+    "codedb": {
+      "kind": "root",
+      "title": "CodeDB",
+      "summary": "Workbench per esplorare schemi, eseguire query e modificare dati su MongoDB, MySQL e PostgreSQL. Browser, Electron, Android e client MCP condividono i servizi del backend.",
+      "rules": [
+        "La sessione viva appartiene al tab. Database, identità del principal e ambito della richiesta determinano il bersaglio.",
+        "Un valore tipizzato e l’identità di una riga devono sopravvivere a lettura, modifica e trasferimento."
+      ],
+      "sources": [
+        "ELEPHANT.md",
+        "CONTEXT.md",
+        "AGENTS.md"
+      ],
+      "tests": []
+    },
+    "core": {
+      "kind": "area",
+      "title": "Fondamenta",
+      "summary": "Dal vocabolario del repository all’avvio delle sessioni, al protocollo e agli errori.",
+      "rules": [],
+      "sources": [],
+      "tests": []
+    },
+    "data": {
+      "kind": "area",
+      "title": "Dati e motori",
+      "summary": "Strategie DB, esecuzione delle query e fedeltà degli artefatti da esportare o ripristinare.",
+      "rules": [],
+      "sources": [],
+      "tests": []
+    },
+    "client": {
+      "kind": "area",
+      "title": "Interfaccia",
+      "summary": "Stato del workbench, interazioni e viste che condividono i dati del tab.",
+      "rules": [],
+      "sources": [],
+      "tests": []
+    },
+    "ops": {
+      "kind": "area",
+      "title": "Operatività",
+      "summary": "Autorizzazioni, accessi MCP, distribuzione e prove per il rilascio.",
+      "rules": [],
+      "sources": [],
+      "tests": []
+    },
+    "repo": {
+      "kind": "section",
+      "title": "Repository",
+      "summary": "Lessico, confini dei moduli e superfici che consumano i contratti di CodeDB.",
+      "rules": [],
+      "sources": [
+        "server.js",
+        "server/createServer.js",
+        "server/socket.js",
+        "db/DbStrategy.js",
+        "db/DbFactory.js",
+        "db/",
+        "auth/AppStore.js",
+        "auth/permissions.js",
+        "server/vault.js",
+        "public/js/",
+        "ui/",
+        "public/css/",
+        "DESIGN.md",
+        "backup/lib/engine.js",
+        "server/eventi-import.js",
+        "docs/guida-export-import.md",
+        "server/mcp.js",
+        "docs/MCP.md",
+        "android/README.md",
+        "Dockerfile",
+        ".github/workflows/release.yml",
+        "package.json"
+      ],
+      "tests": [
+        "test/",
+        "test/lab/README.md"
+      ],
+      "area": "core",
+      "anchor": "orientarsi-nel-repository"
+    },
+    "domain-targets": {
+      "kind": "concept",
+      "title": "Connessione, sessione e bersaglio",
+      "summary": "La connessione è una configurazione riutilizzabile. La sessione aperta appartiene a un tab di connessione. Tabelle, collezioni e documenti Query sono schede interne.",
+      "rules": [
+        "Su MongoDB il bersaglio è database e collezione. Su MySQL è database e tabella. Su PostgreSQL il «database» dell’albero è uno schema del database fisico della connessione.",
+        "Per cambiare database fisico PostgreSQL occorre un’altra connessione. Conserva schema e nome della tabella nei riferimenti qualificati e nei controlli di scope."
+      ],
+      "sources": [
+        "CONTEXT.md",
+        "public/js/tabs.js",
+        "public/js/colltabs.js",
+        "db/PostgreSqlStrategy.js"
+      ],
+      "tests": [
+        "test/e2e-postgres.js"
+      ],
+      "section": "repo"
+    },
+    "application-surfaces": {
+      "kind": "concept",
+      "title": "Punti di ingresso del workbench",
+      "summary": "Browser, Electron e WebView Android presentano lo stesso workbench. I client MCP accedono alle operazioni del server tramite un protocollo distinto.",
+      "rules": [
+        "Per un gesto UI parti da public/js/main.js e dal controller della vista. Per i controlli condivisi segui gli adattatori Arc in ui/main.tsx.",
+        "Una modifica di semantica del DBMS va verificata nei percorsi che usano la stessa strategia, inclusi UI, esecuzione query e MCP."
+      ],
+      "sources": [
+        "public/index.html",
+        "public/js/main.js",
+        "ui/main.tsx",
+        "electron-main.js",
+        "android/mobile.cjs",
+        "mcp/McpGateway.js"
+      ],
+      "tests": [
+        "test/e2e-avvio-ui.js",
+        "test/unit-architettura-modulare.js"
+      ],
+      "section": "repo"
+    },
+    "shared-modules": {
+      "kind": "concept",
+      "title": "Moduli condivisi e compatibilità",
+      "summary": "Il server usa prevalentemente CommonJS, i controller web sono ESM. Le regole pure necessarie ai due ambienti possono avere una sola implementazione.",
+      "rules": [
+        "Per quotare gli identificatori usa la regola di public/js/identificatori.mjs e il ponte db/identificatori.js. Verifica anche il caricamento dei moduli condivisi sul runtime mobile.",
+        "Conserva nomi e forme pubbliche di eventi, metodi e payload. UI, commenti e messaggi di errore sono in italiano."
+      ],
+      "sources": [
+        "AGENTS.md",
+        "db/identificatori.js",
+        "public/js/identificatori.mjs",
+        "android/mobile.cjs"
+      ],
+      "tests": [
+        "test/unit-identificatori.js",
+        "android/test-moduli.cjs"
+      ],
+      "section": "repo"
+    },
+    "runtime": {
+      "kind": "section",
+      "title": "Ciclo di vita",
+      "summary": "Avvio e arresto dell’istanza, configurazione isolata e proprietà delle sessioni.",
+      "rules": [],
+      "sources": [
+        ".github/workflows/release.yml",
+        "backup/lib/policy.js"
+      ],
+      "tests": [],
+      "area": "core",
+      "anchor": "avvio-e-ciclo-di-vita"
+    },
+    "local-development": {
+      "kind": "concept",
+      "title": "Avvio da sorgenti",
+      "summary": "Node 24 è la linea usata dalla CI e dall’immagine Docker. npm ci installa dal lockfile. npm run dev avvia il watcher server su 127.0.0.1:3030 per impostazione iniziale.",
+      "rules": [
+        "Gli ESM in public/js/ sono serviti direttamente. Per modifiche in ui/ compila con npm run build:ui o npm run dev:ui e usa npm run typecheck:ui.",
+        "npm run start:rbac carica .env. L’attivazione dipende da CODEDB_RBAC=on e richiede il control plane MongoDB configurato."
+      ],
+      "sources": [
+        "package.json",
+        "tools/build-ui.mjs",
+        "Dockerfile",
+        "server/identita.js",
+        ".env.example"
+      ],
+      "tests": [
+        "test/e2e-avvio-ui.js"
+      ],
+      "section": "runtime"
+    },
+    "instance-config": {
+      "kind": "concept",
+      "title": "Configurazione e isolamento",
+      "summary": "createServer({config, dependencies}) compone servizi per istanza. configurazione() fotografa l’ambiente, applica gli override e valida porta e URL pubblico.",
+      "rules": [
+        "Per una fixture usa PORT: 0 o una porta dedicata. Definisci percorsi distinti per INI/vault, connessioni per owner, backup, risultati script, log UI/MCP e impostazioni MCP.",
+        "Se RBAC è attivo isola anche il control plane. L’isolamento delle mappe e dei lock in memoria lascia indipendente la scelta di dove scrivere su disco."
+      ],
+      "sources": [
+        "server/createServer.js",
+        "server/configurazione.js",
+        "server/dipendenze.js",
+        "docs/server-modulare.md"
+      ],
+      "tests": [
+        "test/unit-server-modulare.js"
+      ],
+      "section": "runtime"
+    },
+    "server-lifecycle": {
+      "kind": "concept",
+      "title": "Avvio e arresto del server",
+      "summary": "Importare la facciata server.js è privo di ascolto su porte. start() inizializza rete, vault e identità. stop() drena il lavoro per istanza e rilascia le risorse.",
+      "rules": [
+        "Attendi start() prima di usare la porta. In caso di avvio fallito si rilasciano anche le risorse parzialmente inizializzate.",
+        "stop() è idempotente. Per riavviare costruisci una nuova istanza. I segnali e la terminazione del processo appartengono al launcher CLI."
+      ],
+      "sources": [
+        "server.js",
+        "server/createServer.js",
+        "server/processo.js",
+        "bin/codedb.js"
+      ],
+      "tests": [
+        "test/unit-server-modulare.js"
+      ],
+      "section": "runtime"
+    },
+    "session-ownership": {
+      "kind": "concept",
+      "title": "Proprietà delle sessioni e lease",
+      "summary": "Il socket conserva una Map per tabId con strategia, eventuale tunnel e operazioni in corso. Le sessioni vive usano la quota di connessioni DB condivisa con MCP.",
+      "rules": [
+        "mongo:connect e mongo:disconnect gestiscono tutti i motori. Serializza sullo stesso lock apertura e chiusura di un tab. Rilascia anche una connessione appena aperta se nel frattempo il client è scomparso.",
+        "Dopo una caduta del trasporto la pagina ha dieci minuti per ritrovare le sessioni con la propria chiave in memoria e lo stesso login. session:recovery ne conferma la continuità. Scadenza, revoca e chiusura esplicita rilasciano le sessioni.",
+        "Le operazioni che usano una lease, come uml:apply, la acquisiscono sul bersaglio e la rilasciano in finally. La chiusura differisce il teardown delle risorse ancora in uso."
+      ],
+      "sources": [
+        "server/socket.js",
+        "server/eventi-connessioni.js",
+        "public/js/socket.js",
+        "public/js/connection.js",
+        "server/connessioni.js",
+        "server/eventi-dati.js",
+        "server/budget.js"
+      ],
+      "tests": [
+        "test/unit-server-modulare.js",
+        "test/e2e-chiusura-query.js",
+        "test/e2e-ripresa-query.js"
+      ],
+      "section": "runtime"
+    },
+    "transport": {
+      "kind": "section",
+      "title": "Trasporto",
+      "summary": "Un comando dalla UI arriva al socket, attraversa autorizzazione e strategia e torna al documento di origine.",
+      "rules": [],
+      "sources": [
+        "server/connessioni.js",
+        "server/eventi-connessioni.js"
+      ],
+      "tests": [],
+      "area": "core",
+      "anchor": "dal-clic-alla-risposta"
+    },
+    "event-families": {
+      "kind": "concept",
+      "title": "Famiglie di eventi Socket.IO",
+      "summary": "Le azioni sui dati passano da delegate, quelle amministrative da amministrativo e quelle lunghe da operazioneLunga. safeOn gestisce validazione, rivalidazione, errori e ack monouso.",
+      "rules": [
+        "Per una nuova azione sui dati classifica evento e metodo, recupera il bersaglio e restituisci il risultato della strategia. Per un’azione amministrativa dichiara la politica di audit e verifica il permesso nell’handler.",
+        "Per un’operazione lunga dichiara proprietà, avanzamento, cancellazione e termine. Aggiorna il catalogo degli eventi insieme alla registrazione. Alcune eccezioni usano safeOn direttamente."
+      ],
+      "sources": [
+        "server/socket.js",
+        "server/eventi-dati.js",
+        "server/audit.js",
+        "auth/capabilities.js",
+        "docs/adr/0001-tre-famiglie-di-evento.md"
+      ],
+      "tests": [
+        "test/unit-registrazione-eventi.js",
+        "test/server-eventi-attesi.json"
+      ],
+      "section": "transport"
+    },
+    "socket-request": {
+      "kind": "concept",
+      "title": "Richiesta, ack e tab di origine",
+      "summary": "emit() fissa il tabId alla partenza e associa _tab e _state alla risposta. Un tabId esplicito ha precedenza. Gli ack ordinari contengono ok e dati oppure ok:false ed error.",
+      "rules": [
+        "Scrivi sullo stato originario. Prima di ridisegnare verifica anche documento, bersaglio e identità della richiesta. Il solo tab attivo non distingue due ricerche consecutive nella stessa scheda.",
+        "Per richieste normali la chiusura del tab genera AbortError/TAB_CLOSED. bindTab:false è previsto per operazioni registrate con durata indipendente dal tab. Progresso e notifiche sono eventi push."
+      ],
+      "sources": [
+        "public/js/trasporto.js",
+        "public/js/coerenza-richieste.js",
+        "server/socket.js",
+        "db/payloadEsecuzione.js"
+      ],
+      "tests": [
+        "test/unit-trasporto.js",
+        "test/unit-coerenza-richieste.js",
+        "test/e2e-pagine-obsolete.js"
+      ],
+      "section": "transport"
+    },
+    "grid-page": {
+      "kind": "concept",
+      "title": "Lettura paginata e conteggio differito",
+      "summary": "runQuery() congela database, collezione, filtro e pagina. collection:find con deferCount restituisce subito le righe. collection:count usa poi lo stesso filtro.",
+      "rules": [
+        "Conserva le righe se scade il conteggio. total:null e timedOut:true significano totale sconosciuto. Distingui nella UI stima, totale esatto, conteggio pendente e timeout.",
+        "Le azioni massive e la fine della paginazione dipendono dall’affidabilità del totale. Una risposta di conteggio precedente non può aggiornare una ricerca successiva."
+      ],
+      "sources": [
+        "public/js/grid.js",
+        "public/js/coerenza-richieste.js",
+        "server/eventi-dati.js",
+        "db/tetti.js"
+      ],
+      "tests": [
+        "test/unit-tetti.js",
+        "test/e2e-pagine-obsolete.js"
+      ],
+      "section": "transport"
+    },
+    "cell-write": {
+      "kind": "concept",
+      "title": "Salvataggio di una cella",
+      "summary": "salvaCampi() invia doc:update con tabId, db, coll, idOf(doc) e set catturati dal contesto dell’editor. Il percorso di scrittura è riusato da griglia, geometrie e selettore FK.",
+      "rules": [
+        "Alla conferma dell’input inline elimina solo le bozze immutate dall’invio. Se l’utente ha cambiato vista, marca i dati originali da aggiornare o passa il refresh alla callback della vista.",
+        "Su un errore di validazione conserva l’input correggibile. Usa l’identità della risposta DB per la riga e i metadati delle colonne per l’editabilità."
+      ],
+      "sources": [
+        "public/js/inlineEdit.js",
+        "public/js/righe.js",
+        "server/eventi-dati.js"
+      ],
+      "tests": [
+        "test/e2e-arc-griglia.js",
+        "test/e2e-sql-integrita-ui.js"
+      ],
+      "section": "transport"
+    },
+    "errors": {
+      "kind": "section",
+      "title": "Errori",
+      "summary": "Traduzione degli errori dei driver, posizioni nell’editor e distinzione tra errore certo ed esito sconosciuto.",
+      "rules": [],
+      "sources": [],
+      "tests": [],
+      "area": "core",
+      "anchor": "errori-e-diagnosi"
+    },
+    "driver-diagnosis": {
+      "kind": "concept",
+      "title": "Errori del driver e messaggi italiani",
+      "summary": "errMsg() inoltra errore e contesto a spiegaErrore(). descriviErrore() riconosce, fra gli altri, codici del driver, SQLSTATE, errori di rete e di vincolo.",
+      "rules": [
+        "Propaga l’errore con codice e posizione. Il delegato può aggiungere err._ctx con dbType, db e coll. Per una diagnosi riconosciuta presenta causa, rimedio e dettaglio tecnico utile.",
+        "Per un messaggio sconosciuto conserva il testo depurato. redigiUri() oscura componenti riservate anche nel fallback. Testa l’idempotenza e il caso vicino che deve restare sconosciuto."
+      ],
+      "sources": [
+        "server/errori.js",
+        "db/errors.js",
+        "server/socket.js",
+        "public/js/avvisi.js"
+      ],
+      "tests": [
+        "test/unit-errors.js",
+        "test/unit-feedback-messaggi.js"
+      ],
+      "section": "errors"
+    },
+    "query-error-range": {
+      "kind": "concept",
+      "title": "Posizione degli errori nell’editor",
+      "summary": "queryError rappresenta un intervallo UTF-16 da zero, con fine esclusa. Il server e il browser usano la stessa regola per le posizioni supportate.",
+      "rules": [
+        "Converti i caratteri PostgreSQL contati da uno e nel caso di script riporta l’intervallo al documento originale. Verifica anche righe successive e un emoji precedente al token.",
+        "Se manca una posizione esplicita, evidenzia solo un frammento riconoscibile e univoco. Per un token ambiguo resta valido il messaggio senza evidenziazione."
+      ],
+      "sources": [
+        "public/js/query-error.js",
+        "db/queryError.js",
+        "server/query.js",
+        "server/socket.js"
+      ],
+      "tests": [
+        "test/unit-query-error.js",
+        "test/e2e-query-error-mark.js"
+      ],
+      "section": "errors"
+    },
+    "uncertain-outcome": {
+      "kind": "concept",
+      "title": "Riconnessione ed esito incerto",
+      "summary": "Una sessione dichiarata assente e una connessione caduta durante un comando hanno conseguenze diverse. executeWithReconnect() può ristabilire la sessione lasciando incerto l’esito precedente.",
+      "rules": [
+        "Se il server segnala assenza di sessione e il profilo è salvato, emit() può riconnettere per nome e ritentare una volta.",
+        "Se cade la connessione durante una scrittura, conserva il segnale operationOutcomeUnknown dove disponibile. Verifica i dati o il registro prima di ripetere. Una nuova connessione SQL perde lo stato transazionale della precedente."
+      ],
+      "sources": [
+        "server/connessioni.js",
+        "public/js/trasporto.js",
+        "db/sqlSessione.js"
+      ],
+      "tests": [
+        "test/unit-trasporto.js",
+        "test/unit-sql-sessioni.js"
+      ],
+      "section": "errors"
+    },
+    "partial-failure": {
+      "kind": "concept",
+      "title": "Fallback ed esiti parziali",
+      "summary": "Il recupero dipende dal lavoro già effettuato. Calcoli locali equivalenti possono sostituire un worker guasto. La verifica fallita dopo una promozione richiede un esito e il recupero.",
+      "rules": [
+        "Distingui indisponibilità dei metadati da zero relazioni e timeout da zero righe. Un ack iniziale in un’operazione lunga attesta accettazione, non completamento.",
+        "Su un import incompleto conserva fase, effetti e recupero. Se la copia originale non può essere verificata come ripristinata, riporta l’intervento richiesto."
+      ],
+      "sources": [
+        "db/importPlan.js",
+        "public/js/calcoli.js",
+        "public/js/fk-cache.js"
+      ],
+      "tests": [
+        "test/unit-import-conferma.js",
+        "test/unit-calcoli.js"
+      ],
+      "section": "errors"
+    },
+    "strategies": {
+      "kind": "section",
+      "title": "Strategie e tipi",
+      "summary": "Differenze fra DBMS, identità stabile e rappresentazioni esatte nei percorsi di lettura e scrittura.",
+      "rules": [],
+      "sources": [
+        "db/MongoDbStrategy.js",
+        "db/MySqlStrategy.js",
+        "db/PostgreSqlStrategy.js"
+      ],
+      "tests": [],
+      "area": "data",
+      "anchor": "strategie-identità-e-tipi"
+    },
+    "guarded-strategy": {
+      "kind": "concept",
+      "title": "Strategie, limiti e autorizzazione",
+      "summary": "DbFactory.getStrategy() crea MongoDbStrategy, MySqlStrategy o PostgreSqlStrategy e applica conTetti(). Il livello di connessione aggiunge guardStrategy per le operazioni della sessione.",
+      "rules": [
+        "Il tipo assente nelle connessioni storiche significa mongodb. postgres è alias di postgresql. Conserva nella classe comune soltanto le operazioni condivise.",
+        "I sottosistemi specifici si montano con definisciMetodi() sul prototipo del proprio motore. Mantieni i descrittori di classe e classifica ogni nuovo metodo pubblico nella tabella delle capability."
+      ],
+      "sources": [
+        "db/DbFactory.js",
+        "db/DbStrategy.js",
+        "db/tetti.js",
+        "db/prototipoStrategia.js",
+        "server/connessioni.js",
+        "auth/guardStrategy.js"
+      ],
+      "tests": [
+        "test/unit-architettura-modulare.js",
+        "test/unit-tabella-autorizzazioni.js",
+        "test/unit-tetti.js"
+      ],
+      "section": "strategies"
+    },
+    "typed-filter": {
+      "kind": "concept",
+      "title": "Filtri, identificatori e ricerca",
+      "summary": "I valori sono parametri del driver. Gli identificatori di schema, tabella e colonna seguono la quotatura del dialetto. I filtri strutturati hanno condizioni, operatore, valore e unione.",
+      "rules": [
+        "Invia contieneOvunque come intenzione. La strategia ricerca valori scalari nei campi rilevati, anche annidati e fuori dalla pagina visibile.",
+        "Su MongoDB un campo raro entra nel catalogo dopo osservazione o campionamento. Su PostgreSQL quotare il nome preserva maiuscole e minuscole."
+      ],
+      "sources": [
+        "db/filtro.js",
+        "db/ricercaGlobale.js",
+        "public/js/identificatori.mjs",
+        "docs/adr/0002-la-ricerca-globale-appartiene-alle-strategie.md"
+      ],
+      "tests": [
+        "test/unit-filtro.js",
+        "test/unit-identificatori.js",
+        "test/unit-ricerca-globale.js"
+      ],
+      "section": "strategies"
+    },
+    "row-identity": {
+      "kind": "concept",
+      "title": "Identità stabile di documenti e righe",
+      "summary": "preparaRighe() associa con WeakMap rowIds e columnMeta agli oggetti dei risultati. La chiave per aggiornare una riga può differire da una colonna visualizzata chiamata _id.",
+      "rules": [
+        "In SQL conserva tutti i componenti della PK. Escludi le colonne generate dalle scritture. Per i documenti MongoDB il riferimento è _id tipizzato.",
+        "Per delta e merge del backup scegli l’identità stabile dichiarata: _id MongoDB, PK o vincolo univoco interamente non nullo su SQL."
+      ],
+      "sources": [
+        "public/js/righe.js",
+        "backup/lib/identity.js",
+        "public/js/inlineEdit.js",
+        "db/sqlTabellare.js"
+      ],
+      "tests": [
+        "test/unit-sql-integrita-righe.js",
+        "test/e2e-sql-integrita-ui.js"
+      ],
+      "section": "strategies"
+    },
+    "exact-values": {
+      "kind": "concept",
+      "title": "Precisione BSON, EJSON e SQL",
+      "summary": "serializza() mantiene il wrapper $numberLong per un BSON Long fuori dall’intervallo Number sicuro. Le conversioni SQL usano i metadati per numeri esatti e binari.",
+      "rules": [
+        "Segui il tipo da DB a UI, editor, copia, scrittura e ripristino. Prova 9007199254740993, decimali, byte binari e la precisione delle date con una rilettura indipendente.",
+        "Campo assente, null, false e stringa vuota producono effetti distinti. Nel formatter JSON/BSON preserva i token originali per conservare precisione e sintassi shell."
+      ],
+      "sources": [
+        "db/mongoEjson.js",
+        "db/sqlValori.js",
+        "db/insertValues.js",
+        "public/js/valori-esatti.js",
+        "public/js/json-bson.js",
+        "docs/matrice-fedelta-export-import.md"
+      ],
+      "tests": [
+        "test/unit-valori-esatti.js",
+        "test/unit-sql-valori-esatti.js",
+        "test/unit-transfer-types.js",
+        "test/unit-json-bson.js"
+      ],
+      "section": "strategies"
+    },
+    "spatial-types": {
+      "kind": "concept",
+      "title": "Geometrie e riferimento spaziale",
+      "summary": "GeoJSON alimenta le viste cartografiche. MySQL spatial, PostGIS geometry/geography e i tipi geometrici nativi PostgreSQL usano conversioni specifiche.",
+      "rules": [
+        "modificaConSrid() legge il riferimento originale sotto lock nella transazione quando necessario. Se il riferimento è ambiguo, espone un errore prima di reinterpretare le coordinate.",
+        "Per una modifica o un trasferimento verifica separatamente coordinate e SRID nel database destinatario."
+      ],
+      "sources": [
+        "db/geometry.js",
+        "db/sridModifica.js",
+        "db/pg-geo-nativo.js",
+        "public/js/geomap.js"
+      ],
+      "tests": [
+        "test/unit-geometry.js",
+        "test/e2e-srid-modifiche.js"
+      ],
+      "section": "strategies"
+    },
+    "queries": {
+      "kind": "section",
+      "title": "Query e script",
+      "summary": "Esecuzione sul bersaglio, scelta dell’interprete, transazioni, limiti e annullamento dei run.",
+      "rules": [],
+      "sources": [
+        "auth/capabilities.js",
+        "server/eventi-monitoraggio.js"
+      ],
+      "tests": [
+        "test/e2e-sessions.js"
+      ],
+      "area": "data",
+      "anchor": "query-script-e-annullamento"
+    },
+    "query-dispatch": {
+      "kind": "concept",
+      "title": "Esecuzione e annullamento",
+      "summary": "query:execute passa dal contesto costruito sul server a executeQueryCode(). La sessione sceglie il bersaglio, runId e opHandle individuano il lavoro annullabile.",
+      "rules": [
+        "Registra l’handle nella sessione di origine e rimuovilo in finally, anche dopo un cambio di tab.",
+        "Una query recuperabile lega runId e dbSessionId alla sessione originale. Se cade il socket, query:state restituisce l’esito della stessa esecuzione. Il browser ne conferma la ricezione per liberarlo.",
+        "Anche una singola istruzione dell’editor può arrivare tramite script:upload. query:execute la ricompone nella sessione SQL del tab dopo il controllo del runId.",
+        "Una query libera accetta un LIMIT esplicito e segnala un errore se supera il budget di byte. La griglia può restituire truncated.",
+        "I limiti iniziali sono 32 MiB per il risultato e 30/120/5 secondi per find/aggregate/count. La scadenza del watchdog da sola non dimostra che il DBMS abbia fermato il lavoro."
+      ],
+      "sources": [
+        "server/query.js",
+        "server/eventi-script.js",
+        "public/js/script-upload.js",
+        "public/js/trasporto.js",
+        "db/payloadEsecuzione.js",
+        "db/tetti.js",
+        "db/DbStrategy.js"
+      ],
+      "tests": [
+        "test/unit-query-senza-limite.js",
+        "test/unit-tetti.js",
+        "test/e2e-query-cancel.js",
+        "test/e2e-ripresa-query.js"
+      ],
+      "section": "queries"
+    },
+    "native-sql-session": {
+      "kind": "concept",
+      "title": "Sessioni SQL native",
+      "summary": "MySQL e PostgreSQL interpretano il testo tramite il proprio driver. Lo stato SQL dura tra esecuzioni singole dello stesso tab di connessione.",
+      "rules": [
+        "Serializza le istruzioni sullo stesso contesto per conservare transazioni, variabili e tabelle temporanee. Lo script usa un proprio contesto.",
+        "I blocchi di un file condividono sessione e database scelto con USE. Un errore recuperabile lascia raggiungibile il COMMIT esplicito. In una transazione PostgreSQL il runner isola con savepoint le istruzioni ordinarie del file. La perdita della transazione interrompe la sequenza.",
+        "Conserva il comportamento del dialetto e il bersaglio scelto anche dopo comandi di sessione o rollback. Alla perdita della connessione lo stato transazionale precedente va considerato perso."
+      ],
+      "sources": [
+        "db/sqlSessione.js",
+        "server/query.js",
+        "db/mysqlSessioneNativa.js",
+        "docs/sql-nativo.md"
+      ],
+      "tests": [
+        "test/unit-sql-sessioni.js",
+        "test/e2e-sql-native-sessioni.js",
+        "test/e2e-preproduzione.js"
+      ],
+      "section": "queries"
+    },
+    "mongo-query-languages": {
+      "kind": "concept",
+      "title": "MQL, shell e SQL su MongoDB",
+      "summary": "Una connessione MongoDB gestisce filtri, pipeline, sintassi db.collezione e SQL tradotto da SqlToMql. La copertura SQL dipende dalle operazioni implementate nel traduttore e nel runtime.",
+      "rules": [
+        "Conserva i valori BSON tipizzati durante la traduzione. Classifica lettura o scrittura dall’effetto reale della pipeline.",
+        "Estendi insieme parser, runtime, catalogo di completamento e casi di prova. Il selettore di motore deve corrispondere alla connessione effettiva."
+      ],
+      "sources": [
+        "db/MongoShell.js",
+        "db/SqlToMql.js",
+        "db/MongoSqlRuntime.js",
+        "server/query.js",
+        "docs/copertura-linguaggi-query.md"
+      ],
+      "tests": [
+        "test/mongo-shell.js",
+        "test/unit-sql-mongo-runtime.js",
+        "test/e2e-query-languages.js"
+      ],
+      "section": "queries"
+    },
+    "mongo-script-interpreter": {
+      "kind": "concept",
+      "title": "Interprete MongoScript",
+      "summary": "MongoScript analizza il JavaScript supportato in un AST. MongoScriptRunner lo valuta nel processo del server e accede al DB tramite un host legato alla strategia autorizzata.",
+      "rules": [
+        "Fai passare ogni nuova operazione sul database attraverso l’host.",
+        "Conserva le quote di passi, iterazioni, ricorsione, tempo, chiamate al DB e output. Il superamento di un budget deve interrompere il run."
+      ],
+      "sources": [
+        "db/MongoScript.js",
+        "db/MongoScriptRunner.js",
+        "server/query.js"
+      ],
+      "tests": [
+        "test/unit-mongo-script.js",
+        "test/e2e-mongo-script.js"
+      ],
+      "section": "queries"
+    },
+    "mongosh-process": {
+      "kind": "concept",
+      "title": "Runtime mongosh nativo",
+      "summary": "Il motore mongosh crea un processo figlio per la sessione MongoDB. Conserva variabili e change stream tra richieste e può accedere a Node e al filesystem del server. In modalità Auto gli script MongoDB che usano API o sintassi native di mongosh vengono instradati automaticamente a questo runtime.",
+      "rules": [
+        "Autorizza la creazione con isInstallAdmin, sia quando il motore è esplicito sia in auto-instradamento da Auto. Il permesso di scrittura sul database da solo è insufficiente.",
+        "Reset, timeout o arresto del processo chiudono anche variabili, richieste e stream di quel runtime."
+      ],
+      "sources": [
+        "db/mongoshRuntime.js",
+        "db/mongoshRouting.js",
+        "db/mongoshProcesso.cjs",
+        "server/query.js"
+      ],
+      "tests": [
+        "test/unit-mongosh.js",
+        "test/unit-mongosh-auto.js",
+        "test/e2e-mongosh-runtime.js"
+      ],
+      "section": "queries"
+    },
+    "virtual-join": {
+      "kind": "concept",
+      "title": "Virtual JOIN tra connessioni",
+      "summary": "VirtualJoinEngine risolve due sorgenti aperte di sola lettura, legge le chiavi dalla prima, interroga la seconda e unisce in memoria.",
+      "rules": [
+        "Applica scope e limiti a entrambe le sorgenti. Un riferimento ambiguo alla connessione richiede un bersaglio esplicito.",
+        "Per confrontare le chiavi normalizza i valori. Per interrogare MongoDB conserva il tipo EJSON nel filtro $in, per SQL passa le chiavi normalizzate come parametri."
+      ],
+      "sources": [
+        "db/VirtualJoinEngine.js",
+        "server/query.js"
+      ],
+      "tests": [
+        "test/unit.js",
+        "test/e2e-query-engine.js"
+      ],
+      "section": "queries"
+    },
+    "script-runs": {
+      "kind": "concept",
+      "title": "Run e risultati degli script",
+      "summary": "Il client sceglie il runId di script:execute. L’ack identifica il run accettato, script:progress aggiorna il client e script:state ne restituisce lo stato.",
+      "rules": [
+        "Dividi SQL con le regole del dialetto, rispettando blocchi, stringhe e commenti. Il JavaScript gestito arriva intero all’interprete.",
+        "ScriptRunner prosegue dopo un errore per impostazione predefinita. stopOnError cambia la politica di arresto.",
+        "L’editor adatta apertura e salvataggio file al DBMS attivo (SQL o MongoDB: .js, .mongodb, .json, .mql oltre a .sql). Indicizza i file SQL su richiesta conservando gli offset in byte, mentre mantiene interi gli script JavaScript e i documenti JSON MongoDB senza spezzarli sul `;`. Per un’istruzione che supera il singolo messaggio socket, script:upload raccoglie i frammenti nella sessione e script:execute consuma il testo completo una volta. Il limite per singola esecuzione è 64 MiB.",
+        "L’apertura mostra il blocco in lettura e l’invio frammentato mostra i byte confermati dal server. La ripresa riutilizza runId, upload e sessione del database. script:state restituisce anche il risultato terminale perso durante la disconnessione.",
+        "Il registro conserva un’anteprima e l’intervallo nel file originale. In pausa il blocco attende ripresa o annullamento. Alla fine di una sequenza, lo stato indica se il database ha annullato la transazione rimasta aperta.",
+        "script:result legge dal deposito su disco i risultati e gli errori conservati entro i limiti del run. I riepiloghi di scrittura restano nel resoconto. Se il deposito non si apre, lo script può proseguire."
+      ],
+      "sources": [
+        "server/eventi-script.js",
+        "db/ScriptRunner.js",
+        "db/ScriptResults.js",
+        "public/js/sql-chunker.js",
+        "public/js/sql-chunker-worker.js",
+        "public/js/query-file.js",
+        "public/js/sql-split.js",
+        "public/js/sql-file-limits.mjs",
+        "public/js/script-upload.js",
+        "public/js/script-run.js",
+        "public/js/query-tab.js",
+        "public/js/pending-queries.js",
+        "db/importUploads.js",
+        "db/sqlText.js"
+      ],
+      "tests": [
+        "test/unit-script-runner.js",
+        "test/unit-script-results.js",
+        "test/e2e-script-risultati.js",
+        "test/unit-operazioni-lunghe.js",
+        "test/unit-sql-chunking.js",
+        "test/unit-query-file.js",
+        "test/e2e-import-upload-ui.js",
+        "test/e2e-workbench.js",
+        "test/e2e-file-sql.js",
+        "test/e2e-ripresa-query.js"
+      ],
+      "section": "queries"
+    },
+    "security": {
+      "kind": "section",
+      "title": "Identità e accessi",
+      "summary": "Permessi per tenant, connessione e bersaglio. Protezione dei segreti, verifica dell’host e traccia delle operazioni.",
+      "rules": [],
+      "sources": [],
+      "tests": [],
+      "area": "ops",
+      "anchor": "autorizzazioni-vault-e-audit"
+    },
+    "rbac-principal": {
+      "kind": "concept",
+      "title": "Identità e grant RBAC",
+      "summary": "Con CODEDB_RBAC=on il control plane MongoDB conserva utenti, ruoli, grant, API key e hash dei token. POST /auth/login restituisce il token opaco dell’handshake Socket.IO.",
+      "rules": [
+        "Rivalida il principal sulle connessioni attive dopo variazioni di ruolo, scope o revoche. L’eventuale scope della API key restringe le connessioni raggiungibili.",
+        "Scegli canWholeConnection per lavori nativi che coinvolgono tutta la connessione, canAdminTenant per il tenant e isInstallAdmin per risorse condivise dell’installazione."
+      ],
+      "sources": [
+        "server/identita.js",
+        "auth/AppStore.js",
+        "auth/sessions.js",
+        "auth/principal.js",
+        "auth/permissions.js",
+        "server/eventi-backup.js"
+      ],
+      "tests": [
+        "test/unit-rbac.js",
+        "test/e2e-rbac.js",
+        "test/e2e-rbac-mcp.js"
+      ],
+      "section": "security"
+    },
+    "strategy-authorization": {
+      "kind": "concept",
+      "title": "Capability di eventi e strategie",
+      "summary": "EVENT_CAPABILITY controlla la richiesta socket. guardStrategy applica METHOD_CAPABILITY alla strategia anche per query, JOIN e strumenti MCP.",
+      "rules": [
+        "Classifica ciascun nuovo metodo pubblico e verifica sia il permesso sul bersaglio sia la categoria dell’operazione.",
+        "Esercita un principal ammesso e uno fuori scope. Nel caso di accesso nativo al driver, verifica esplicitamente il permesso sull’intera connessione."
+      ],
+      "sources": [
+        "auth/capabilities.js",
+        "auth/guardStrategy.js",
+        "auth/permissions.js",
+        "server/socket.js"
+      ],
+      "tests": [
+        "test/unit-tabella-autorizzazioni.js",
+        "test/e2e-rbac.js",
+        "test/e2e-rbac-mcp.js"
+      ],
+      "section": "security"
+    },
+    "sql-scope": {
+      "kind": "concept",
+      "title": "Scope di query e clausole SQL",
+      "summary": "I riferimenti citati nell’istruzione determinano i bersagli della query SQL libera. I filtri e gli ordinamenti dei sottoutenti con scope vengono verificati come dati strutturati.",
+      "rules": [
+        "Verifica tutte le tabelle pertinenti, comprese le sorgenti annidate. Il nome nominale della tabella nella richiesta serve solo come parte del contesto.",
+        "Per le letture protette combina i controlli sull’istruzione con READ ONLY sul DBMS dove previsto. L’I/O di file richiede un controllo distinto."
+      ],
+      "sources": [
+        "auth/sqlTables.js",
+        "auth/sqlClause.js",
+        "auth/capabilities.js",
+        "auth/guardStrategy.js"
+      ],
+      "tests": [
+        "test/unit-filtro-autorizzazione.js",
+        "test/unit-rbac.js",
+        "test/e2e-rbac.js"
+      ],
+      "section": "security"
+    },
+    "vault-secrets": {
+      "kind": "concept",
+      "title": "Vault e connessioni salvate",
+      "summary": "Nel vault v2 una DEK casuale cifra i segreti con AES-256-GCM. La passphrase deriva con scrypt una KEK che protegge la DEK registrata in vault.json.",
+      "rules": [
+        "Il cambio di passphrase riavvolge la DEK. Conserva la lettura del formato v1, migrazione, sblocco, reset e indicazione dello stato senza cifratura.",
+        "Quando aggiungi una credenziale aggiorna SECRET_FIELDS, salvataggio, export/import e lettore CLI. URI e materiale SSH possono contenere segreti.",
+        "Gli INI RBAC sono per owner. Il browser riapre per nome con {saved: nome}, la CLI di backup legge il deposito e usa le stesse primitive."
+      ],
+      "sources": [
+        "db/vault.js",
+        "server/vault.js",
+        "backup/lib/connstore.js",
+        "public/js/session-restore.js"
+      ],
+      "tests": [
+        "test/unit-vault.js",
+        "test/unit-conn-config.js",
+        "test/e2e-vault-passphrase.js"
+      ],
+      "section": "security"
+    },
+    "ssh-pinning": {
+      "kind": "concept",
+      "title": "Host key e tunnel SSH",
+      "summary": "L’apertura della connessione DB può acquisire un tunnel SSH. Il pin della chiave host appartiene alla configurazione della connessione.",
+      "rules": [
+        "Verifica il pin prima delle credenziali. Per una connessione salvata il primo pin può essere persistito, per gli altri casi può servire approvare l’impronta. La modalità strict richiede un pin già configurato.",
+        "Se l’apertura del DB fallisce, rilascia anche il tunnel e la strategia parzialmente inizializzata."
+      ],
+      "sources": [
+        "server/connessioni.js",
+        "db/SshTunnel.js",
+        "db/SshKey.js"
+      ],
+      "tests": [
+        "test/unit-ssh-pinning.js",
+        "test/e2e-ssh-impronta.js",
+        "test/e2e-ssh-forward.js"
+      ],
+      "section": "security"
+    },
+    "activity-audit": {
+      "kind": "concept",
+      "title": "Audit delle azioni UI e MCP",
+      "summary": "L’audit annota attore, tenant, bersaglio, categoria, esito e conteggi pertinenti. UI e MCP hanno file separati, con rotazione e flush.",
+      "rules": [
+        "Usa auditActor() per mantenere il filtro ownerId/userId. Classifica l’effetto effettivo anche in caso di errore.",
+        "Distingui attività esplicita, refresh automatici e progressi di run. Registra i dettagli previsti dall’evento e redigi credenziali e URI."
+      ],
+      "sources": [
+        "server/audit.js",
+        "db/AuditLog.js",
+        "mcp/Activity.js",
+        "db/errors.js"
+      ],
+      "tests": [
+        "test/unit-audit-serializzato.js",
+        "test/unit-query-audit.js",
+        "test/e2e-query-audit.js"
+      ],
+      "section": "security"
+    },
+    "frontend": {
+      "kind": "section",
+      "title": "Stato e controlli",
+      "summary": "Proprietà dello stato tra tab, documento e pannello, controlli Arc e ciclo di vita dell’interazione.",
+      "rules": [],
+      "sources": [],
+      "tests": [],
+      "area": "client",
+      "anchor": "stato-del-frontend-e-controlli"
+    },
+    "workspace-state": {
+      "kind": "concept",
+      "title": "Tab, schede e documenti Query",
+      "summary": "Il tab di connessione possiede lo stato. Il proxy state segue il tab attivo. Le schede interne e i documenti Query mantengono snapshot, testo, esecuzione e risultati propri.",
+      "rules": [
+        "Salva gli input al cambio di contesto. Per risposte asincrone scrivi nello stato catturato all’invio e verifica identità e richiesta corrente prima del rendering.",
+        "Prova documenti concorrenti anche nella stessa connessione. Un tab ancora esistente non basta a identificare la scheda o il filtro originario."
+      ],
+      "sources": [
+        "public/js/tabs.js",
+        "public/js/state.js",
+        "public/js/colltabs.js",
+        "public/js/query-document.js",
+        "public/js/workspace.js",
+        "public/js/coerenza-richieste.js"
+      ],
+      "tests": [
+        "test/unit-coerenza-richieste.js",
+        "test/e2e-pagine-obsolete.js",
+        "test/e2e-chiusura-query.js"
+      ],
+      "section": "frontend"
+    },
+    "browser-persistence": {
+      "kind": "concept",
+      "title": "Ripristino e cronologia nel browser",
+      "summary": "Il layout recuperabile usa sessionStorage e riapre le connessioni salvate per nome. La cronologia Query usa localStorage, mentre le esecuzioni in sospeso hanno un registro in sessionStorage.",
+      "rules": [
+        "Il logout pulisce la cronologia. Dopo un refresh il registro delle query in sospeso marca come disconnessi i run che risultavano attivi.",
+        "Ripristina gli ID di tab e gestisci connessioni non più disponibili. I documenti UML usano IndexedDB con ambito utente/connessione/database e revisione di salvataggio."
+      ],
+      "sources": [
+        "public/js/session-restore.js",
+        "public/js/query-history-store.js",
+        "public/js/pending-queries.js",
+        "public/js/auth.js",
+        "public/js/uml-store.js"
+      ],
+      "tests": [
+        "test/e2e-session-restore-feedback.js",
+        "test/unit-query-history.js",
+        "test/pending-queries.js",
+        "test/e2e-uml-scenari.js"
+      ],
+      "section": "frontend"
+    },
+    "split-panes": {
+      "kind": "concept",
+      "title": "Stato e ciclo di vita dei pannelli",
+      "summary": "split-layout modella l’albero dei pannelli. splitview compone le viste e creaRuntimePane collega il workbench di un iframe al socket del padre fissando tabId e watchId.",
+      "rules": [
+        "La vista può nascondere un pannello mantenendone il runtime. Quando il pannello viene rimosso o sostituito, dispose() rilascia listener, osservazioni e run propri.",
+        "Preserva il bersaglio originario delle richieste. Prova due tabelle visibili e la chiusura di un riquadro con ack in volo."
+      ],
+      "sources": [
+        "public/js/split-layout.js",
+        "public/js/splitview.js",
+        "public/js/pane-runtime.js"
+      ],
+      "tests": [
+        "test/unit-split-layout.js",
+        "test/e2e-split-bersaglio-riquadro.js",
+        "test/e2e-split-completa.js"
+      ],
+      "section": "frontend"
+    },
+    "arc-controls": {
+      "kind": "concept",
+      "title": "Controller vanilla e componenti Arc",
+      "summary": "I controller ESM in public/js lavorano con controlli React/TypeScript in ui/. Esbuild genera i bundle JS e CSS in public/arc/ per browser, Electron e Android.",
+      "rules": [
+        "Modifica i sorgenti in ui/ e rigenera con npm run build:ui. initControls() monta i controlli prima dei listener vanilla.",
+        "Preserva ID, label, form.elements, validazione, valore, disabled e reset dei modelli DOM. Le modifiche programmatiche sincronizzano il controllo senza simulare un gesto utente."
+      ],
+      "sources": [
+        "ui/main.tsx",
+        "ui/controls.tsx",
+        "ui/fields.tsx",
+        "public/js/main.js",
+        "tools/build-ui.mjs"
+      ],
+      "tests": [
+        "test/e2e-arc-campi.js",
+        "test/e2e-arc-griglia.js"
+      ],
+      "section": "frontend"
+    },
+    "dialog-feedback": {
+      "kind": "concept",
+      "title": "Dialoghi, focus e feedback",
+      "summary": "I dialoghi Arc riutilizzano il pannello del form. Il controller sceglie l’avviso in base a campo, vista e azione, conservando il contesto dell’errore.",
+      "rules": [
+        "Controlla focus iniziale e di ritorno, Escape con popup annidato, Enter, annullamento e un solo invio anche al doppio clic.",
+        "Usa informazioni brevi per i successi, feedback contestuale per i dati correggibili e avviso persistente per una decisione. Conserva bozza e dettaglio tecnico.",
+        "Le notifiche globali restano sovrapposte al workspace. Usa l’altezza del messaggio per lasciare raggiungibile con lo scorrimento l’ultima riga, anche a dettagli aperti."
+      ],
+      "sources": [
+        "ui/dialogs.tsx",
+        "ui/notifiche.tsx",
+        "public/css/arc-theme.css",
+        "public/js/avvisi.js",
+        "public/js/utils.js"
+      ],
+      "tests": [
+        "test/e2e-dialog-lifecycle.js",
+        "test/e2e-feedback-contesto.js",
+        "test/e2e-connection-feedback.js",
+        "test/e2e-uscita-editing.js"
+      ],
+      "section": "frontend"
+    },
+    "theme-accessibility": {
+      "kind": "concept",
+      "title": "Tema, viewport e interazioni accessibili",
+      "summary": "I token CSS condivisi e il ponte Arc descrivono colori e stati. index.html applica il tema prima dei moduli per mantenere stabile il primo rendering.",
+      "rules": [
+        "Verifica chiaro, scuro e personalizzato, contrasto, focus, tastiera e movimento ridotto. Su mobile usa il viewport utile e le aree sicure.",
+        "Per maniglie e separatori includi puntatore e tastiera. Navigator, sidebar ed editor usano maniglia.js, i divisori Split-View vivono in splitview.js."
+      ],
+      "sources": [
+        "public/css/tokens.css",
+        "public/css/arc-theme.css",
+        "public/js/theme.js",
+        "public/index.html",
+        "public/js/viewport.js",
+        "public/js/maniglia.js"
+      ],
+      "tests": [
+        "test/unit-tema.js",
+        "test/e2e-maniglie-tocco.js",
+        "test/e2e-tema-navigatore.js"
+      ],
+      "section": "frontend"
+    },
+    "workspace": {
+      "kind": "section",
+      "title": "Viste del workspace",
+      "summary": "Griglia, cataloghi, editor, grafici, mappe, diagrammi e monitoraggio del DBMS.",
+      "rules": [],
+      "sources": [],
+      "tests": [],
+      "area": "client",
+      "anchor": "strumenti-del-workspace"
+    },
+    "data-grid": {
+      "kind": "concept",
+      "title": "Griglia, selezione e modifiche",
+      "summary": "Il renderer virtualizza righe visibili e margine. Il modello conserva l’intera selezione e i metadati necessari a scrivere sul bersaglio originale.",
+      "rules": [
+        "Copia/incolla e statistiche devono includere le celle selezionate fuori dal DOM. Conserva le rappresentazioni esatte dei valori.",
+        "Per modificare o inserire rispetta identità della riga, metadati del campo e destinazione catturata. Prova le stesse azioni nel pannello split."
+      ],
+      "sources": [
+        "public/js/griglia.js",
+        "public/js/grid.js",
+        "public/js/righe.js",
+        "public/js/cellselect.js",
+        "public/js/inlineEdit.js",
+        "public/js/insert.js"
+      ],
+      "tests": [
+        "test/unit-griglia.js",
+        "test/e2e-selezione-celle-viste.js",
+        "test/e2e-arc-griglia.js"
+      ],
+      "section": "workspace"
+    },
+    "schema-catalog": {
+      "kind": "concept",
+      "title": "Catalogo progressivo, indici e relazioni",
+      "summary": "db:schema in modalità progressiva pagina oggetti, campi e relazioni in modo indipendente. Le viste Dettagli e FK consumano i metadati del database.",
+      "rules": [
+        "Lo snapshot è per sessione, database e impronta dei permessi. Se cambia la revisione durante la paginazione, riparti da una revisione coerente.",
+        "Il delegate invalida lo snapshot dopo un proprio evento ddl riuscito. Per SQL libero, script o modifiche esterne rileggi esplicitamente o alla scadenza.",
+        "Distingui zero FK da una lettura fallita. Per una FK composta conserva ordine e insieme dei campi nell’aggiornamento."
+      ],
+      "sources": [
+        "db/schemaProgressivo.js",
+        "db/schemaSnapshot.js",
+        "server/eventi-dati.js",
+        "public/js/details.js",
+        "public/js/fk-cache.js",
+        "public/js/schema-ops.js"
+      ],
+      "tests": [
+        "test/unit-schema-progressivo.js",
+        "test/unit-fk-relazioni.js",
+        "test/e2e-fk-inserimento.js"
+      ],
+      "section": "workspace"
+    },
+    "editor-navigation": {
+      "kind": "concept",
+      "title": "Editor, IntelliSense e scorciatoie",
+      "summary": "IntelliSense legge l’istruzione al cursore, risolve sorgenti, alias e vocabolario del dialetto. Palette, editor e snippet usano il contesto del documento e il catalogo delle scorciatoie.",
+      "rules": [
+        "Riconosci SQL anche su una connessione MongoDB. Dopo FROM/JOIN proponi sorgenti, dopo un alias le colonne pertinenti. Quota gli identificatori secondo il motore.",
+        "autocomplete.js conserva lo schema per tab e database. Le operazioni DDL della UI e schema:changed invalidano la cache.",
+        "Le azioni globali passano dalla palette, quelle locali dagli editor. Con RBAC le preferenze dei tasti usano il control plane, in modalità locale lo storage del browser."
+      ],
+      "sources": [
+        "public/js/query-editor.js",
+        "public/js/intellisense.js",
+        "public/js/autocomplete.js",
+        "public/js/sql-dialetti.js",
+        "public/js/scorciatoie.js",
+        "public/js/palette.js",
+        "public/js/snippet-manager.js"
+      ],
+      "tests": [
+        "test/unit-intellisense.js",
+        "test/e2e-richieste-intellisense.js",
+        "test/e2e-scorciatoie.js"
+      ],
+      "section": "workspace"
+    },
+    "selection-analytics": {
+      "kind": "concept",
+      "title": "Statistiche, worker e grafici",
+      "summary": "Le statistiche della selezione e la costruzione delle serie ECharts operano sui valori del modello. Il costo della copia dei dati determina quali calcoli spostare su un worker.",
+      "rules": [
+        "A partire da 50.000 celle le statistiche possono inviare al module worker i valori selezionati. Worker e ripiego locale usano eseguiCompito().",
+        "Scansione dei campi, precalcolo dei grafici e disegno rimangono sul thread chiamante. sequenziatore() scarta risposte obsolete durante richieste ravvicinate."
+      ],
+      "sources": [
+        "public/js/cell-stats.js",
+        "public/js/cell-chart.js",
+        "public/js/calcoli.js",
+        "public/js/calcoli-protocollo.js",
+        "public/js/chart-option.js",
+        "public/js/chart-runtime.js"
+      ],
+      "tests": [
+        "test/unit-calcoli.js",
+        "test/unit-cell-chart.js"
+      ],
+      "section": "workspace"
+    },
+    "geospatial-views": {
+      "kind": "concept",
+      "title": "Mappe di risultati e selezioni",
+      "summary": "geo-risultati riconosce GeoJSON nelle righe, nei sottodocumenti e negli array entro limiti espliciti. geo-vista disegna sia la mappa Query sia quella della selezione.",
+      "rules": [
+        "Mantieni layer, selezione e smontaggio indipendenti per ogni istanza. La vista Query e la modale possono convivere.",
+        "Comunica il troncamento per le voci escluse dai limiti. L’editor conserva il contesto di scrittura e i riferimenti spaziali del dato."
+      ],
+      "sources": [
+        "public/js/geo-risultati.js",
+        "public/js/geo-vista.js",
+        "public/js/query-map.js",
+        "public/js/geomulti.js",
+        "public/js/geomap.js"
+      ],
+      "tests": [
+        "test/unit-geo-risultati.js",
+        "test/e2e-geometrie-viste.js",
+        "test/e2e-editor-geometrico.js"
+      ],
+      "section": "workspace"
+    },
+    "schema-diagrams": {
+      "kind": "concept",
+      "title": "UML, progettazione SQL e grafo 3D",
+      "summary": "Il modello UML conserva nodi e differenze fra vincoli dichiarati, relazioni inferite e relazioni logiche del disegno. JointJS e il grafo 3D offrono viste specializzate.",
+      "rules": [
+        "Per cambiare lo schema dal diagramma, richiedi anteprima e token, poi verifica sessione, bersaglio e permessi al momento dell’applicazione.",
+        "Salva il documento con la revisione di partenza nel proprio ambito. Drena il catalogo secondo i cursori separati e rispetta i limiti di visualizzazione."
+      ],
+      "sources": [
+        "public/js/uml-modello.js",
+        "public/js/uml-paper.js",
+        "public/js/uml-store.js",
+        "db/umlProgetto.js",
+        "public/js/graph3d.js"
+      ],
+      "tests": [
+        "test/e2e-uml-modalita.js",
+        "test/e2e-uml-progetto-db.js",
+        "test/unit-grafo-budget.js"
+      ],
+      "section": "workspace"
+    },
+    "live-monitoring": {
+      "kind": "concept",
+      "title": "Aggiornamento live, salute e sessioni DB",
+      "summary": "I change stream propagano i cambiamenti dove supportati e la UI può proporre il polling. I pannelli distinguono la salute del collegamento dalle sessioni e dai lock dentro il DBMS.",
+      "rules": [
+        "Il polling automatico rispetta tab attivo, documento visibile ed editing in corso. schema:changed invalida i metadati del completamento.",
+        "Nel monitor, prima di annullare o terminare un backend ricontrolla l’identità osservata. Un identificativo di processo può essere riutilizzato."
+      ],
+      "sources": [
+        "public/js/live.js",
+        "public/js/health.js",
+        "public/js/sessions.js",
+        "db/sessioni.js",
+        "server/eventi-monitoraggio.js"
+      ],
+      "tests": [
+        "test/unit-sessioni-identita.js",
+        "test/e2e-sessions.js"
+      ],
+      "section": "workspace"
+    },
+    "transfer": {
+      "kind": "section",
+      "title": "Export e backup",
+      "summary": "Formati, coerenza della sorgente, trasferimento dei byte e recupero dopo applicazione parziale.",
+      "rules": [],
+      "sources": [],
+      "tests": [
+        "test/lab/INTEGRITA.md"
+      ],
+      "area": "data",
+      "anchor": "export-backup-e-recupero"
+    },
+    "export-formats": {
+      "kind": "concept",
+      "title": "Formati di esportazione",
+      "summary": "L’export dalla scheda Query produce JSON delle righe caricate. L’export del database dalla sidebar può includere dati, schema e oggetti selezionati.",
+      "rules": [
+        "Usa .codedb.json sui tre motori, .sql sui motori SQL o .mongosh.js su MongoDB. Il formato completo conserva il BSON MongoDB grezzo in base64.",
+        "Per mongosh il piano firma la politica su collection e viste e la scrittura per _id. La ricreazione conserva gli oggetti inclusi soltanto per dipendenza. Il generatore verifica la rappresentazione BSON prima del download.",
+        "La copia diretta MongoDB richiede una destinazione esplicita. L’evento database:export:execute consuma il piano confermato, lega le due sessioni e restituisce i conteggi delle operazioni confermate anche in caso di errore parziale.",
+        "Negli script .sql il piano firma le opzioni per creare, conservare o ricreare le tabelle e per inserire, aggiornare o ignorare i duplicati. Solo MySQL offre anche REPLACE. DROP TABLE riguarda le tabelle di cui si è scelta la struttura.",
+        "Una vista si esporta con la sua definizione, anche da sola. Il catalogo distingue le viste dalle tabelle o collection di cui dipendono. Su MongoDB conserva le definizioni delle viste ed esclude la collection interna system.views.",
+        "Per un dato tipizzato verifica il formato scelto e la rilettura dei byte o del valore sul DBMS di destinazione."
+      ],
+      "sources": [
+        "public/js/export-json.js",
+        "public/js/exportimport.js",
+        "db/exportCatalogo.js",
+        "db/exportPlan.js",
+        "db/databaseExport.js",
+        "db/exportSqlTabelle.js",
+        "db/exportMongoScript.js",
+        "db/exportMongoStruttura.js",
+        "db/eseguiExportMongo.js",
+        "server/eventi-import.js",
+        "db/pg-partizioni.js",
+        "db/exportFile.js",
+        "docs/matrice-fedelta-export-import.md"
+      ],
+      "tests": [
+        "test/unit-query-export-json.js",
+        "test/e2e-export-opzioni-sql-ui.js",
+        "test/e2e-export-mongosh.js",
+        "test/e2e-export-mongo-diretto.js",
+        "test/e2e-esegui-export-mongo.js",
+        "test/e2e-export-regressioni.js",
+        "test/e2e-export-formati.js"
+      ],
+      "section": "transfer"
+    },
+    "transfer-plan": {
+      "kind": "concept",
+      "title": "Piano e impronta",
+      "summary": "Il piano identifica connessione, destinazione, oggetti e opzioni della singola operazione.",
+      "rules": [
+        "I wizard di export e import verificano l’impronta dell’anteprima confermata. Cambi di destinazione o selezione richiedono un’altra anteprima.",
+        "L’anteprima di import espone i nomi delle viste. Il lettore SQL riconosce sia i dump di sole viste sia le tabelle segnaposto sostituite dalla definizione finale.",
+        "La CLI restore stampa l’impronta e procede nella stessa invocazione. L’evento backup:restore usa l’impronta nel registro dell’operazione.",
+        "Verifica separatamente checksum dei file e ammissibilità della DDL prima di applicarla."
+      ],
+      "sources": [
+        "db/pianoComune.js",
+        "db/importSql.js",
+        "db/importPlan.js",
+        "server/eventi-import.js",
+        "server/eventi-backup.js",
+        "backup/cli.js",
+        "backup/lib/restore-catena.js"
+      ],
+      "tests": [
+        "test/unit-piano-export-evento.js",
+        "test/unit-piano-import.js",
+        "test/unit-backup-validator.js"
+      ],
+      "section": "transfer"
+    },
+    "artifact-transport": {
+      "kind": "concept",
+      "title": "Trasporto degli artefatti",
+      "summary": "Gli eventi socket governano l’operazione. Il servizio HTTP trasferisce blocchi e file finalizzati, mentre il wizard import possiede anche un proprio protocollo socket.",
+      "rules": [
+        "Ogni ticket HTTP è breve e vincolato a risorsa, attore e tenant. Verifica offset e SHA-256 del blocco, gestisci una ripetizione identica e conserva ETag e Range sul download.",
+        "database:import:upload:* verifica ordine e dimensione dei blocchi, proprietario e quote. Considera la dimensione massima accettata dall’import anche per file prodotti localmente."
+      ],
+      "sources": [
+        "server/http-artefatti.js",
+        "db/artefatti.js",
+        "db/importUploads.js",
+        "server/eventi-import.js",
+        "docs/guida-export-import.md"
+      ],
+      "tests": [
+        "test/unit-http-artefatti.js",
+        "test/unit-import-uploads.js",
+        "test/e2e-import-upload-ui.js"
+      ],
+      "section": "transfer"
+    },
+    "source-consistency": {
+      "kind": "concept",
+      "title": "Coerenza della sorgente",
+      "summary": "La coerenza temporale della copia dipende dai motori e dalla topologia dell’origine.",
+      "rules": [
+        "I percorsi SQL transazionali usano repeatable-read. Le tabelle MySQL non transazionali richiedono scritture sospese per una copia coerente.",
+        "Sulle topologie MongoDB compatibili la snapshot copre i documenti. Mantieni stabile il catalogo durante la copia. Su standalone la coerenza globale richiede scritture sospese."
+      ],
+      "sources": [
+        "db/mongoTopologia.js",
+        "db/databaseExport.js",
+        "docs/guida-export-import.md"
+      ],
+      "tests": [
+        "test/e2e-dbexport.js",
+        "test/e2e-export-formati.js"
+      ],
+      "section": "transfer"
+    },
+    "backup-chain": {
+      "kind": "concept",
+      "title": "Catena di backup",
+      "summary": "Il full stabilisce la base. Un differenziale si riferisce al full, un incrementale al predecessore previsto.",
+      "rules": [
+        "Il manifest v6 dichiara la copertura della copia e le entità rimosse. Le cancellazioni di righe usano tombstone di identità. Senza identità stabile si salva una snapshot completa.",
+        "Risolvi baseId e valida tutti i layer prima del primo effetto. Un file storico privo di checksum rimane UNVERIFIABLE.",
+        "La CLI legge le connessioni salvate e condivide vault e motore. verify controlla il disco. Un round trip su motore reale verifica anche tipi e schema. S3, GCS e Azure usano adattatori opzionali."
+      ],
+      "sources": [
+        "backup/lib/engine.js",
+        "backup/lib/identity.js",
+        "backup/lib/restore-catena.js",
+        "backup/lib/storage.js",
+        "backup/cli.js"
+      ],
+      "tests": [
+        "test/unit-tombstone-backup.js",
+        "test/lab/backup-incrementali.cjs",
+        "test/e2e-backup.js"
+      ],
+      "section": "transfer"
+    },
+    "restore-promotion": {
+      "kind": "concept",
+      "title": "Staging e recupero",
+      "summary": "Il percorso protetto valida il piano e verifica lo staging prima di promuovere i dati alla destinazione.",
+      "rules": [
+        "Se la destinazione esiste, richiedi una copia di recupero verificata. Dopo la promozione confronta dati e schema prima della finalizzazione.",
+        "PostgreSQL può scambiare gli schemi atomicamente. Per MySQL e MongoDB considera la finestra di promozione e le scritture concorrenti.",
+        "Conserva gli esiti completato, ripristinato_dopo_errore e intervento_richiesto. Il diario conserva per tenant i riferimenti privati e l’avanzamento della pulizia. Dopo un riavvio verifica identità e stato prima di rimuovere ciascuna risorsa."
+      ],
+      "sources": [
+        "db/importPlan.js",
+        "db/diarioOperazioni.js",
+        "db/importCleanup.js",
+        "db/promozioneMerge.js",
+        "backup/lib/restore.js",
+        "db/pg-restore-transaction.js"
+      ],
+      "tests": [
+        "test/unit-import-conferma.js",
+        "test/lab/backup-promozione-postgres.cjs",
+        "test/e2e-integrita-import.js"
+      ],
+      "section": "transfer"
+    },
+    "mcp": {
+      "kind": "section",
+      "title": "Gateway MCP",
+      "summary": "Sessioni di protocollo, strumenti, limiti di sola lettura e conferma delle mutazioni.",
+      "rules": [],
+      "sources": [],
+      "tests": [],
+      "area": "ops",
+      "anchor": "gateway-mcp"
+    },
+    "mcp-session": {
+      "kind": "concept",
+      "title": "Sessione e identità MCP",
+      "summary": "Il gateway /mcp usa Streamable HTTP. Una sessione del protocollo può aprire più connessioni DB nominate con connect_database.",
+      "rules": [
+        "Con RBAC attivo autentica l’API key, confronta identità e impronta della credenziale anche sulle richieste successive e aggiorna i permessi correnti. In locale con RBAC spento il principal è root locale.",
+        "Il limite configurabile delle sessioni MCP è distinto dal budget di 100 sessioni DB per istanza condiviso con la UI."
+      ],
+      "sources": [
+        "mcp/McpGateway.js",
+        "server/mcp.js",
+        "mcp/Settings.js",
+        "server/budget.js",
+        "docs/MCP.md"
+      ],
+      "tests": [
+        "test/unit-mcp-auth.js",
+        "test/e2e-rbac-mcp.js",
+        "test/e2e-mcp-states.js"
+      ],
+      "section": "mcp"
+    },
+    "mcp-tools": {
+      "kind": "concept",
+      "title": "Strumenti, risorse e prompt",
+      "summary": "Il gateway registra separatamente strumenti di lettura, scrittura, artefatti, risorse e prompt.",
+      "rules": [
+        "Usa gli strumenti di lettura per get_schema, execute_query, get_shortest_path e analyze_pii. Mantieni validazione, forma MCP degli errori, attività e impostazioni del wrapper comune.",
+        "Colloca execute_write ed execute_ddl nel modulo di scrittura, backup_database e restore_backup in quello degli artefatti. Per categorie nuove verifica anche audit e pannello di amministrazione."
+      ],
+      "sources": [
+        "mcp/McpGateway.js",
+        "mcp/strumenti-lettura.js",
+        "mcp/strumenti-scrittura.js",
+        "mcp/strumenti-artefatti.js",
+        "mcp/risorse-e-prompt.js",
+        "public/js/mcp-panel.js"
+      ],
+      "tests": [
+        "test/e2e-mcp.js",
+        "test/e2e-mcp-control.js",
+        "test/unit-mcp-payload.js"
+      ],
+      "section": "mcp"
+    },
+    "mcp-confirmation": {
+      "kind": "concept",
+      "title": "Conferma delle mutazioni",
+      "summary": "execute_write prepara l’anteprima, memorizza la proposta nella sessione e prenota un confirm_token monouso.",
+      "rules": [
+        "Mostra l’anteprima all’utente. Dopo approvazione esplicita presenta il token con connection_id. Il server verifica tipo e connessione e applica la proposta originale con i permessi correnti.",
+        "Esercita consenso scaduto, seconda conferma concorrente e revoca tra le due chiamate. Consumo e scadenza liberano la quota prenotata."
+      ],
+      "sources": [
+        "mcp/conferma.js",
+        "mcp/ConfirmQuota.js",
+        "mcp/strumenti-scrittura.js"
+      ],
+      "tests": [
+        "test/unit-mcp-conferme-quota.js",
+        "test/e2e-rbac-mcp.js"
+      ],
+      "section": "mcp"
+    },
+    "mcp-write-policy": {
+      "kind": "concept",
+      "title": "Politica di scrittura MCP",
+      "summary": "Il wrapper combina le impostazioni globali del gateway con il flag della connessione e i permessi dell’attore.",
+      "rules": [
+        "La connessione salvata deve consentire esplicitamente le scritture con readOnly=false. Rileggi questo flag prima dell’esecuzione.",
+        "Verifica anche i controlli globali separati per DDL, backup e import. Una modifica delle impostazioni può intervenire dopo l’anteprima."
+      ],
+      "sources": [
+        "mcp/McpGateway.js",
+        "mcp/Settings.js",
+        "mcp/strumenti-scrittura.js",
+        "mcp/strumenti-artefatti.js"
+      ],
+      "tests": [
+        "test/unit-mcp-settings.js",
+        "test/unit-mcp-execute-ddl.js",
+        "test/e2e-mcp-control.js"
+      ],
+      "section": "mcp"
+    },
+    "delivery": {
+      "kind": "section",
+      "title": "Distribuzione",
+      "summary": "Esecuzione e pacchetti per web, Docker, Electron e Android con i rispettivi confini di rete e filesystem.",
+      "rules": [],
+      "sources": [
+        ".env.example"
+      ],
+      "tests": [],
+      "area": "ops",
+      "anchor": "distribuzione"
+    },
+    "web-network": {
+      "kind": "concept",
+      "title": "Web e pubblicazione di rete",
+      "summary": "Express serve public/. Il trasporto Socket.IO controlla Origin e Host prima di aprire una sessione DB.",
+      "rules": [
+        "Avvia con npm start oppure npm run dev. Per un handshake rifiutato usa GET /handshake-check, poi verifica separatamente login applicativo, tunnel e credenziali DB.",
+        "Per la condivisione ordinaria fuori dal loopback usa un reverse proxy che termini realmente HTTPS, CODEDB_TRUST_PROXY_TLS=1 e RBAC attivo. Cifratura e autenticazione hanno controlli separati."
+      ],
+      "sources": [
+        "server/trasporto.js",
+        "server/createServer.js",
+        "package.json"
+      ],
+      "tests": [
+        "test/unit-avvio-rete.js",
+        "test/unit-server-modulare.js"
+      ],
+      "section": "delivery"
+    },
+    "docker-runtime": {
+      "kind": "concept",
+      "title": "Runtime Docker Compose",
+      "summary": "Lo stack principale ospita CodeDB, MongoDB e MySQL. L’immagine di produzione copia i bundle statici già costruiti e i moduli runtime selezionati.",
+      "rules": [
+        "Usa docker compose up -d --build dopo aver configurato le credenziali di sviluppo. Il bind pubblicato della GUI e quello dei DBMS sono separati.",
+        "Mantieni dati e backup su volumi persistenti. Verifica che un nuovo modulo runtime o asset sia incluso nell’immagine finale."
+      ],
+      "sources": [
+        "docker-compose.yml",
+        "Dockerfile",
+        "server/trasporto.js"
+      ],
+      "tests": [
+        "test/unit-avvio-rete.js"
+      ],
+      "section": "delivery"
+    },
+    "electron-runtime": {
+      "kind": "concept",
+      "title": "Applicazione Electron",
+      "summary": "Il desktop ospita il server Node in-process, con lock di singola istanza e verifica del server locale.",
+      "rules": [
+        "npm run electron:start avvia da sorgenti. Se la porta predefinita è occupata il processo principale può sceglierne una disponibile. Nella distribuzione i dati risiedono in userData.",
+        "Conserva sandbox, contextIsolation e integrazione Node disattivata nella finestra. Verifica la chiusura con lavoro pendente e la build pacchettizzata."
+      ],
+      "sources": [
+        "electron-main.js",
+        "electron-server-auth.js",
+        "electron-chiusura.js",
+        "electron-aggiornamenti.js"
+      ],
+      "tests": [
+        "test/unit-electron-server-auth-process.js",
+        "test/e2e-mongosh-electron.cjs"
+      ],
+      "section": "delivery"
+    },
+    "android-runtime": {
+      "kind": "concept",
+      "title": "Applicazione Android",
+      "summary": "Una WebView visualizza il workbench del server Node Mobile in esecuzione sul telefono.",
+      "rules": [
+        "Usa npm run prepare:android e npm run build:android. La preparazione include anche i nuovi moduli del runtime e gli asset statici ammessi dal filtro, rispettando gli ignore di Git.",
+        "localhost è il telefono. Mantieni la protezione con cookie privato anche sul loopback. Distingui il controllo del contenuto dell’APK dal test sul dispositivo."
+      ],
+      "sources": [
+        "android/prepare.cjs",
+        "android/mobile.cjs",
+        "android/README.md"
+      ],
+      "tests": [
+        "android/test.cjs",
+        "test/e2e-mobile-android.js"
+      ],
+      "section": "delivery"
+    },
+    "release-packaging": {
+      "kind": "concept",
+      "title": "Packaging e aggiornamenti",
+      "summary": "Gli script build:win, build:mac e build:linux producono i pacchetti di piattaforma. Gli script dist:* creano le distribuzioni portatili.",
+      "rules": [
+        "Il workflow verifica versione, test, build della UI e artefatti in bozza. Firma e aggiornamenti seguono le procedure del target.",
+        "Controlla l’inclusione dei moduli nativi ed escludi vault, configurazioni personali, log e backup. Esegui il pacchetto per rilevare file disponibili soltanto nel checkout."
+      ],
+      "sources": [
+        "package.json",
+        ".github/workflows/release.yml",
+        "tools/verifica-mongosh-nativi.cjs",
+        "docs/CODE_SIGNING.md",
+        "docs/WINDOWS_DISTRIBUTION.md"
+      ],
+      "tests": [
+        "test/unit-release-bozza.js",
+        "test/unit-release-gpg.cjs"
+      ],
+      "section": "delivery"
+    },
+    "testing": {
+      "kind": "section",
+      "title": "Verifica",
+      "summary": "Dalla modifica osservabile alla prova che rileva la regressione su una fixture isolata.",
+      "rules": [],
+      "sources": [
+        ".github/workflows/release.yml",
+        "android/test.cjs",
+        "docs/adr/"
+      ],
+      "tests": [
+        "test/e2e-import-volume.js"
+      ],
+      "area": "ops",
+      "anchor": "sviluppare-e-verificare-una-modifica"
+    },
+    "change-contract": {
+      "kind": "concept",
+      "title": "Contratto della modifica",
+      "summary": "Definisci un esito osservabile indicando motore, bersaglio, tipo di dato, azione e superficie. Segui il percorso esistente dal chiamante al DBMS.",
+      "rules": [
+        "Prova casi pertinenti come chiave composta, tab cambiato durante la lettura, formato storico o ack perso dopo una scrittura. Verifica anche il caso fuori scope per una modifica ai permessi.",
+        "Allinea contratto, chiamanti, test e guida. Per il lessico consulta il glossario e per le ragioni architetturali gli ADR."
+      ],
+      "sources": [
+        "AGENTS.md",
+        "CONTEXT.md",
+        "CONTRIBUTING.md",
+        "docs/adr/0001-tre-famiglie-di-evento.md"
+      ],
+      "tests": [
+        "test/unit-tabella-autorizzazioni.js",
+        "test/unit-registrazione-eventi.js"
+      ],
+      "section": "testing"
+    },
+    "test-selection": {
+      "kind": "concept",
+      "title": "Scelta delle prove",
+      "summary": "Collega ogni asserzione al livello che può dimostrarla. Un test di protocollo verifica un ack, mentre la lettura dal driver dimostra l’effetto sul database.",
+      "rules": [
+        "npm test aggrega i test unitari. Per Socket.IO e permessi usa unit-registrazione-eventi, unit-tabella-autorizzazioni e unit-server-modulare.",
+        "Per controlli Arc esegui npm run typecheck:ui, npm run build:ui e npm run test:e2e:arc. Verifica anche il documento originario se la richiesta termina dopo un cambio scheda.",
+        "Per il trasferimento ricontrolla dati, tipi, schema e vincoli su un DBMS di prova. e2e-export-formati richiede EXPORT_MYSQL_PORT, EXPORT_PG_PORT e EXPORT_MONGO_PORT esplicite."
+      ],
+      "sources": [
+        "package.json",
+        "test/server-fixture.js",
+        "docs/sql-nativo.md",
+        "docs/matrice-fedelta-export-import.md"
+      ],
+      "tests": [
+        "test/unit.js",
+        "test/e2e-arc-griglia.js",
+        "test/e2e-pagine-obsolete.js",
+        "test/e2e-export-formati.js"
+      ],
+      "section": "testing"
+    },
+    "test-isolation": {
+      "kind": "concept",
+      "title": "Isolamento delle fixture",
+      "summary": "startTestServer apre una porta dedicata e isola connessioni salvate, vault, audit e backup dell’istanza E2E.",
+      "rules": [
+        "Una porta già occupata viene rifiutata. Il motore DB indicato dalla suite resta reale, quindi usa database e schemi posseduti dalla fixture.",
+        "Il cleanup distruttivo di createE2eTargetRegistry richiede ownership del bersaglio, destructive: true e CODEDB_E2E_DESTRUCTIVE=1."
+      ],
+      "sources": [
+        "test/e2e-harness.js",
+        "test/all-e2e.js",
+        "test/lab/README.md"
+      ],
+      "tests": [
+        "test/e2e-dbexport.js",
+        "test/e2e-rbac.js"
+      ],
+      "section": "testing"
+    },
+    "test-sensitivity": {
+      "kind": "concept",
+      "title": "Sensibilità delle regressioni",
+      "summary": "Una nuova prova va eseguita sul codice corretto e su un difetto deliberato o sulla versione originaria difettosa.",
+      "rules": [
+        "node test/unit-import-conferma.js verifica la finalizzazione dopo la verifica della destinazione. Con --mutant la finalizzazione viene saltata in memoria e deve fallire l’asserzione pertinente.",
+        "Nel rapporto annota comando, ambiente, esito osservato e perimetro ancora aperto."
+      ],
+      "sources": [
+        "AGENTS.md",
+        "db/importPlan.js",
+        "test/lab/README.md"
+      ],
+      "tests": [
+        "test/unit-import-conferma.js",
+        "test/lab/unit-sensitivity.cjs"
+      ],
+      "section": "testing"
+    },
+    "reliability-lab": {
+      "kind": "concept",
+      "title": "Laboratorio di affidabilità",
+      "summary": "Il laboratorio Docker avvia DBMS usa e getta e usa riletture indipendenti con driver nativi o osservazioni nel browser.",
+      "rules": [
+        "Con Docker Linux, Compose, Node e Git usa npm run lab:prepara. lab:nuovi esegue le prove dedicate, lab:test le suite compatibili e lab:rapporti raccoglie gli esiti.",
+        "Le campagne condividono porte e fixture nello stesso runner. Riporta separatamente timeout, fallimenti, casi saltati e prerequisiti del profilo."
+      ],
+      "sources": [
+        "test/lab/README.md",
+        "test/lab/INTEGRITA.md",
+        "tools/laboratorio.cjs",
+        ".github/workflows/laboratorio.yml"
+      ],
+      "tests": [
+        "test/lab/integrita.cjs",
+        "test/lab/runner.cjs",
+        "test/lab/native.cjs"
+      ],
+      "section": "testing"
+    }
+  },
+  "edges": [
+    {
+      "from": "codedb",
+      "rel": "contains",
+      "to": "core"
+    },
+    {
+      "from": "codedb",
+      "rel": "contains",
+      "to": "data"
+    },
+    {
+      "from": "codedb",
+      "rel": "contains",
+      "to": "client"
+    },
+    {
+      "from": "codedb",
+      "rel": "contains",
+      "to": "ops"
+    },
+    {
+      "from": "core",
+      "rel": "contains",
+      "to": "repo"
+    },
+    {
+      "from": "repo",
+      "rel": "contains",
+      "to": "domain-targets"
+    },
+    {
+      "from": "repo",
+      "rel": "contains",
+      "to": "application-surfaces"
+    },
+    {
+      "from": "repo",
+      "rel": "contains",
+      "to": "shared-modules"
+    },
+    {
+      "from": "core",
+      "rel": "contains",
+      "to": "runtime"
+    },
+    {
+      "from": "runtime",
+      "rel": "contains",
+      "to": "local-development"
+    },
+    {
+      "from": "runtime",
+      "rel": "contains",
+      "to": "instance-config"
+    },
+    {
+      "from": "runtime",
+      "rel": "contains",
+      "to": "server-lifecycle"
+    },
+    {
+      "from": "runtime",
+      "rel": "contains",
+      "to": "session-ownership"
+    },
+    {
+      "from": "core",
+      "rel": "contains",
+      "to": "transport"
+    },
+    {
+      "from": "transport",
+      "rel": "contains",
+      "to": "event-families"
+    },
+    {
+      "from": "transport",
+      "rel": "contains",
+      "to": "socket-request"
+    },
+    {
+      "from": "transport",
+      "rel": "contains",
+      "to": "grid-page"
+    },
+    {
+      "from": "transport",
+      "rel": "contains",
+      "to": "cell-write"
+    },
+    {
+      "from": "core",
+      "rel": "contains",
+      "to": "errors"
+    },
+    {
+      "from": "errors",
+      "rel": "contains",
+      "to": "driver-diagnosis"
+    },
+    {
+      "from": "errors",
+      "rel": "contains",
+      "to": "query-error-range"
+    },
+    {
+      "from": "errors",
+      "rel": "contains",
+      "to": "uncertain-outcome"
+    },
+    {
+      "from": "errors",
+      "rel": "contains",
+      "to": "partial-failure"
+    },
+    {
+      "from": "data",
+      "rel": "contains",
+      "to": "strategies"
+    },
+    {
+      "from": "strategies",
+      "rel": "contains",
+      "to": "guarded-strategy"
+    },
+    {
+      "from": "strategies",
+      "rel": "contains",
+      "to": "typed-filter"
+    },
+    {
+      "from": "strategies",
+      "rel": "contains",
+      "to": "row-identity"
+    },
+    {
+      "from": "strategies",
+      "rel": "contains",
+      "to": "exact-values"
+    },
+    {
+      "from": "strategies",
+      "rel": "contains",
+      "to": "spatial-types"
+    },
+    {
+      "from": "data",
+      "rel": "contains",
+      "to": "queries"
+    },
+    {
+      "from": "queries",
+      "rel": "contains",
+      "to": "query-dispatch"
+    },
+    {
+      "from": "queries",
+      "rel": "contains",
+      "to": "native-sql-session"
+    },
+    {
+      "from": "queries",
+      "rel": "contains",
+      "to": "mongo-query-languages"
+    },
+    {
+      "from": "queries",
+      "rel": "contains",
+      "to": "mongo-script-interpreter"
+    },
+    {
+      "from": "queries",
+      "rel": "contains",
+      "to": "mongosh-process"
+    },
+    {
+      "from": "queries",
+      "rel": "contains",
+      "to": "virtual-join"
+    },
+    {
+      "from": "queries",
+      "rel": "contains",
+      "to": "script-runs"
+    },
+    {
+      "from": "ops",
+      "rel": "contains",
+      "to": "security"
+    },
+    {
+      "from": "security",
+      "rel": "contains",
+      "to": "rbac-principal"
+    },
+    {
+      "from": "security",
+      "rel": "contains",
+      "to": "strategy-authorization"
+    },
+    {
+      "from": "security",
+      "rel": "contains",
+      "to": "sql-scope"
+    },
+    {
+      "from": "security",
+      "rel": "contains",
+      "to": "vault-secrets"
+    },
+    {
+      "from": "security",
+      "rel": "contains",
+      "to": "ssh-pinning"
+    },
+    {
+      "from": "security",
+      "rel": "contains",
+      "to": "activity-audit"
+    },
+    {
+      "from": "client",
+      "rel": "contains",
+      "to": "frontend"
+    },
+    {
+      "from": "frontend",
+      "rel": "contains",
+      "to": "workspace-state"
+    },
+    {
+      "from": "frontend",
+      "rel": "contains",
+      "to": "browser-persistence"
+    },
+    {
+      "from": "frontend",
+      "rel": "contains",
+      "to": "split-panes"
+    },
+    {
+      "from": "frontend",
+      "rel": "contains",
+      "to": "arc-controls"
+    },
+    {
+      "from": "frontend",
+      "rel": "contains",
+      "to": "dialog-feedback"
+    },
+    {
+      "from": "frontend",
+      "rel": "contains",
+      "to": "theme-accessibility"
+    },
+    {
+      "from": "client",
+      "rel": "contains",
+      "to": "workspace"
+    },
+    {
+      "from": "workspace",
+      "rel": "contains",
+      "to": "data-grid"
+    },
+    {
+      "from": "workspace",
+      "rel": "contains",
+      "to": "schema-catalog"
+    },
+    {
+      "from": "workspace",
+      "rel": "contains",
+      "to": "editor-navigation"
+    },
+    {
+      "from": "workspace",
+      "rel": "contains",
+      "to": "selection-analytics"
+    },
+    {
+      "from": "workspace",
+      "rel": "contains",
+      "to": "geospatial-views"
+    },
+    {
+      "from": "workspace",
+      "rel": "contains",
+      "to": "schema-diagrams"
+    },
+    {
+      "from": "workspace",
+      "rel": "contains",
+      "to": "live-monitoring"
+    },
+    {
+      "from": "data",
+      "rel": "contains",
+      "to": "transfer"
+    },
+    {
+      "from": "transfer",
+      "rel": "contains",
+      "to": "export-formats"
+    },
+    {
+      "from": "transfer",
+      "rel": "contains",
+      "to": "transfer-plan"
+    },
+    {
+      "from": "transfer",
+      "rel": "contains",
+      "to": "artifact-transport"
+    },
+    {
+      "from": "transfer",
+      "rel": "contains",
+      "to": "source-consistency"
+    },
+    {
+      "from": "transfer",
+      "rel": "contains",
+      "to": "backup-chain"
+    },
+    {
+      "from": "transfer",
+      "rel": "contains",
+      "to": "restore-promotion"
+    },
+    {
+      "from": "ops",
+      "rel": "contains",
+      "to": "mcp"
+    },
+    {
+      "from": "mcp",
+      "rel": "contains",
+      "to": "mcp-session"
+    },
+    {
+      "from": "mcp",
+      "rel": "contains",
+      "to": "mcp-tools"
+    },
+    {
+      "from": "mcp",
+      "rel": "contains",
+      "to": "mcp-confirmation"
+    },
+    {
+      "from": "mcp",
+      "rel": "contains",
+      "to": "mcp-write-policy"
+    },
+    {
+      "from": "ops",
+      "rel": "contains",
+      "to": "delivery"
+    },
+    {
+      "from": "delivery",
+      "rel": "contains",
+      "to": "web-network"
+    },
+    {
+      "from": "delivery",
+      "rel": "contains",
+      "to": "docker-runtime"
+    },
+    {
+      "from": "delivery",
+      "rel": "contains",
+      "to": "electron-runtime"
+    },
+    {
+      "from": "delivery",
+      "rel": "contains",
+      "to": "android-runtime"
+    },
+    {
+      "from": "delivery",
+      "rel": "contains",
+      "to": "release-packaging"
+    },
+    {
+      "from": "ops",
+      "rel": "contains",
+      "to": "testing"
+    },
+    {
+      "from": "testing",
+      "rel": "contains",
+      "to": "change-contract"
+    },
+    {
+      "from": "testing",
+      "rel": "contains",
+      "to": "test-selection"
+    },
+    {
+      "from": "testing",
+      "rel": "contains",
+      "to": "test-isolation"
+    },
+    {
+      "from": "testing",
+      "rel": "contains",
+      "to": "test-sensitivity"
+    },
+    {
+      "from": "testing",
+      "rel": "contains",
+      "to": "reliability-lab"
+    },
+    {
+      "from": "application-surfaces",
+      "rel": "depends_on",
+      "to": "guarded-strategy"
+    },
+    {
+      "from": "session-ownership",
+      "rel": "depends_on",
+      "to": "domain-targets"
+    },
+    {
+      "from": "local-development",
+      "rel": "depends_on",
+      "to": "instance-config"
+    },
+    {
+      "from": "local-development",
+      "rel": "calls",
+      "to": "server-lifecycle"
+    },
+    {
+      "from": "local-development",
+      "rel": "depends_on",
+      "to": "shared-modules"
+    },
+    {
+      "from": "server-lifecycle",
+      "rel": "depends_on",
+      "to": "instance-config"
+    },
+    {
+      "from": "server-lifecycle",
+      "rel": "calls",
+      "to": "session-ownership"
+    },
+    {
+      "from": "session-ownership",
+      "rel": "calls",
+      "to": "guarded-strategy"
+    },
+    {
+      "from": "session-ownership",
+      "rel": "depends_on",
+      "to": "security"
+    },
+    {
+      "from": "socket-request",
+      "rel": "calls",
+      "to": "event-families"
+    },
+    {
+      "from": "event-families",
+      "rel": "depends_on",
+      "to": "session-ownership"
+    },
+    {
+      "from": "event-families",
+      "rel": "calls",
+      "to": "guarded-strategy"
+    },
+    {
+      "from": "event-families",
+      "rel": "calls",
+      "to": "driver-diagnosis"
+    },
+    {
+      "from": "event-families",
+      "rel": "depends_on",
+      "to": "security"
+    },
+    {
+      "from": "grid-page",
+      "rel": "calls",
+      "to": "socket-request"
+    },
+    {
+      "from": "grid-page",
+      "rel": "depends_on",
+      "to": "typed-filter"
+    },
+    {
+      "from": "grid-page",
+      "rel": "reads",
+      "to": "row-identity"
+    },
+    {
+      "from": "cell-write",
+      "rel": "calls",
+      "to": "socket-request"
+    },
+    {
+      "from": "cell-write",
+      "rel": "reads",
+      "to": "row-identity"
+    },
+    {
+      "from": "cell-write",
+      "rel": "depends_on",
+      "to": "exact-values"
+    },
+    {
+      "from": "cell-write",
+      "rel": "depends_on",
+      "to": "domain-targets"
+    },
+    {
+      "from": "uncertain-outcome",
+      "rel": "recovers",
+      "to": "session-ownership"
+    },
+    {
+      "from": "socket-request",
+      "rel": "depends_on",
+      "to": "uncertain-outcome"
+    },
+    {
+      "from": "query-error-range",
+      "rel": "depends_on",
+      "to": "driver-diagnosis"
+    },
+    {
+      "from": "partial-failure",
+      "rel": "depends_on",
+      "to": "transfer"
+    },
+    {
+      "from": "typed-filter",
+      "rel": "depends_on",
+      "to": "shared-modules"
+    },
+    {
+      "from": "typed-filter",
+      "rel": "depends_on",
+      "to": "domain-targets"
+    },
+    {
+      "from": "row-identity",
+      "rel": "depends_on",
+      "to": "exact-values"
+    },
+    {
+      "from": "spatial-types",
+      "rel": "depends_on",
+      "to": "guarded-strategy"
+    },
+    {
+      "from": "delivery",
+      "rel": "depends_on",
+      "to": "shared-modules"
+    },
+    {
+      "from": "mcp",
+      "rel": "depends_on",
+      "to": "guarded-strategy"
+    },
+    {
+      "from": "queries",
+      "rel": "depends_on",
+      "to": "query-error-range"
+    },
+    {
+      "from": "transfer",
+      "rel": "depends_on",
+      "to": "row-identity"
+    },
+    {
+      "from": "workspace",
+      "rel": "depends_on",
+      "to": "spatial-types"
+    },
+    {
+      "from": "frontend",
+      "rel": "calls",
+      "to": "socket-request"
+    },
+    {
+      "from": "query-dispatch",
+      "rel": "calls",
+      "to": "native-sql-session"
+    },
+    {
+      "from": "query-dispatch",
+      "rel": "calls",
+      "to": "mongo-query-languages"
+    },
+    {
+      "from": "query-dispatch",
+      "rel": "calls",
+      "to": "mongo-script-interpreter"
+    },
+    {
+      "from": "query-dispatch",
+      "rel": "calls",
+      "to": "mongosh-process"
+    },
+    {
+      "from": "query-dispatch",
+      "rel": "calls",
+      "to": "virtual-join"
+    },
+    {
+      "from": "script-runs",
+      "rel": "calls",
+      "to": "query-dispatch"
+    },
+    {
+      "from": "script-runs",
+      "rel": "depends_on",
+      "to": "native-sql-session"
+    },
+    {
+      "from": "virtual-join",
+      "rel": "reads",
+      "to": "strategies"
+    },
+    {
+      "from": "mongo-query-languages",
+      "rel": "depends_on",
+      "to": "strategies"
+    },
+    {
+      "from": "native-sql-session",
+      "rel": "depends_on",
+      "to": "strategies"
+    },
+    {
+      "from": "mongo-script-interpreter",
+      "rel": "depends_on",
+      "to": "strategy-authorization"
+    },
+    {
+      "from": "mongosh-process",
+      "rel": "depends_on",
+      "to": "rbac-principal"
+    },
+    {
+      "from": "strategy-authorization",
+      "rel": "guards",
+      "to": "native-sql-session"
+    },
+    {
+      "from": "strategy-authorization",
+      "rel": "guards",
+      "to": "mongo-query-languages"
+    },
+    {
+      "from": "strategy-authorization",
+      "rel": "guards",
+      "to": "virtual-join"
+    },
+    {
+      "from": "strategy-authorization",
+      "rel": "guards",
+      "to": "mcp"
+    },
+    {
+      "from": "strategy-authorization",
+      "rel": "depends_on",
+      "to": "rbac-principal"
+    },
+    {
+      "from": "strategy-authorization",
+      "rel": "depends_on",
+      "to": "sql-scope"
+    },
+    {
+      "from": "rbac-principal",
+      "rel": "guards",
+      "to": "vault-secrets"
+    },
+    {
+      "from": "rbac-principal",
+      "rel": "guards",
+      "to": "mongosh-process"
+    },
+    {
+      "from": "activity-audit",
+      "rel": "reads",
+      "to": "rbac-principal"
+    },
+    {
+      "from": "script-runs",
+      "rel": "writes",
+      "to": "activity-audit"
+    },
+    {
+      "from": "ssh-pinning",
+      "rel": "depends_on",
+      "to": "vault-secrets"
+    },
+    {
+      "from": "workspace-state",
+      "rel": "calls",
+      "to": "transport"
+    },
+    {
+      "from": "browser-persistence",
+      "rel": "recovers",
+      "to": "workspace-state"
+    },
+    {
+      "from": "split-panes",
+      "rel": "depends_on",
+      "to": "workspace-state"
+    },
+    {
+      "from": "split-panes",
+      "rel": "depends_on",
+      "to": "transport"
+    },
+    {
+      "from": "arc-controls",
+      "rel": "depends_on",
+      "to": "theme-accessibility"
+    },
+    {
+      "from": "dialog-feedback",
+      "rel": "depends_on",
+      "to": "arc-controls"
+    },
+    {
+      "from": "dialog-feedback",
+      "rel": "reads",
+      "to": "errors"
+    },
+    {
+      "from": "data-grid",
+      "rel": "depends_on",
+      "to": "workspace-state"
+    },
+    {
+      "from": "data-grid",
+      "rel": "reads",
+      "to": "schema-catalog"
+    },
+    {
+      "from": "editor-navigation",
+      "rel": "reads",
+      "to": "schema-catalog"
+    },
+    {
+      "from": "editor-navigation",
+      "rel": "depends_on",
+      "to": "workspace-state"
+    },
+    {
+      "from": "selection-analytics",
+      "rel": "reads",
+      "to": "data-grid"
+    },
+    {
+      "from": "geospatial-views",
+      "rel": "reads",
+      "to": "data-grid"
+    },
+    {
+      "from": "schema-diagrams",
+      "rel": "reads",
+      "to": "schema-catalog"
+    },
+    {
+      "from": "schema-diagrams",
+      "rel": "writes",
+      "to": "browser-persistence"
+    },
+    {
+      "from": "live-monitoring",
+      "rel": "invalidates",
+      "to": "editor-navigation"
+    },
+    {
+      "from": "live-monitoring",
+      "rel": "recovers",
+      "to": "data-grid"
+    },
+    {
+      "from": "export-formats",
+      "rel": "depends_on",
+      "to": "transfer-plan"
+    },
+    {
+      "from": "export-formats",
+      "rel": "depends_on",
+      "to": "source-consistency"
+    },
+    {
+      "from": "export-formats",
+      "rel": "writes",
+      "to": "artifact-transport"
+    },
+    {
+      "from": "export-formats",
+      "rel": "depends_on",
+      "to": "strategy-authorization"
+    },
+    {
+      "from": "export-formats",
+      "rel": "writes",
+      "to": "activity-audit"
+    },
+    {
+      "from": "transfer-plan",
+      "rel": "guards",
+      "to": "restore-promotion"
+    },
+    {
+      "from": "artifact-transport",
+      "rel": "depends_on",
+      "to": "security"
+    },
+    {
+      "from": "backup-chain",
+      "rel": "depends_on",
+      "to": "source-consistency"
+    },
+    {
+      "from": "restore-promotion",
+      "rel": "reads",
+      "to": "backup-chain"
+    },
+    {
+      "from": "restore-promotion",
+      "rel": "depends_on",
+      "to": "strategies"
+    },
+    {
+      "from": "mcp-session",
+      "rel": "depends_on",
+      "to": "security"
+    },
+    {
+      "from": "mcp-tools",
+      "rel": "depends_on",
+      "to": "mcp-session"
+    },
+    {
+      "from": "mcp-tools",
+      "rel": "calls",
+      "to": "mcp-confirmation"
+    },
+    {
+      "from": "mcp-tools",
+      "rel": "calls",
+      "to": "restore-promotion"
+    },
+    {
+      "from": "mcp-tools",
+      "rel": "reads",
+      "to": "backup-chain"
+    },
+    {
+      "from": "mcp-write-policy",
+      "rel": "guards",
+      "to": "mcp-confirmation"
+    },
+    {
+      "from": "mcp-write-policy",
+      "rel": "depends_on",
+      "to": "security"
+    },
+    {
+      "from": "mcp-confirmation",
+      "rel": "depends_on",
+      "to": "mcp-session"
+    },
+    {
+      "from": "web-network",
+      "rel": "guards",
+      "to": "transport"
+    },
+    {
+      "from": "docker-runtime",
+      "rel": "depends_on",
+      "to": "web-network"
+    },
+    {
+      "from": "electron-runtime",
+      "rel": "calls",
+      "to": "runtime"
+    },
+    {
+      "from": "android-runtime",
+      "rel": "calls",
+      "to": "runtime"
+    },
+    {
+      "from": "release-packaging",
+      "rel": "reads",
+      "to": "frontend"
+    },
+    {
+      "from": "test-selection",
+      "rel": "depends_on",
+      "to": "change-contract"
+    },
+    {
+      "from": "test-selection",
+      "rel": "verifies",
+      "to": "transport"
+    },
+    {
+      "from": "test-selection",
+      "rel": "verifies",
+      "to": "workspace"
+    },
+    {
+      "from": "test-sensitivity",
+      "rel": "verifies",
+      "to": "restore-promotion"
+    },
+    {
+      "from": "reliability-lab",
+      "rel": "depends_on",
+      "to": "test-isolation"
+    },
+    {
+      "from": "reliability-lab",
+      "rel": "verifies",
+      "to": "backup-chain"
+    },
+    {
+      "from": "reliability-lab",
+      "rel": "verifies",
+      "to": "mcp-tools"
+    },
+    {
+      "from": "reliability-lab",
+      "rel": "verifies",
+      "to": "queries"
+    },
+    {
+      "from": "cell-write",
+      "rel": "depends_on",
+      "to": "workspace-state"
+    },
+    {
+      "from": "data-grid",
+      "rel": "reads",
+      "to": "grid-page"
+    },
+    {
+      "from": "dialog-feedback",
+      "rel": "reads",
+      "to": "driver-diagnosis"
+    },
+    {
+      "from": "geospatial-views",
+      "rel": "depends_on",
+      "to": "spatial-types"
+    },
+    {
+      "from": "virtual-join",
+      "rel": "depends_on",
+      "to": "exact-values"
+    },
+    {
+      "from": "query-dispatch",
+      "rel": "depends_on",
+      "to": "session-ownership"
+    },
+    {
+      "from": "mcp-write-policy",
+      "rel": "depends_on",
+      "to": "strategy-authorization"
+    },
+    {
+      "from": "mcp-session",
+      "rel": "depends_on",
+      "to": "rbac-principal"
+    },
+    {
+      "from": "source-consistency",
+      "rel": "depends_on",
+      "to": "guarded-strategy"
+    },
+    {
+      "from": "release-packaging",
+      "rel": "depends_on",
+      "to": "arc-controls"
+    },
+    {
+      "from": "backup-chain",
+      "rel": "depends_on",
+      "to": "row-identity"
+    },
+    {
+      "from": "uncertain-outcome",
+      "rel": "depends_on",
+      "to": "session-ownership"
+    }
+  ]
+}

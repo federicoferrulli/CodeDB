@@ -3,15 +3,17 @@
 const { mysqlSchemaObjects } = require('../backup/lib/engine');
 const { pgSchemaObjects } = require('./pg-ddl');
 const { quotaSempre } = require('./identificatori');
+const { collectionDiSistema } = require('./DbStrategy');
 const { codificaMetadati, decodificaMetadati, documentoCanonico } = require('./mongoSchemaBson');
 
 /** Legge gli oggetti non-tabella usando gli stessi cataloghi del backup full. */
-async function readSchemaObjects(strategy, dbType, db) {
+async function readSchemaObjects(strategy, dbType, db, opzioniPg) {
   const type = dbType === 'postgres' ? 'postgresql' : dbType;
   if (type === 'mongodb') {
     const infos = await strategy.client.db(db).listCollections({}, { promoteValues: false }).toArray();
     const out = { views: [], collectionOptions: [] };
     for (const info of infos) {
+      if (collectionDiSistema(type, info.name)) continue;
       if (info.type === 'view') {
         out.views.push({
           name: info.name, viewOn: info.options && info.options.viewOn,
@@ -36,7 +38,7 @@ async function readSchemaObjects(strategy, dbType, db) {
   }
   if (type === 'postgresql') {
     const client = await strategy.pool.connect();
-    try { return await pgSchemaObjects((sql, params) => client.query(sql, params), db); }
+    try { return await pgSchemaObjects((sql, params) => client.query(sql, params), db, opzioniPg); }
     finally { client.release(); }
   }
   throw new Error(`Motore non supportato per gli oggetti di schema: ${dbType}.`);

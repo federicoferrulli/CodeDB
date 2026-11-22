@@ -312,14 +312,14 @@ async function apriUml(page, server, { db, schema, rispondi, pagine, guastaStora
         schema: { collections: [{ name: 't', fields: [] }], relations: [], schemaPage: { complete: true } },
         guastaStorage: true,
       });
-      await page.waitForSelector('[role="status"][data-tone="warning"]', { timeout: 5000 });
+      const erroreArchivio = page.getByRole('alert').filter({ hasText: /archiviazione/i });
+      await erroreArchivio.waitFor();
       await page.waitForSelector('#uml-canvas .joint-element');
       const stato = await page.evaluate(() => ({
-        avviso: document.querySelector('[role="status"][data-tone="warning"]')?.textContent || '',
         nodi: document.querySelectorAll('#uml-canvas .joint-element').length,
         esporta: !!document.getElementById('uml-esporta-btn'),
       }));
-      ok(/archiviazione/.test(stato.avviso) && stato.nodi >= 1 && stato.esporta,
+      ok(await erroreArchivio.getAttribute('data-tone') === 'error' && stato.nodi >= 1 && stato.esporta,
         'senza storage: errore dichiarato, diagramma in memoria, export disponibile',
         JSON.stringify(stato));
       ok(errori.length === 0, 'nessun crash senza storage', errori.join(' | '));

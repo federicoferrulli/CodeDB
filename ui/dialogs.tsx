@@ -56,12 +56,13 @@ function Finestra({ open, panel, overlay, dismiss, restoreFocus, onExitComplete 
     const selector = overlay.id === 'palette-overlay' ? '#feedback-container'
       : '#fk-pannello, .ac-flottante, #context-menu, #feedback-container';
     const auxiliary = [...document.querySelectorAll<HTMLElement>(selector)]
-      .map(node => ({ node, parent: node.parentNode!, next: node.nextSibling }));
-    for (const { node } of auxiliary) (node.id === 'feedback-container' ? panel : container).append(node);
+      .map(node => ({ node, parent: node.parentNode!, next: node.nextSibling,
+        host: node.id === 'feedback-container' && overlay.id !== 'connect-overlay' ? panel : container }));
+    for (const { node, host } of auxiliary) host.append(node);
     return () => {
-      for (const { node, parent, next } of auxiliary) {
+      for (const { node, parent, next, host } of auxiliary) {
         // Una finestra sovrapposta può aver già preso il popup in consegna.
-        if (node.parentNode !== (node.id === 'feedback-container' ? panel : container)) continue;
+        if (node.parentNode !== host) continue;
         const owner = parent instanceof Element ? parent.closest('.overlay, .palette-overlay') : null;
         const target = parent.isConnected && !owner?.classList.contains('hidden') ? parent : document.body;
         target.insertBefore(node, next?.parentNode === target ? next : null);

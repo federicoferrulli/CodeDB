@@ -76,6 +76,19 @@ restano disponibili alla richiesta seguente. La disconnessione annulla le
 transazioni aperte e distrugge la sessione. Gli script mantengono una sessione
 separata, come già previsto dal runner; una transazione lasciata aperta a fine
 script viene annullata, salvo la continuazione esplicita a blocchi del runner.
+I blocchi dello stesso file condividono la connessione e il database scelto da
+`USE`. In modalità continua un errore di istruzione compare nel resoconto e lo
+script raggiunge il `COMMIT` o il `ROLLBACK` scritto nel file. Su PostgreSQL un
+savepoint per istruzione conserva la transazione dopo una violazione di vincolo.
+Nei file a blocchi la protezione vale anche quando si chiede la pausa al primo
+errore, così **Riprendi** può proseguire con l'istruzione successiva. Se il
+motore perde la connessione o chiude la transazione a causa dell'errore, il
+runner interrompe il file e registra l'istruzione interessata.
+
+Se si interrompe il collegamento tra browser e CodeDB, lascia aperta la pagina.
+Il server conserva la sessione per dieci minuti. Quando la rete torna disponibile,
+l’editor recupera il risultato della query o prosegue il file dal blocco raggiunto,
+con le stesse variabili e la stessa transazione SQL.
 
 Su PostgreSQL `ROLLBACK`, `ROLLBACK TO SAVEPOINT`, `COMMIT` e `ABORT` raggiungono
 il server senza comandi `SET` anteposti, anche dopo un errore nativo. La sessione

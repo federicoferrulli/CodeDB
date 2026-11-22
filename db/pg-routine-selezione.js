@@ -88,4 +88,11 @@ async function riferimentiRoutineBackup(chain, collections) {
   return [...refs];
 }
 
-module.exports = { routineSelettivePg, riferimentiRoutineBackup };
+function ddlSelettiveBackup(chain, collections, opts = {}) {
+  return chain.flatMap(layer => layer.manifest.files
+    .filter(file => file.kind === 'schema' && collections.includes(file.collection))
+    .map(file => require('../backup/lib/restore-catena').readSchemaFile(layer.dir,file,file.collection,
+      { ...opts, dbType:'postgresql', database:layer.manifest.db }))).join('\n');
+}
+
+module.exports = { routineSelettivePg, riferimentiRoutineBackup, ddlSelettiveBackup };

@@ -41,6 +41,7 @@ services:
       - CODEDB_APP_DB_URI=${CODEDB_APP_DB_URI:-}
       - CODEDB_OWNER_EMAIL=${CODEDB_OWNER_EMAIL:-}
       - CODEDB_OWNER_PASSWORD=${CODEDB_OWNER_PASSWORD:-}
+      - CODEDB_LOCAL_OWNER_ID=${CODEDB_LOCAL_OWNER_ID:-}
       # Dove la porta è PUBBLICATA (la stessa BIND_ADDR di `ports:`): è questo
       # che il server guarda, non HOST, che nel container è interno. Con
       # BIND_ADDR=0.0.0.0 l'avvio pretende sia CODEDB_TRUST_PROXY_TLS=1 sia
@@ -50,6 +51,8 @@ services:
       # c'era, e insieme al default CODEDB_RBAC=off bastava BIND_ADDR=0.0.0.0
       # per pubblicare in rete una GUI con pieni poteri e senza credenziali.
       - CODEDB_TRUST_PROXY_TLS=${CODEDB_TRUST_PROXY_TLS:-}
+      - CODEDB_TRUST_PROXY_HOPS=${CODEDB_TRUST_PROXY_HOPS:-1}
+      - CODEDB_TRUST_PROXY_CIDRS=${CODEDB_TRUST_PROXY_CIDRS:-loopback}
       # Ultima spiaggia consapevole: esporre in rete SENZA autenticazione
       # (rete privata, VPN, firewall). Lasciala vuota se non sai cos'è.
       - CODEDB_ALLOW_UNAUTHENTICATED_NETWORK=${CODEDB_ALLOW_UNAUTHENTICATED_NETWORK:-}
@@ -58,6 +61,10 @@ services:
       # sbloccato il vault dalla UI. Impostare via .env, mai in chiaro qui.
       - GUI_MONGO_PASSPHRASE=${GUI_MONGO_PASSPHRASE:-}
     volumes:
+      # Prima di ricreare un vecchio container, conserva log e impostazioni MCP:
+      # docker compose stop codedb
+      # node tools/migra-dati-docker.js
+      # docker compose up -d --build codedb
       # connections.ini e backups/ persistono fuori dal container: senza
       # questi volumi, ricreare il container azzera tutte le connessioni
       # salvate dall'utente via UI.

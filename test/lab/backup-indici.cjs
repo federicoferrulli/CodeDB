@@ -28,7 +28,7 @@ async function worker(mutante) {
   if (mutante) {
     // Mutazione del consumer, soltanto nel processo figlio: l'archivio e la
     // verifica degli oggetti restano intatti e devono rilevare gli indici persi.
-    const target = require.resolve('../../backup/lib/restore');
+    const target = require.resolve('../../backup/lib/restore-oggetti');
     const source = fs.readFileSync(target, 'utf8');
     const seam = 'for (const indice of oggetti.indexes || [])';
     assert.equal(source.split(seam).length, 2, 'Punto di mutazione assente o ambiguo');

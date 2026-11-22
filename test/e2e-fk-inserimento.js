@@ -548,7 +548,7 @@ async function attesaFn(page, fn, ...args) {
     });
     await attesaFn(page, () => !document.querySelector('#fk-pannello').classList.contains('hidden'));
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(150);
+    await attesaFn(page, () => document.querySelector('#fk-pannello').classList.contains('hidden'));
     const esc1 = await page.evaluate(() => ({
       pannello: document.querySelector('#fk-pannello').classList.contains('hidden'),
       modale: document.querySelector('#insert-overlay').classList.contains('hidden'),

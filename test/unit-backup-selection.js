@@ -59,12 +59,16 @@ module.exports = (async () => {
       mod.filename = registryPath; mod.paths = Module._nodeModulePaths(path.dirname(registryPath));
       mod._compile(altered, registryPath); require.cache[registryPath] = mod;
     }
-    fs.writeFileSync(path.join(dir, 'manifest.json'), '{}');
+    fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({
+      version: 1, type: 'full', id: path.basename(dir), db: 'public', connection: 'Prova',
+      dbType: 'postgresql', startedAt: '2026-01-01T00:00:00Z', files: [],
+    }));
     require(modulePath).createModule({
       lock: { normTabId: id => id }, identita: { assertWholeConnection() {}, assertManage() {} },
       operazioni: { resolveBackupPath: () => dir, backupRootOf: () => dir }, audit: { auditWrite() {} },
       errori: { errMsg: e => e.message }, config: { env: {} },
-    })({ principal: { ownerId: 'test', id: 'test' }, sessions: new Map([['a', { connName: 'Prova', dbType: 'postgresql', strategy: {} }]]), socket: { emit() {} } },
+    })({ principal: require('../auth/principal').makePrincipal({ _id: 'test', type: 'owner' }),
+      sessions: new Map([['a', { connName: 'Prova', dbType: 'postgresql', strategy: {} }]]), socket: { emit() {} } },
       { safeOn: (name, handler) => handlers.set(name, handler) });
     let restored;
     await handlers.get('backup:restore')({ tabId: 'a', from: dir }, result => { restored = result; });

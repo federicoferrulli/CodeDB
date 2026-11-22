@@ -17,8 +17,8 @@ vivono nel vault, mai nel browser.
 _Avoid_: profilo, credenziale
 
 **Sessione**:
-Una connessione viva, aperta verso un database e legata a un singolo tab. Muore con il tab
-e con il socket.
+Una connessione viva, aperta verso un database e legata a un singolo tab.
+La stessa pagina può ritrovarla dopo una breve interruzione della rete.
 _Avoid_: connessione (quando si intende quella viva), client
 
 **Tab**:

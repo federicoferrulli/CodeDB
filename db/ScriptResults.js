@@ -31,6 +31,7 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const os = require('os');
 const path = require('path');
+const { anteprimaTesto } = require('./ScriptRunner');
 
 function intFromEnv(nome, predefinito) {
   const v = parseInt(process.env[nome], 10);
@@ -64,7 +65,8 @@ function idDeposito(code, adesso = Date.now()) {
   // nome è utilizzabile come cartella senza ripulirlo. Con il base64 normale
   // arriverebbero "+", "=" e soprattutto "/", che è un separatore di percorso —
   // cioè un modo per scrivere fuori dalla radice.
-  const b64 = Buffer.from(String(code == null ? '' : code), 'utf8').toString('base64url');
+  // I primi dieci caratteri base64 dipendono da otto byte al massimo.
+  const b64 = Buffer.from(String(code ?? '').slice(0, 10), 'utf8').toString('base64url');
   const testa = b64.slice(0, 10) || 'script';
   return testa + '-' + adesso;
 }
@@ -128,10 +130,11 @@ function creaDeposito(code, opzioni) {
         pos: voci.length,     // posizione fra le SCHEDE (non fra le istruzioni)
         index,                // istruzione dello script a cui appartiene
         line,
-        sql,
+        sql: anteprimaTesto(sql),
         rows: docs.length,
         columns,
         ...errore,
+        ...(error ? { error: anteprimaTesto(error, 4096) } : {}),
         bytes: dimensione,
       };
       voci.push(Object.assign({ file }, voce));

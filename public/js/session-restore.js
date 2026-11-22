@@ -129,6 +129,7 @@ function reconnectTab(info) {
       tab.label = info.connName || res.label || 'Connessione';
       Object.assign(tab.state, {
         connected: true,
+        dbSessionId: res.dbSessionId,
         connLabel: res.label || '',
         dbType: tab.dbType,
         databases: res.databases || [],

@@ -890,31 +890,9 @@ class Interprete {
           scope,
         };
 
-      case 'Member': {
-        const obj = await this.valuta(nodo.obj, scope);
-        const chiave = nodo.computed ? await this.valuta(nodo.prop, scope) : nodo.prop.value;
-        return getMember(obj, chiave, this.ctx);
-      }
-
-      case 'Call': {
-        let thisObj = null;
-        let fn;
-        if (nodo.callee.type === 'Member') {
-          thisObj = await this.valuta(nodo.callee.obj, scope);
-          const chiave = nodo.callee.computed
-            ? await this.valuta(nodo.callee.prop, scope)
-            : nodo.callee.prop.value;
-          fn = getMember(thisObj, chiave, this.ctx);
-          if (fn === undefined) {
-            throw errore(`Metodo non trovato: "${chiave}"`, nodo.line);
-          }
-        } else {
-          fn = await this.valuta(nodo.callee, scope);
-        }
-        const args = [];
-        for (const a of nodo.args) args.push(await this.valuta(a, scope));
-        return this.chiamaFunzione(fn, args);
-      }
+      case 'Member':
+      case 'Call':
+        return (await this.evalChain(nodo, scope)).value;
 
       case 'New': {
         // Solo i costruttori dell'ambiente: `new Date(...)`, `new ObjectId(...)`.
@@ -989,6 +967,45 @@ class Interprete {
       default:
         throw errore(`Espressione non supportata: ${nodo.type}`, nodo.line);
     }
+  }
+
+  async evalChain(nodo, scope) {
+    if (nodo.type === 'Member') {
+      const base = (nodo.obj.type === 'Member' || nodo.obj.type === 'Call')
+        ? await this.evalChain(nodo.obj, scope)
+        : { shortCircuit: false, value: await this.valuta(nodo.obj, scope) };
+      if (base.shortCircuit) return base;
+      if (nodo.optional && base.value == null) return { shortCircuit: true, value: undefined };
+      const chiave = nodo.computed ? await this.valuta(nodo.prop, scope) : nodo.prop.value;
+      return { shortCircuit: false, value: getMember(base.value, chiave, this.ctx) };
+    }
+    if (nodo.type === 'Call') {
+      let fn;
+      if (nodo.callee.type === 'Member') {
+        const base = (nodo.callee.obj.type === 'Member' || nodo.callee.obj.type === 'Call')
+          ? await this.evalChain(nodo.callee.obj, scope)
+          : { shortCircuit: false, value: await this.valuta(nodo.callee.obj, scope) };
+        if (base.shortCircuit) return base;
+        if (nodo.callee.optional && base.value == null) return { shortCircuit: true, value: undefined };
+        const chiave = nodo.callee.computed
+          ? await this.valuta(nodo.callee.prop, scope)
+          : nodo.callee.prop.value;
+        fn = getMember(base.value, chiave, this.ctx);
+        if (nodo.optional && fn == null) return { shortCircuit: true, value: undefined };
+        if (fn === undefined) throw errore(`Metodo non trovato: "${chiave}"`, nodo.line);
+      } else {
+        const base = (nodo.callee.type === 'Call')
+          ? await this.evalChain(nodo.callee, scope)
+          : { shortCircuit: false, value: await this.valuta(nodo.callee, scope) };
+        if (base.shortCircuit) return base;
+        fn = base.value;
+        if (nodo.optional && fn == null) return { shortCircuit: true, value: undefined };
+      }
+      const args = [];
+      for (const a of nodo.args) args.push(await this.valuta(a, scope));
+      return { shortCircuit: false, value: await this.chiamaFunzione(fn, args) };
+    }
+    return { shortCircuit: false, value: await this.valuta(nodo, scope) };
   }
 
   async assegnaA(bersaglio, valore, scope) {

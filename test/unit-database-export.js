@@ -5,9 +5,43 @@ const os = require('os');
 const path = require('path');
 const { Long, EJSON } = require('bson');
 const { creaPianoExport } = require('../db/exportPlan');
-const { esportaDatabase, insertSql, statement } = require('../db/databaseExport');
+const { esportaDatabase, insertSql, scritturaRighe, statement } = require('../db/databaseExport');
 const { creaFileExport } = require('../db/exportFile');
 const { createArchivioUpload } = require('../db/uploadDisco');
+const { preparaTabelle, seRichiesto, seAssenteMySql } = require('../db/exportSqlTabelle');
+const { quotaSempre } = require('../db/identificatori');
+
+function verificaStrutturaCondizionale() {
+  for (const dbType of ['postgresql', 'mysql']) {
+    const mysql = dbType === 'mysql';
+    const q = n => quotaSempre(n, dbType);
+    const literal = v => require('../db/databaseExport').letterale(v, mysql);
+    const nome = mysql ? 'con`apice' : 'con"apice';
+    const tables = [
+      { nome, struttura: true },
+      { nome: 'richiesta_dalla_vista', struttura: true, aggiuntoPerDipendenza: true },
+      { nome: 'solo_dati', dati: true },
+    ];
+    const plan = { dbType, sourceDb: 'schema', ordine: { creazione: [] }, oggetti: tables, opzioniSql: {} };
+    const prepara = tabelle => {
+      plan.opzioniSql.tabelle = tabelle;
+      return preparaTabelle({ plan, tables, objects: { views: [] }, q, literal });
+    };
+    assert.deepStrictEqual(prepara('crea').preambolo, []);
+    const condizionale = prepara('se-assente');
+    assert.deepStrictEqual([...condizionale.nuove.keys()], [nome, 'richiesta_dalla_vista']);
+    assert(!condizionale.preambolo.join('').includes('DROP TABLE'));
+    const ricrea = prepara('ricrea');
+    const drops = ricrea.preambolo.filter(sql => sql.startsWith('DROP TABLE'));
+    assert.deepStrictEqual(drops, ['DROP TABLE IF EXISTS ' + q('schema') + '.' + q(nome) + ';\n']);
+    assert.deepStrictEqual([...ricrea.nuove.keys()], ['richiesta_dalla_vista']);
+    const flag = condizionale.nuove.get(nome);
+    const ddl = seRichiesto('ALTER TABLE t ADD CONSTRAINT fk FOREIGN KEY (id) REFERENCES p(id)', flag, { mysql, literal, statement });
+    assert(ddl.includes(flag), 'il vincolo segue la creazione effettiva della tabella');
+  }
+  assert.match(seAssenteMySql('CREATE DEFINER=`TRIGGER`@`localhost` TRIGGER `t` BEFORE INSERT ON a FOR EACH ROW SET NEW.n=1'),
+    /@`localhost` TRIGGER IF NOT EXISTS `t`/);
+}
 
 function fixture(modalita, selezione) {
   const plan = creaPianoExport({ connection: 'locale', formato: 'codedb-json', modalita, selezione,
@@ -31,7 +65,23 @@ function fixture(modalita, selezione) {
   return { plan, strategy, collection, reads: () => reads };
 }
 
+function verificaStrutturaMongo() {
+  const { strutturaMongosh } = require('../db/exportMongoStruttura');
+  const t = { id: 'collection:t', tipo: 'collection', nome: 't', struttura: false, dati: true };
+  const plan = { oggetti: [t], ordine: { creazione: [] }, opzioniMongo: { documenti: 'aggiorna' } };
+  const catalogoMongo = new Map([['t', { type: 'timeseries' }]]);
+  const crea = () => strutturaMongosh({ plan, tables: [t], meta: new Map(), catalogoMongo,
+    espressioneBson: bytes => EJSON.stringify(require('bson').deserialize(bytes)) });
+  assert.throws(crea, /time-series/, 'lo script di upsert non può aggiornare misure per _id');
+  catalogoMongo.set('t', { type: 'view' });
+  assert.throws(crea, /tipo/, 'un nome diventato una vista richiede un nuovo piano');
+  catalogoMongo.set('t', { type: 'collection', options: { encryptedFields: {} } });
+  assert.throws(crea, /Queryable Encryption/);
+}
+
 module.exports = (async () => {
+  verificaStrutturaCondizionale();
+  verificaStrutturaMongo();
   for (const mode of ['solo-struttura', 'solo-dati', 'personalizzata']) {
     const f = fixture(mode, mode === 'personalizzata' ? { 'collection:t': { struttura: true, dati: true } } : null);
     let text = '';
@@ -60,12 +110,30 @@ module.exports = (async () => {
     const guasto = fixture('struttura-e-dati');
     guasto.collection.find = () => { throw new Error('Lettura interrotta'); };
     await assert.rejects(creaFileExport({ ...guasto, archivio, ownerId: 'owner', actorId: 'actor' }), /Lettura interrotta/);
+    const bson = require('bson');
+    const raw = bson.serialize({ _id: 1, x: 2, y: 3 });
+    raw[bson.onDemand.parseToElements(raw).at(-1)[1]] = 'x'.charCodeAt(0); // due campi con lo stesso nome
+    const ambiguo = fixture('solo-dati');
+    ambiguo.collection.find = () => ({ batchSize() { return this; }, async close() {},
+      async *[Symbol.asyncIterator]() { yield raw; } });
+    const piano = creaPianoExport({ connection: 'test', formato: 'mongosh', modalita: 'solo-dati',
+      catalogo: { db: 'demo', dbType: 'mongodb', oggetti: [{ tipo: 'collection', nome: 't' }], dipendenze: [] } });
+    await assert.rejects(creaFileExport({ ...ambiguo, plan: piano, archivio, ownerId: 'owner', actorId: 'actor' }), /rappresentare fedelmente.*\.codedb\.json/);
     assert.strictEqual(archivio.elenca('owner').length, 1, 'un export fallito non pubblica file parziali');
     assert.deepStrictEqual(fs.readdirSync(path.join(root, 'caricamenti')), [], 'i parziali vengono rimossi');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
   await verificaExportServer();
   const info = { columns: [], geo: new Map(), geoNativo: new Map() };
   assert(insertSql('mysql', '`t`', JSON.stringify({ v: "$&'\\\n" }), info).includes('CONVERT(X\''));
+  const cols = [{ name: 'ID', identity: 'a' }, { name: 'con"to' }, { name: 'd`ato' }, { name: 'doppio', generated: 's' }];
+  const riga = JSON.stringify({ ID: 10, 'con"to': 2, 'd`ato': 7 });
+  info.columns = cols;
+  info.scrittura = scritturaRighe('postgresql', 'excluded', cols, 'aggiorna', ['con"to']);
+  assert.equal(insertSql('postgresql', '"demo"."excluded"', riga, info),
+    'INSERT INTO "demo"."excluded" AS codedb_destinazione ("ID", "con""to", "d`ato") OVERRIDING SYSTEM VALUE VALUES (10, 2, 7) ON CONFLICT ("con""to") DO UPDATE SET "d`ato" = EXCLUDED."d`ato";\n');
+  info.scrittura = scritturaRighe('mysql', 't', cols, 'aggiorna', ['con"to']);
+  assert(insertSql('mysql', '`db`.`t`', riga, info).endsWith('ON DUPLICATE KEY UPDATE `d``ato` = VALUES(`d``ato`);\n'));
+  assert.equal(scritturaRighe('postgresql', 't', [cols[1]], 'aggiorna', ['con"to']).coda, ' ON CONFLICT ("con""to") DO NOTHING');
   assert(statement("CREATE PROCEDURE p() BEGIN SELECT '$codedb$'; END", 'mysql').includes('DELIMITER $codedb$$'));
   console.log('  OK   Export: perimetro, tipi, indici, conteggi e pubblicazione verificata');
 })().catch(err => { console.error(err); process.exitCode = 1; });

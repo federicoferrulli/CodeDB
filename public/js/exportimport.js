@@ -10,8 +10,10 @@ import { socket } from './socket.js';
 import { descriviEsitoImport } from './import-status.js';
 import { preparaImportCsv } from './csv.js';
 import { importaBlocco } from './import-batch.js';
+import { leggiJsonEsatto } from './insert-json.mjs';
 import { creaStatoSelezione } from './export-selezione.js';
 import { confermaPiano } from './piano-anteprima.js';
+import { scelteScriptExport, noteScriptExport, conteggiCopiaMongo, nomeCopiaMongo, nomeScriptMongo } from './riepilogo-piano.js';
 import { mappaNomi } from './import-mapping.js';
 
 // Export/import di collection e tabelle: l'export scarica il file a blocchi
@@ -25,73 +27,35 @@ import { mappaNomi } from './import-mapping.js';
 // connessione — con danno permanente, perché sono scritture.
 
 const CHUNK = 500;
-// Tetto in BYTE per blocco di import (CDB-34). Il conteggio a soli documenti non
-// dice nulla sulla dimensione del messaggio: il server accetta al massimo 5 MB
-// per messaggio Socket.IO (`maxHttpBufferSize`), quindi 500 documenti con un
-// campo testo lungo superano il limite e la connessione CADE — l'import si
-// interrompe con un errore di rete invece che con un messaggio comprensibile.
-// Si tiene un margine ampio per la serializzazione EJSON e il resto del payload.
+const numeroViste = (n = 0) => `${n} ${n === 1 ? 'vista' : 'viste'}`;
+// Il server accetta messaggi Socket.IO fino a 5 MB. I blocchi ordinari
+// restano entro 3 MiB; una riga più grande può ancora partire da sola.
 const CHUNK_BYTES = 3 * 1024 * 1024;
+const TRASPORTO_BYTES = 5e6;
 
-// Quanti documenti si misurano davvero prima di passare alla media (CDB-75).
-const CAMPIONE_DIM = 50;
-
-/**
- * Divide i documenti in blocchi che rispettano ENTRAMBI i limiti: numero di
- * documenti e dimensione stimata. Un singolo documento più grande del tetto
- * viaggia comunque da solo — se sfora, il rifiuto arriva dal server con un
- * messaggio, che è meglio di una connessione chiusa a metà lavoro.
- *
- * La dimensione si stima su un CAMPIONE (CDB-75): misurare ogni documento con
- * `JSON.stringify` significa serializzare l'intero file una volta in più
- * rispetto a quanto farà Socket.IO al momento dell'invio, e su un import da
- * centomila documenti quel giro in più blocca l'interfaccia prima ancora che
- * l'avanzamento parta. Qui serve un ordine di grandezza, non una misura: il
- * limite vero lo applica il server, e il margine di 3 MB su 5 assorbe l'errore
- * della stima. I documenti molto grandi restano misurati singolarmente finché
- * il campione non è completo, che è il caso in cui la stima conta davvero.
- *
- * Il margine 3/5 assorbe però un ERRORE di stima, non un ordine di grandezza
- * (CDB-A08): con documenti eterogenei — le prime cinquanta righe piccole e le
- * successive con un campo testo lungo — il blocco reale superava i 5 MB e
- * Socket.IO chiudeva la connessione. Due correzioni, entrambe a costo
- * trascurabile rispetto alla serializzazione che avverrà comunque:
- *  · si RIMISURA periodicamente (ogni RICALIBRA documenti), così la media segue
- *    il file invece di restare ferma alle prime righe;
- *  · quando il blocco corrente ha già superato metà del tetto si misura DAVVERO
- *    ogni documento, cioè esattamente dove sbagliare costa la connessione.
- */
-// Ogni quanti documenti si torna a misurare per aggiornare la media.
-const RICALIBRA = 200;
-
-function blocchiDiImport(docs) {
+function blocchiDiImport(docs, bersaglio) {
+  const encoder = new TextEncoder();
+  const byteJson = valore => encoder.encode(JSON.stringify(valore)).length;
+  // Array vuoto, UUID della ricevuta, eventuale flag di riconnessione e prefisso
+  // Engine.IO/Socket.IO con l'identificativo numerico dell'ack.
+  const busta = 20 + byteJson(['collection:import', {
+    ...bersaglio, docs: [], batchId: '0'.repeat(36), _reconnected: true,
+  }]);
   const blocchi = [];
   let corrente = [];
-  let byte = 0;
-  let misurati = 0;
-  let sommaMisurata = 0;
-  let daUltimaMisura = 0;
-
-  for (const doc of docs) {
-    let dim;
-    // Vicino al tetto la stima non basta più: lì si misura sempre.
-    const vicinoAlTetto = byte > CHUNK_BYTES / 2;
-    if (misurati < CAMPIONE_DIM || vicinoAlTetto || daUltimaMisura >= RICALIBRA) {
-      dim = JSON.stringify(doc).length;
-      sommaMisurata += dim;
-      misurati += 1;
-      daUltimaMisura = 0;
-    } else {
-      dim = Math.ceil(sommaMisurata / misurati);
-      daUltimaMisura += 1;
+  let byte = busta;
+  for (const [indice, doc] of docs.entries()) {
+    const dimensione = byteJson(doc);
+    if (busta + dimensione > TRASPORTO_BYTES) {
+      throw new Error(`Riga ${indice + 1}: il messaggio supera il limite di 5 MB. Riduci il contenuto prima di importare.`);
     }
-    if (corrente.length && (corrente.length >= CHUNK || byte + dim > CHUNK_BYTES)) {
+    if (corrente.length && (corrente.length >= CHUNK || byte + 1 + dimensione > CHUNK_BYTES)) {
       blocchi.push(corrente);
       corrente = [];
-      byte = 0;
+      byte = busta;
     }
+    byte += dimensione + (corrente.length ? 1 : 0);
     corrente.push(doc);
-    byte += dim;
   }
   if (corrente.length) blocchi.push(corrente);
   return blocchi;
@@ -186,7 +150,7 @@ function buildDocs(text, dbType = state.dbType) {
   // MongoDB: array JSON (o singolo oggetto) in Extended JSON.
   let parsed;
   try {
-    parsed = JSON.parse(text);
+    parsed = leggiJsonEsatto(text);
   } catch (err) {
     throw new Error(`JSON non valido: ${err.message}`);
   }
@@ -250,18 +214,17 @@ async function runImport() {
     showError('#import-error', 'Nessun contenuto da importare: carica un file o incolla i dati.');
     return;
   }
-  let docs;
+  const { db, coll, ctx } = importTarget;
+  const tabId = ctx.tabId;
+  let docs, blocchi;
   try {
     docs = buildDocs(text, importTarget.dbType);
+    blocchi = blocchiDiImport(docs, { tabId, db, coll });
   } catch (err) {
     showError('#import-error', err.message);
     return;
   }
 
-  const { db, coll, ctx } = importTarget;
-  // Il tab di destinazione è quello in cui l'utente ha aperto la modale, non
-  // quello attivo quando parte il singolo blocco.
-  const tabId = ctx && ctx.tabId;
   importing = true;
   // L'import ha già la sua barra di avanzamento, ma il pulsante che l'ha
   // avviato deve smettere di sembrare premibile.
@@ -273,8 +236,6 @@ async function runImport() {
   let aborted = false;
   const errors = [];
   try {
-    // Blocchi limitati per numero E per dimensione (CDB-34).
-    const blocchi = blocchiDiImport(docs);
     let i = 0;
     for (const batch of blocchi) {
       // Tab chiuso (o mai esistito) durante l'import: fermarsi è l'unica scelta
@@ -391,10 +352,18 @@ export function initExportImport() {
 
   // --- Wizard di export di interi database -----------------------------------
   $('#dbexport-cancel').addEventListener('click', () => {
+    if ($('#dbexport-cancel').disabled) return;
     exportWizard = null;
     closeModal('#dbexport-overlay');
   });
   $('#dbexport-cerca').addEventListener('input', disegnaAlberoExport);
+  $('#dbexport-formato').addEventListener('change', () => {
+    if ($('#dbexport-formato').value === 'mongo-diretto') aggiornaConnessioniExport();
+    aggiornaOpzioniScriptExport();
+  });
+  $('#dbexport-mongo-connessione').addEventListener('change', () => { $('#dbexport-mongo-database').value = ''; });
+  window.addEventListener('codedb:tab-closed', () => { if (exportWizard?.dbType === 'mongodb') aggiornaConnessioniExport(); });
+  $('#dbexport-opzioni-script').addEventListener('change', () => aggiornaOpzioniScriptExport());
   $('#dbexport-modalita').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-modalita]');
     if (b && exportWizard) applicaModalitaExport(b.dataset.modalita);
@@ -424,6 +393,7 @@ export function initExportImport() {
     if (!exportWizard || exportWizard.inCorso) return;
     const wizard = exportWizard;
     wizard.inCorso = true;
+    showError('#dbexport-error', '');
     const fine = iniziaCaricamento($('#dbexport-run'), 'Anteprima…');
     let risposta;
     try {
@@ -435,13 +405,20 @@ export function initExportImport() {
     } finally { fine(); }
     if (exportWizard !== wizard) return;
     closeModal('#dbexport-overlay');
+    const destinazione = risposta.plan.destinazioneMongo;
     // Ciò che si conferma è ciò che si esegue, e sono lo STESSO oggetto: il
     // piano passa dal riepilogo all'esecuzione senza essere ricostruito.
-    if (!await confermaPiano(risposta.plan, { azione: 'Esporta' })) {
-      exportWizard = null;
+    let azione = 'Esporta';
+    if (risposta.plan.formato === 'mongosh') azione = destinazione ? 'Avvia copia' : 'Scarica script';
+    if (!await confermaPiano(risposta.plan, { azione, annullamento: 'Indietro' })) {
+      wizard.inCorso = false;
+      if (exportWizard === wizard) openModal('#dbexport-overlay');
       return;
     }
-    try { await eseguiExportDatabase(risposta.plan, wizard); }
+    try {
+      if (destinazione) await eseguiCopiaMongo(risposta.plan, wizard);
+      else await eseguiExportDatabase(risposta.plan, wizard);
+    }
     finally { if (exportWizard === wizard) exportWizard = null; }
   });
 
@@ -467,7 +444,10 @@ export function initExportImport() {
     const operationId = dbImportOperationId;
     const ctx = dbImportContext;
     const tabId = ctx && ctx.tabId;
-    if (!await chiediConferma('Eliminare definitivamente la copia di recupero e lo staging conservato?')) return;
+    const conferma = button.dataset.storico === '1'
+      ? 'Eliminare definitivamente le copie su disco che il diario storico permette di verificare?'
+      : 'Eliminare definitivamente la copia di recupero e lo staging conservato?';
+    if (!await chiediConferma(conferma)) return;
     if (operationId !== dbImportOperationId || ctx !== dbImportContext) return;
     showError('#dbimport-error', '');
     const fine = iniziaCaricamento(button, 'Elimino…');
@@ -535,7 +515,7 @@ export function initExportImport() {
       const entita = isSqlType(ctx.dbType) ? 'tabelle' : 'collection';
       $('#dbimport-subtitle').textContent =
         `File "${file.name}": database "${dbImportData.db}" (${dbImportData.dbType}), ` +
-        `${dbImportData.collections.length} ${entita}, ${docs} ${isSqlType(dbImportData.dbType) ? 'righe' : 'documenti'}.`;
+        `${dbImportData.collections.length} ${entita}, ${numeroViste(dbImportData.views?.length)}, ${docs} ${isSqlType(dbImportData.dbType) ? 'righe' : 'documenti'}.`;
       $('#dbimport-file-notes').textContent = (dbImportData.avvisi || []).join(' ');
       setDbImportProgress(100, 'File validato. Controlla la destinazione e continua con l’anteprima.');
     } catch (err) {
@@ -551,8 +531,8 @@ export function initExportImport() {
 // Voci di menu contestuale per un intero database (sidebar).
 export function dbExportImportMenuItems(db) {
   return [
-    { icona: 'download', label: 'Esporta database…', action: () => exportDatabase(db) },
-    { icona: 'upload', label: 'Importa database…', action: openDbImportModal },
+    { icona: 'upload', label: state.dbType === 'mongodb' ? 'Esporta o copia il database…' : 'Esporta database…', action: () => exportDatabase(db) },
+    { icona: 'download', label: 'Importa database…', action: openDbImportModal },
   ];
 }
 
@@ -586,6 +566,56 @@ function isSystemDb(name, dbType = state.dbType) {
 // piano che non è più quello mostrato.
 let exportWizard = null;
 
+function aggiornaConnessioniExport(precedente = $('#dbexport-mongo-connessione').value) {
+  const campo = $('#dbexport-mongo-connessione');
+  const aperte = tabs.list.filter(t => t.state.connected && t.state.dbType === 'mongodb');
+  campo.replaceChildren(new Option('Scegli una connessione aperta', ''),
+    ...aperte.map((t, i) => new Option(`${t.label || t.connName || t.state.connLabel || 'MongoDB'} · scheda ${i + 1}${t.id === exportWizard?.tabId ? ' (origine)' : ''}`, t.id)));
+  campo.value = aperte.some(t => t.id === precedente) ? precedente : '';
+}
+
+function aggiornaOpzioniScriptExport(selezione = exportWizard?.sel?.riepilogo()) {
+  const w = exportWizard;
+  if (!selezione) return;
+  const formato = $('#dbexport-formato').value;
+  const diretto = formato === 'mongo-diretto';
+  const script = formato === 'sql' || formato === 'mongosh' || diretto;
+  const mysql = w.dbType === 'mysql';
+  $('#dbexport-mongo-destinazione').classList.toggle('hidden', !diretto);
+  $('#dbexport-motore').classList.toggle('hidden', diretto);
+  if (!$('#dbexport-run').dataset.caricamento) {
+    const anteprime = { 'mongo-diretto': 'Anteprima della copia', mongosh: 'Anteprima dello script' };
+    $('#dbexport-run').textContent = anteprime[formato] || 'Esporta';
+  }
+  if (w.dbType === 'mongodb') {
+    $('#dbexport-label-struttura').textContent = diretto ? 'Collection e viste' : 'Collection e viste nello script';
+    $('#dbexport-label-dati').textContent = diretto ? 'Documenti' : 'Documenti nello script';
+  }
+  let aiuto = formato === 'sql'
+    ? `Esegui il file con ${mysql ? 'mysql' : 'psql'} per applicare le opzioni dello script al database/schema indicato nel file.`
+    : 'Il file CodeDB rispetta il limite di import mostrato nell’anteprima.';
+  if (diretto) aiuto = 'Scegli il database di destinazione su questa connessione o su un’altra connessione MongoDB.';
+  if (formato === 'mongosh') aiuto = `Scarichi un file .js. La copia avviene solo quando lo esegui con mongosh sul server di destinazione, nel database «${w.db}».`;
+  if (mysql) aiuto += ' Per una copia coerente, sospendi le scritture sulle tabelle non transazionali.';
+  if (w.dbType === 'mongodb') aiuto += ' Per una copia coerente, sospendi le scritture sul database di origine durante il trasferimento.';
+  $('#dbexport-formato-hint').textContent = aiuto;
+
+  const struttura = $('#dbexport-script-struttura'), dati = $('#dbexport-script-dati');
+  struttura.disabled = !script || !selezione.conStruttura || (formato === 'sql' && !w.oggetti.some(o => o.tipo === 'tabella'));
+  dati.disabled = !script || !selezione.conDati;
+  struttura.closest('label').classList.toggle('hidden', struttura.disabled);
+  dati.closest('label').classList.toggle('hidden', dati.disabled);
+  $('#dbexport-opzioni-script').classList.toggle('hidden', struttura.disabled && dati.disabled);
+  let tipiDaRicreare;
+  if (w.dbType === 'mongodb' && !struttura.disabled && struttura.value === 'ricrea') {
+    const inclusi = w.sel.perPiano();
+    tipiDaRicreare = w.oggetti.filter(o => inclusi[o.id].struttura).map(o => o.tipo);
+  }
+  const note = noteScriptExport(w.dbType, struttura.disabled ? null : struttura.value, dati.disabled ? null : dati.value, tipiDaRicreare);
+  $('#dbexport-script-hint').textContent = note.join(' ');
+  $('#dbexport-script-hint').classList.toggle('hidden', !note.length);
+}
+
 function disegnaAlberoExport() {
   const w = exportWizard;
   if (!w) return;
@@ -612,6 +642,7 @@ function disegnaAlberoExport() {
   const r = w.sel.riepilogo();
   $('#dbexport-riepilogo').textContent =
     `${r.oggetti} oggetti · ${r.conStruttura} con struttura · ${r.conDati} con dati · ${r.esclusi.length} esclusi`;
+  aggiornaOpzioniScriptExport(r);
 }
 
 function applicaModalitaExport(modalita) {
@@ -633,15 +664,41 @@ function applicaModalitaExport(modalita) {
 /** Chiede al server il piano per la selezione corrente. */
 async function pianoExportCorrente() {
   const w = exportWizard;
+  const scelta = $('#dbexport-formato').value;
+  const formato = scelta === 'mongo-diretto' ? 'mongosh' : scelta;
+  const struttura = $('#dbexport-script-struttura'), dati = $('#dbexport-script-dati');
+  let destinazioneMongo;
+  if (scelta === 'mongo-diretto') {
+    const tabId = $('#dbexport-mongo-connessione').value;
+    const db = $('#dbexport-mongo-database').value.trim();
+    if (!tabs.list.some(t => t.id === tabId && t.state.connected && t.state.dbType === 'mongodb')) throw new Error('Seleziona una connessione MongoDB aperta per la destinazione.');
+    if (!db) { $('#dbexport-mongo-database').focus(); throw new Error('Indica il database di destinazione.'); }
+    if (isSystemDb(db, 'mongodb')) throw new Error('Scegli un database di destinazione diverso dai database di sistema.');
+    if (tabId === w.tabId && db.toLowerCase() === w.db.toLowerCase()) throw new Error('Sulla connessione di origine scegli un database di destinazione diverso.');
+    destinazioneMongo = { tabId, db };
+  }
   const risposta = await emit('database:export:plan', {
     tabId: w.tabId, db: w.db,
     modalita: w.modalita,
-    formato: $('#dbexport-formato').value,
+    formato,
+    ...(destinazioneMongo && { destinazioneMongo }),
+    ...(formato === 'sql' ? { opzioniSql: {
+      tabelle: struttura.disabled ? 'crea' : struttura.value,
+      righe: dati.disabled ? 'insert' : dati.value,
+    } } : {}),
+    ...(formato === 'mongosh' ? { opzioniMongo: {
+      collection: struttura.disabled ? 'crea' : struttura.value,
+      documenti: dati.disabled ? 'inserisci' : dati.value,
+    } } : {}),
     // Solo la modalità personalizzata porta una selezione: nelle altre tre il
     // perimetro lo decide il piano, e mandargliela sarebbe dirgli due volte la
     // stessa cosa con due voci che possono divergere.
     selezione: w.modalita === 'personalizzata' ? w.sel.perPiano() : null,
   });
+  const destinazione = risposta.plan.destinazioneMongo;
+  if (destinazioneMongo?.tabId !== destinazione?.tabId || destinazioneMongo?.db !== destinazione?.db) {
+    throw new Error('La destinazione del piano è diversa da quella scelta. Richiedi una nuova anteprima.');
+  }
   return risposta;
 }
 
@@ -690,6 +747,14 @@ export async function exportDatabase(db, selectedCollection = null) {
     id: o.id, tipo: o.tipo, nome: o.nome, portaDati: o.tipo === 'tabella' || o.tipo === 'collection',
   }));
   exportWizard.sel = creaStatoSelezione(exportWizard.oggetti);
+  $('#dbexport-titolo').textContent = dbType === 'mongodb' ? 'Esporta o copia il database' : 'Esporta database';
+  $('#dbexport-form').classList.remove('hidden');
+  $('#dbexport-esito').classList.add('hidden');
+  $('#dbexport-run').classList.remove('hidden');
+  $('#dbexport-cancel').disabled = false;
+  $('#dbexport-cancel').textContent = 'Annulla';
+  $('#dbexport-mongo-database').value = '';
+  if (dbType === 'mongodb') aggiornaConnessioniExport(tabId);
   $('#dbexport-subtitle').textContent =
     `${db} · ${exportWizard.oggetti.length} oggetti nel catalogo (${dbType})`;
   $('#dbexport-motore').textContent = risposta.motore && risposta.motore.backend === 'nativo'
@@ -697,22 +762,90 @@ export async function exportDatabase(db, selectedCollection = null) {
     : `Motore: incorporato. ${(risposta.motore && risposta.motore.motivo) || ''}`;
   $('#dbexport-formato').innerHTML = isSqlType(dbType)
     ? '<option value="sql">Script SQL (.sql)</option><option value="codedb-json">CodeDB · tipi completi (.codedb.json)</option>'
-    : '<option value="codedb-json">CodeDB · BSON completo (.codedb.json)</option>';
+    : `<option value="codedb-json">CodeDB · BSON completo (.codedb.json)</option><option value="mongo-diretto">${nomeCopiaMongo}</option><option value="mongosh">${nomeScriptMongo}</option>`;
+  $('#dbexport-etichetta-formato').textContent = dbType === 'mongodb' ? 'Formato o operazione' : 'Formato del file';
+  for (const [campo, { etichetta, valori }] of Object.entries(scelteScriptExport(dbType))) {
+    $(`#dbexport-label-${campo}`).textContent = etichetta;
+    $(`#dbexport-script-${campo}`).replaceChildren(...Object.entries(valori).map(([valore, testo]) => new Option(testo, valore)));
+  }
   $('#dbexport-cerca').value = '';
   showError('#dbexport-error', '');
   applicaModalitaExport('struttura-e-dati');
   if (selectedCollection) {
-    const id = `${isSqlType(dbType) ? 'tabella' : 'collection'}:${selectedCollection}`;
+    const oggetto = exportWizard.oggetti.find(o => o.nome === selectedCollection && (o.portaDati || o.tipo === 'vista'));
+    if (!oggetto) {
+      exportWizard = null;
+      notifica(`"${selectedCollection}" non è più nel catalogo di "${db}".`, { tipo: 'errore', titolo: 'Esportazione' });
+      return;
+    }
     exportWizard.sel.deselezionaTutto();
-    exportWizard.sel.imposta(id, 'struttura', true);
-    exportWizard.sel.imposta(id, 'dati', true);
+    exportWizard.sel.imposta(oggetto.id, 'struttura', true);
+    if (oggetto.portaDati) exportWizard.sel.imposta(oggetto.id, 'dati', true);
     $('#dbexport-formato').value = 'codedb-json';
     applicaModalitaExport('personalizzata');
   }
   openModal('#dbexport-overlay');
 }
 
-/** Esegue l'export del perimetro confermato. */
+function riepilogoCopiaMongo(risultato) {
+  const righe = conteggiCopiaMongo(risultato).map(({campo, etichetta, valore}) =>
+    `<div><dt>${etichetta}</dt><dd data-conteggio="${campo}">${valore}</dd></div>`);
+  return righe.length ? `<dl>${righe.join('')}</dl>` : '';
+}
+
+/** Applica il piano alla destinazione confermata e mostra anche gli esiti parziali. */
+async function eseguiCopiaMongo(plan, wizard) {
+  const destinazione = plan.destinazioneMongo;
+  const report = $('#dbexport-esito');
+  $('#dbexport-form').classList.add('hidden');
+  $('#dbexport-run').classList.add('hidden');
+  $('#dbexport-cancel').disabled = true;
+  $('#dbexport-cancel').textContent = 'Chiudi';
+  $('#dbexport-titolo').textContent = 'Copia su MongoDB';
+  $('#dbexport-subtitle').textContent = `Destinazione · ${destinazione.connection} · ${destinazione.db}`;
+  report.dataset.stato = 'in_corso';
+  report.setAttribute('role', 'status');
+  report.textContent = 'Copia in corso…';
+  report.classList.remove('hidden');
+  openModal('#dbexport-overlay');
+  let errore, risultato;
+  let ultimoProgresso;
+  const progresso = evento => {
+    if (evento.tabId !== wizard.tabId || evento.planHash !== plan.fingerprint) return;
+    ultimoProgresso = evento.risultato;
+    report.innerHTML = `<strong>Copia in corso…</strong><p>${esc(evento.collection)} · ${esc(evento.rows)} documenti</p>${riepilogoCopiaMongo(ultimoProgresso)}`;
+  };
+  socket.on('database:export:progress', progresso);
+  try {
+    ({ risultato } = await emit('database:export:execute', { tabId: wizard.tabId, planHash: plan.fingerprint },
+      { bindTab: false, reconnect: false, rejectOnDisconnect: true, timeoutMs: 0 }));
+    if (!risultato) throw Object.assign(new Error('Il server non ha restituito i conteggi. Verifica i dati nella destinazione.'), { code: 'ESITO_ASSENTE' });
+  } catch (err) {
+    errore = err;
+    risultato = err.risultato || ultimoProgresso;
+  } finally {
+    socket.off('database:export:progress', progresso);
+  }
+  let titolo = 'Copia completata';
+  if (errore) {
+    titolo = errore.risultato ? 'Copia interrotta · operazioni confermate' : 'Copia non completata';
+    if (errore.code === 'SOCKET_DISCONNECTED' || errore.code === 'ESITO_ASSENTE') titolo = 'Esito della copia da verificare';
+  }
+  report.innerHTML = `<strong>${titolo}</strong>${errore ? `<p>${esc(errore.message)}</p>` : ''}${riepilogoCopiaMongo(risultato)}`;
+  report.dataset.stato = errore ? 'interrotta' : 'completata';
+  report.setAttribute('role', errore ? 'alert' : 'status');
+  $('#dbexport-cancel').disabled = false;
+  report.focus();
+
+  const tab = tabs.list.find(t => t.id === destinazione.tabId);
+  if (tab) {
+    for (const o of plan.oggetti) marcaDatiSporchi({ tab }, destinazione.db, o.nome);
+    tab.state.schemaDirty = true;
+    if (tabs.activeId === tab.id) refreshDbTree();
+  }
+}
+
+/** Scarica il file prodotto dal server per il piano confermato. */
 async function eseguiExportDatabase(plan, wizard) {
   const { tabId, db } = wizard;
   try {
@@ -725,7 +858,7 @@ async function eseguiExportDatabase(plan, wizard) {
       toast(`Esportazione di "${db}"… ${operation.collection || ''}: ${operation.rows} righe/documenti`);
     } while (operation.status === 'in_corso');
     if (!await scaricaFile(operation.url, operation.filename)) return;
-    toast(`Export verificato: ${operation.collections} tabelle/collection, ${operation.rows} righe/documenti. Download avviato.`);
+    toast(`Export verificato: ${operation.collections} tabelle/collection, ${numeroViste(operation.views)}, ${operation.rows} righe/documenti. Download avviato.`);
   } catch (err) {
     notifica(`Esportazione fallita: ${err.message}`, { tipo: 'errore', titolo: "Importazione ed esportazione", hint: "Controlla il resoconto e i dati di destinazione prima di ripetere un’importazione." });
   }
@@ -787,8 +920,8 @@ export function openDbImportModal(recupera = true) {
   dbImportUploadId = null;
   dbImporting = false;
   $('#dbimport-subtitle').textContent = isSqlType(dbImportContext.dbType)
-    ? 'Ricrea tabelle, righe, indici e chiavi esterne in uno schema di destinazione.'
-    : 'Ricrea collection, documenti e indici in un database di destinazione.';
+    ? 'Ricrea tabelle, righe, viste, indici e chiavi esterne nello schema di destinazione.'
+    : 'Ricrea collection, documenti, viste e indici nel database di destinazione.';
   $('#dbimport-file').value = '';
   $('#dbimport-target').value = '';
   $('#dbimport-drop').checked = false;
@@ -853,7 +986,7 @@ async function mostraMappingImport(ctx, target, plan) {
     esistenti = [];
   }
   const { avvisi } = mappaNomi({
-    sorgenti: plan.collections.map((c) => c.name),
+    sorgenti: [...plan.collections.map(c => c.name), ...(plan.views || [])],
     esistenti,
     motore: ctx.dbType,
   });
@@ -986,7 +1119,12 @@ function renderDbImportState(operation) {
     if (operation.recovery) html += `<div><dt>Copia di recupero</dt><dd><code>${esc(operation.recovery.id || 'disponibile')}</code></dd></div>`;
     if (operation.staging?.retained) html += `<div><dt>Database di staging</dt><dd><code>${esc(operation.staging.db)}</code></dd></div>`;
     html += '</dl>';
-    if (terminal) html += '<button type="button" class="danger" data-dbimport-cleanup>Elimina risorse di recupero…</button>';
+    if (operation.errorePulizia) html += `<p>${esc(operation.errorePulizia)}</p>`;
+    if (terminal && operation.status !== 'intervento_richiesto' && !operation.errorePulizia) {
+      html += operation.puliziaStorica
+        ? '<button type="button" class="danger" data-dbimport-cleanup data-storico="1">Verifica ed elimina le copie storiche…</button>'
+        : '<button type="button" class="danger" data-dbimport-cleanup>Elimina risorse di recupero…</button>';
+    }
     html += '</details>';
   } else if (operation.cleanupAt) {
     html += '<p class="hint">Risorse di recupero eliminate.</p>';
@@ -1021,12 +1159,12 @@ function renderDbImportState(operation) {
 export function exportImportMenuItems(db, coll) {
   const items = isSqlType(state.dbType)
     ? [
-        { icona: 'download', label: 'Esporta CSV (sicuro per fogli di calcolo)', action: () => exportCollection(db, coll, 'csv') },
-        { icona: 'download', label: 'Esporta CSV letterale', action: () => exportCollection(db, coll, 'csv', { csvMode: 'letterale' }) },
-        { icona: 'download', label: 'Esporta SQL (INSERT)', action: () => exportCollection(db, coll, 'sql') },
+        { icona: 'upload', label: 'Esporta CSV (sicuro per fogli di calcolo)', action: () => exportCollection(db, coll, 'csv') },
+        { icona: 'upload', label: 'Esporta CSV letterale', action: () => exportCollection(db, coll, 'csv', { csvMode: 'letterale' }) },
+        { icona: 'upload', label: 'Esporta SQL (INSERT)', action: () => exportCollection(db, coll, 'sql') },
       ]
-    : [{ icona: 'download', label: 'Esporta EJSON (interoperabilità)', action: () => exportCollection(db, coll, 'json') }];
-  items.unshift({ icona: 'download', label: 'Esporta CodeDB · tipi completi…', action: () => exportDatabase(db, coll) });
-  items.push({ icona: 'upload', label: `Importa nella ${collWord()}…`, action: () => openImportModal(db, coll) });
+    : [{ icona: 'upload', label: 'Esporta EJSON (interoperabilità)', action: () => exportCollection(db, coll, 'json') }];
+  items.unshift({ icona: 'upload', label: isSqlType(state.dbType) ? 'Esporta SQL o CodeDB con opzioni…' : 'Copia su MongoDB o esporta con opzioni…', action: () => exportDatabase(db, coll) });
+  items.push({ icona: 'download', label: `Importa nella ${collWord()}…`, action: () => openImportModal(db, coll) });
   return items;
 }

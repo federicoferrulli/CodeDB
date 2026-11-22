@@ -1,36 +1,7 @@
-# Avvio in background di CodeDB (usato da CodeDB.cmd): chiede la passphrase in
-# una finestra di dialogo (saltata se GUI_MONGO_PASSPHRASE è già impostata),
-# avvia node senza finestra con i log su codedb.log / codedb.err.log e apre il
-# browser quando la porta risponde. La console si può chiudere: il server vive
-# come processo indipendente. Per fermarlo: CodeDB.cmd stop
+# Avvia o riusa il server del profilo corrente e apre il browser.
 param([switch]$NoBrowser)
-$root = Split-Path -Parent $PSScriptRoot
+node (Join-Path $PSScriptRoot 'lanciatore.js') start
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $port = if ($env:PORT) { [int]$env:PORT } else { 3030 }
-$url = "http://localhost:$port"
-
-# Se GUI_MONGO_PASSPHRASE non è impostata, il server parte in modalità "Vault Bloccato"
-# e la passphrase verrà chiesta dall'interfaccia web all'avvio.
-
-$out = Join-Path $root 'codedb.log'
-$err = Join-Path $root 'codedb.err.log'
-$proc = Start-Process node -ArgumentList 'server.js' -WorkingDirectory $root `
-  -WindowStyle Hidden -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
-$null = $proc.Handle  # senza toccare l'handle, ExitCode resterebbe vuoto dopo l'uscita
-
-for ($i = 0; $i -lt 120; $i++) {
-  if ($proc.HasExited) {
-    # Tipico: passphrase sbagliata (il server esce subito senza toccare il file).
-    Write-Host "CodeDB non e' partito (exit code $($proc.ExitCode)):" -ForegroundColor Red
-    if (Test-Path $err) { Get-Content $err | Write-Host }
-    Read-Host 'Premi INVIO per chiudere'
-    exit 1
-  }
-  if (Test-NetConnection 127.0.0.1 -Port $port -InformationLevel Quiet -WarningAction SilentlyContinue) {
-    if (-not $NoBrowser) { Start-Process $url }
-    Write-Host "CodeDB avviato in background su $url (log: codedb.log). Per fermarlo: CodeDB.cmd stop"
-    exit 0
-  }
-  Start-Sleep -Milliseconds 500
-}
-Write-Host 'Timeout: il server non ha risposto entro 60 secondi (vedi codedb.log).'
-exit 1
+if (-not $NoBrowser) { Start-Process "http://127.0.0.1:$port" }
+exit 0

@@ -50,8 +50,9 @@ app separata (`com.codedb.android.debug`), senza richiedere secret.
 Servono Node.js 20+, JDK 17, Gradle 8.11.1 e Android SDK con platform 35,
 build-tools 35.0.0, NDK 27.2.12479018 e CMake 3.22.1. Il workflow installa
 questi strumenti automaticamente. Puoi aprire `android/` in Android Studio.
-La preparazione include solo i sorgenti tracciati da Git: aggiungere a Git i
-nuovi file del backend prima di costruire una versione che li usa.
+La preparazione copia dal checkout i file applicativi tracciati, i nuovi moduli
+JavaScript del runtime e i nuovi asset statici della UI. Per i file nuovi rispetta
+gli ignore di Git ed esclude dati, connessioni, backup e configurazioni personali.
 
 ```sh
 npm run prepare:android

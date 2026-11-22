@@ -176,7 +176,8 @@ async function pgColonneDaSalvare(q, schema, table, onlyColumns = null) {
  *   backup lo fa (ripristina in uno schema noto e lo riscrive); l'export/import
  *   no, perché conta sul `search_path` per il retarget.
  */
-async function pgCreateTable(q, schema, table, { qualificato = false } = {}) {
+async function pgCreateTable(q, schema, table, { qualificato = false, partizione = null } = {}) {
+  if (partizione?.parent) return require('./pg-partizioni').ddlFiglia(q, schema, table, partizione, qualificato);
   const colonne = await pgColonne(q, schema, table);
   if (!colonne.length) return null;
 
@@ -189,6 +190,24 @@ async function pgCreateTable(q, schema, table, { qualificato = false } = {}) {
     JOIN pg_catalog.pg_class s ON s.oid=d.objid AND s.relkind='S'
     JOIN pg_catalog.pg_sequence p ON p.seqrelid=s.oid
     WHERE n.nspname=$1 AND t.relname=$2`, [schema, table])).rows;
+  if (partizione && colonne.some(c => c.identity && !owned.some(s=>s.colonna===c.name))) {
+    const inherited = await q(`SELECT a.attname AS colonna, s.relname AS nome,
+        p.seqstart::text AS inizio,p.seqincrement::text AS passo,p.seqmin::text AS minimo,
+        p.seqmax::text AS massimo,p.seqcache::text AS cache,p.seqcycle AS ciclo
+      FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace
+      JOIN pg_attribute a ON a.attrelid=pg_partition_root(t.oid)::oid AND a.attidentity<>''
+      JOIN pg_depend d ON d.refobjid=a.attrelid AND d.refobjsubid=a.attnum AND d.deptype='i'
+      JOIN pg_class s ON s.oid=d.objid AND s.relkind='S' JOIN pg_sequence p ON p.seqrelid=s.oid
+      WHERE n.nspname=$1 AND t.relname=$2`,[schema,table]);
+    for (const seq of inherited.rows) {
+      const nome = 'codedb_identity_'+require('node:crypto').createHash('sha256').update(JSON.stringify([table,seq.colonna])).digest('hex').slice(0,24);
+      owned.push({...seq,nome});
+      if (partizione.valoriAutonomi) {
+        const {rows:[value]} = await q(`SELECT last_value::text AS valore,is_called AS chiamata FROM ${qid(schema)}.${qid(seq.nome)}`);
+        partizione.valoriAutonomi.push({name:nome,sql:`SELECT pg_catalog.setval('${qid(nome)}', ${value.valore}, ${value.chiamata?'true':'false'})`});
+      }
+    }
+  }
   const sequenceOptions = seq => `INCREMENT BY ${seq.passo} MINVALUE ${seq.minimo} MAXVALUE ${seq.massimo} START WITH ${seq.inizio} CACHE ${seq.cache} ${seq.ciclo ? 'CYCLE' : 'NO CYCLE'}`;
 
   const defs = colonne.map((c) => {
@@ -229,7 +248,7 @@ async function pgCreateTable(q, schema, table, { qualificato = false } = {}) {
   for (const r of vincoli.rows) defs.push(String(r.def));
 
   const nome = qualificato ? `${qid(schema)}.${qid(table)}` : qid(table);
-  return `CREATE TABLE ${nome} (\n  ${defs.join(',\n  ')}\n);`;
+  return `CREATE TABLE ${nome} (\n  ${defs.join(',\n  ')}\n)${partizione?.key ? ' PARTITION BY ' + partizione.key : ''};`;
 }
 
 /**
@@ -243,7 +262,7 @@ async function pgAuxDdl(q, schema, table, { qualificato = false } = {}) {
   // Solo gli indici NON creati da un vincolo: quelli di PK/UNIQUE sono già
   // dentro la CREATE TABLE e ricrearli darebbe un errore di duplicato.
   const idx = await q(
-    `SELECT pg_catalog.pg_get_indexdef(x.indexrelid) AS def
+    `SELECT pg_catalog.pg_get_indexdef(x.indexrelid) AS def, i.relkind='I' AND x.indisvalid AS partizionato
        FROM pg_catalog.pg_index x
        JOIN pg_catalog.pg_class i ON i.oid = x.indexrelid
        JOIN pg_catalog.pg_class t ON t.oid = x.indrelid
@@ -257,14 +276,14 @@ async function pgAuxDdl(q, schema, table, { qualificato = false } = {}) {
    ORDER BY i.relname`,
     [schema, table],
   );
-  for (const r of idx.rows) out.indexes.push(`${String(r.def)};`);
+  for (const r of idx.rows) out.indexes.push(`${r.partizionato ? require('./pg-indici').indiceRicorsivo(r.def) : r.def};`);
 
   const fk = await q(
     `SELECT c.conname AS name, pg_catalog.pg_get_constraintdef(c.oid) AS def
        FROM pg_catalog.pg_constraint c
        JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
        JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
-      WHERE n.nspname = $1 AND t.relname = $2 AND c.contype = 'f'
+      WHERE n.nspname = $1 AND t.relname = $2 AND c.contype = 'f' AND c.conparentid = 0
    ORDER BY c.conname`,
     [schema, table],
   );
@@ -283,7 +302,7 @@ async function pgAuxDdl(q, schema, table, { qualificato = false } = {}) {
  * "riuscito" di uno schema con delle view lo ripristinava senza, e nessun
  * conteggio di righe lo segnalava — le view non hanno righe proprie.
  */
-async function pgSchemaObjects(q, schema) {
+async function pgSchemaObjects(q, schema, { statoSequenze = false } = {}) {
   const out = { views: [], routines: [], triggers: [], sequences: [], sequenceValues: [] };
   const { readTypes, readCollations, readExtensions } = require('./pg-types');
   out.types = await readTypes(q, schema);
@@ -337,7 +356,7 @@ async function pgSchemaObjects(q, schema) {
        FROM pg_catalog.pg_trigger t
        JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = $1 AND NOT t.tgisinternal
+      WHERE n.nspname = $1 AND NOT t.tgisinternal AND t.tgparentid = 0
    ORDER BY c.relname, t.tgname`,
     [schema],
   );
@@ -399,6 +418,7 @@ async function pgSchemaObjects(q, schema) {
       out.sequenceValues.push({
         name: r.name,
         sql: `SELECT pg_catalog.setval('${qid(r.name).replace(/'/g, "''")}', ${current.valore}, ${current.chiamata ? 'true' : 'false'})`,
+        ...(statoSequenze ? { valore: current.valore, chiamata: current.chiamata, crescente: BigInt(r.increment_by) > 0n } : {}),
       });
     }
   }

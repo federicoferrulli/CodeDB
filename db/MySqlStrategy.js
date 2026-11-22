@@ -1,14 +1,9 @@
 'use strict';
 
+const mysql = require('mysql2');
 const { prendiConnessioneSql, chiudiStrategiaSql } = require('./sqlSessione');
 const { tipoMysqlNativo } = require('./sqlRisultatiNativi');
-
-const { assertImportOutcomeKnown } = require('./importFailure');
-
 const { modificaConSrid, ERRORE_SRID } = require('./sridModifica');
-
-const mysql = require('mysql2');
-const { colonnaGenerata, defaultDaCreate } = require('./mysqlColonne');
 const { EJSON, Binary } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { stimaConteggio, conteggioLimitato, completaConteggi } = require('./conteggiNavigatore');
@@ -21,8 +16,7 @@ const { installaMetadati } = require('./sqlMetadati');
 // Conversione EJSON <-> parametri SQL: è il protocollo del client, non il
 // dialetto del server, quindi vive in un modulo solo (vedi db/sqlValori.js).
 const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow, documentoScrivibile } = require('./sqlValori');
-const { raggruppaVincoli } = require('./relazioni');
-const { cellaCsv, rigaCsv } = require('./csv');
+const { cellaCsv } = require('./csv');
 // Come si scrive il nome di una tabella o di una colonna: regola unica,
 // condivisa con l'altro adattatore SQL, con il DDL, con il backup e col
 // frontend (vedi db/identificatori.js).
@@ -30,15 +24,19 @@ const { quotaSempre, quotaQualificato } = require('./identificatori');
 const {
   isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, daFormaDriverMysql,
 } = require('./geometry');
-const sessioni = require('./sessioni');
-const { randomUUID } = require('crypto');
 const {
   normalizzaRicerca, catalogoDaDocumenti, aggiornaCacheCatalogo, catalogoValido,
   clausolaMySql, tipoJsonMySql, separaCataloghiJson,
 } = require('./ricercaGlobale');
 const {
-  pianificaDuplicazione, calcolaNuovoValore, documentoSorgente, applicaRicalcolo, valoreSemplice,
-} = require('./duplica');
+  DIALETTO_METADATI,
+  defaultSql,
+  columnSql,
+  columnAlterSqlStatica,
+  installaCatalogoMysql,
+} = require('./mysql-catalogo-schema');
+const { installaTrasferimentoMysql } = require('./mysql-trasferimento');
+const { installaSessioniMysql } = require('./mysql-sessioni-monitor');
 
 const SYSTEM_SCHEMAS = new Set(['information_schema', 'mysql', 'performance_schema', 'sys']);
 
@@ -60,10 +58,6 @@ function assertDbName(name) {
   }
 }
 
-// Identificatore quotato (` `), con eventuale punto trattato come carattere.
-// La regola non è di questo file: sta in `db/identificatori.js` insieme a
-// quella degli altri motori, perché è la stessa decisione presa ovunque si
-// scriva il nome di una tabella o di una colonna.
 function qid(name) {
   return quotaSempre(name, 'mysql');
 }
@@ -83,19 +77,8 @@ function whereFromId(id) {
   return { sql, params };
 }
 
-// Il dialetto MySQL delle quattro funzioni comuni ai due motori SQL: tutto il
-// resto (che cosa è un _id, come si normalizza un limite) sta nel modulo.
-// Come MySQL scrive la regola «il valore nullo è il più piccolo»: con niente.
-// Il suo ordinamento predefinito colloca già i NULL come i più piccoli, quindi
-// un suffisso sarebbe rumore — e MySQL non ha nemmeno la sintassi NULLS
-// FIRST/LAST. Che la coincidenza regga è provato contro un MySQL vero da
-// test/e2e-nulli-ordinati.js: senza quella prova la regola qui si reggerebbe su
-// una coincidenza che nessuno sorveglia.
 const nulliPrima = () => '';
 
-// `testoDi`: come si confronta una colonna COME TESTO. Su MySQL non serve
-// nulla — la conversione e' implicita, e un CAST esplicito sposterebbe la
-// collation del confronto (vedi la nota sull'errore 1267 in testa al file).
 const TABELLARE = tabellare({
   qid, qtable, whereFromId, nulliPrima, segnaposto: () => '?', testoDi: (col) => col,
 });
@@ -113,9 +96,6 @@ async function preparaRicercaGlobale(strategy, db, coll, payload, colonne) {
       const [righe] = await strategy.requirePool().query(
         `SELECT ${nomi} FROM ${qtable(db, coll)} LIMIT 100`
       );
-      // mysql2 di norma decodifica JSON, ma `jsonStrings` e alcuni fork lo
-      // restituiscono come testo. Decodificarlo qui evita di catalogare l'intero
-      // documento come un solo valore (che farebbe coincidere anche le chiavi).
       for (const riga of righe) {
         for (const col of json) {
           if (typeof riga[col.name] !== 'string') continue;
@@ -131,130 +111,6 @@ async function preparaRicercaGlobale(strategy, db, coll, payload, colonne) {
   }
   const perColonna = separaCataloghiJson(catalogo, json.map((c) => c.name));
   return () => clausolaMySql(valore, colonne, perColonna, qid);
-}
-
-/* ---------------------------------------------------------------------------
- * Il dialetto MySQL dei metadati comuni (db/sqlMetadati.js).
- *
- * Qui c'è solo ciò che di MySQL c'è davvero: le query al catalogo, il modo di
- * leggerne le righe e il segnaposto dei parametri. Le decisioni — quando una
- * stima vale, che cosa è un indice unico, come si compone la pagina a chiave —
- * stanno nel modulo, in una copia sola.
- * ------------------------------------------------------------------------- */
-const DIALETTO_METADATI = {
-  qid,
-  segnaposto: () => '?',
-  // Il livello "database" dell'interfaccia è un database MySQL vero.
-  schema: (db) => String(db == null ? '' : db),
-  // mysql2 restituisce [righe, campi].
-  esegui: async (strategia, sql, params) => (await strategia.requirePool().query(sql, params))[0],
-
-  chiavePrimaria: {
-    query: (db, table) => ({
-      sql: `SELECT COLUMN_NAME AS name
-              FROM information_schema.KEY_COLUMN_USAGE
-             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY'
-          ORDER BY ORDINAL_POSITION`,
-      params: [db, table],
-    }),
-  },
-
-  colonne: {
-    // `SRS_ID` esiste da MySQL 8: su 5.7 la query fallisce, e il secondo
-    // tentativo la legge senza (là il SRID non è vincolato).
-    tentativi: (db, coll) => ['SRS_ID', 'NULL'].map((srid) => ({
-      // `IS_NULLABLE` viaggia con le colonne che si leggevano già: sapere quali
-      // colonne ammettono NULL non costa una lettura di catalogo in più (serve a
-      // chi compone l'ORDER BY, vedi buildOrderBy).
-      sql: `SELECT COLUMN_NAME AS name, DATA_TYPE AS type, COLUMN_TYPE AS declaredType,
-                   ${srid} AS srid, EXTRA AS extra,
-                   IS_NULLABLE AS nullable
-              FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-          ORDER BY ORDINAL_POSITION`,
-      params: [db, coll],
-    })),
-    // Le colonne INVISIBLE (MySQL 8) non fanno parte di `SELECT *`: vanno
-    // escluse anche dalla lista esplicita, altrimenti la sola presenza di una
-    // colonna geometrica farebbe comparire nella griglia colonne che prima non
-    // c'erano.
-    visibile: (r) => !/\bINVISIBLE\b/i.test(String(r.extra || '')),
-    // `EXTRA` porta gia' anche questo: una colonna VIRTUAL/STORED GENERATED.
-    generato: (r) => colonnaGenerata(r.extra),
-    classi: [{ nome: 'geo', riconosce: isSqlGeometryType }],
-  },
-
-  campi: {
-    query: (db, table) => ({
-      sql: `SELECT COLUMN_NAME AS name, COLUMN_TYPE AS ctype, IS_NULLABLE AS nullable,
-                   COLUMN_DEFAULT AS cdefault, EXTRA AS extra, COLUMN_KEY AS ckey
-              FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-          ORDER BY ORDINAL_POSITION`,
-      params: [db, table],
-    }),
-    tipo: (c) => String(c.ctype),
-    autoIncrement: (c) => /auto_increment/i.test(String(c.extra || '')),
-    // Colonna calcolata (VIRTUAL/STORED GENERATED): il valore lo fa il
-    // database e un INSERT che la nomina viene rifiutato.
-    generato: (c) => colonnaGenerata(c.extra),
-    chiave: (c) => String(c.ckey || ''),
-  },
-
-  indici: {
-    query: (db, table) => ({ sql: `SHOW INDEX FROM ${qtable(db, table)}`, params: [] }),
-    lettori: {
-      nome: (r) => r.Key_name,
-      colonna: (r) => r.Column_name,
-      ordine: (r) => r.Seq_in_index,
-      unico: (r) => !Number(r.Non_unique),
-      primario: (r) => r.Key_name === 'PRIMARY',
-    },
-    assentiSeErrore: true, // le view non hanno indici: SHOW INDEX fallisce
-  },
-
-  stima: {
-    // TABLE_ROWS è affidabile solo per le tabelle base InnoDB/MyISAM ed è NULL
-    // per le viste: in tal caso il chiamante ripiega sul COUNT(*) esatto.
-    query: (db, coll) => ({
-      sql: 'SELECT TABLE_ROWS AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND TABLE_TYPE = ?',
-      params: [db, coll, 'BASE TABLE'],
-    }),
-    attendibile: () => true,
-  },
-};
-
-// DEFAULT di colonna: numeri e parole chiave (NULL, CURRENT_TIMESTAMP...)
-// passano così come sono, il resto viene quotato come stringa.
-function defaultSql(v) {
-  const t = String(v).trim();
-  if (/^(NULL|CURRENT_TIMESTAMP(\(\d*\))?|NOW\(\)|TRUE|FALSE)$/i.test(t)) return t.toUpperCase();
-  if (/^-?\d+(\.\d+)?$/.test(t)) return t;
-  return mysql.escape(t);
-}
-
-// Definizione SQL di una colonna a partire dall'oggetto del form:
-// { name, type, nullable, default, autoIncrement }.
-function columnSql(c) {
-  const name = String((c && c.name) || '').trim();
-  const type = String((c && c.type) || '').trim();
-  if (!name || !type) throw new Error('Ogni colonna deve avere nome e tipo.');
-  // Il nome è quotato, il tipo NON può esserlo (deve arrivare al motore come
-  // sintassi): l'unica difesa è pretendere che abbia la forma di un tipo, o
-  // `INT, RENAME TO altra_tabella` in un CHANGE COLUMN porta la tabella fuori
-  // dallo scope di chi ha la sola capability `ddl`. Vedi DbStrategy.
-  DbStrategy.assertColumnType(type);
-  let s = `${qid(name)} ${type}`;
-  if (c.charset) s += ` CHARACTER SET ${qid(c.charset)}`;
-  if (c.collation) s += ` COLLATE ${qid(c.collation)}`;
-  if (c.nullable === false) s += ' NOT NULL';
-  if (c.default != null && String(c.default).trim() !== '') s += ` DEFAULT ${defaultSql(c.default)}`;
-  // La visibilità (MySQL 8.0.23+) va DOPO il default e PRIMA di
-  // AUTO_INCREMENT: è l'ordine imposto dalla grammatica di column_definition,
-  // non una preferenza. Fuori posto, l'ALTER viene rifiutato dal parser.
-  if (c.invisible) s += ' INVISIBLE';
-  if (c.autoIncrement) s += ' AUTO_INCREMENT';
-  return s;
 }
 
 /* ---------------------------------------------------------------------------
@@ -867,7 +723,9 @@ class MySqlStrategy extends DbStrategy {
     const { queryMysql, statoMysql } = require('./mysqlSessioneNativa');
     const query = (sql, params) => queryMysql(conn, sql, params);
     const statoNativo = statoMysql(conn);
+    const transazioneInCorso = !!(statoNativo.status & 1);
     let eseguita = false;
+    let erroreIstruzione;
     const letturaIsolata = readOnly && !lease.transazione;
     // Il timeout di mysql2 è lato CLIENT: allo scadere il driver smette di
     // aspettare, ma il server continua a eseguire e il result set arriverà
@@ -892,59 +750,23 @@ class MySqlStrategy extends DbStrategy {
       if (letturaIsolata) await query('START TRANSACTION READ ONLY');
       try {
         const cap = DbStrategy.resultCap(payload);
-        let result, fields;
+        let risposta;
         try {
-          [result, fields] = await query(richiesta, payload.params);
+          risposta = await require('./mysqlSessioneNativa').queryRisultatoMysql(conn, richiesta, payload.params, cap, DbStrategy.maxResultBytes(this.env));
           eseguita = true;
         } catch (err) {
           require('./queryError').annotaErroreQuery(err, sql, 'mysql');
           if (!MySqlStrategy.isDriverTimeout(err)) throw err;
           avvelenata = true;
           await this.uccidiSulServer(conn.threadId);
-          // L'errore del driver risale così com'è: a tradurlo in italiano
-          // (causa + rimedio, citando il limite configurato) è `spiegaErrore`,
-          // che è l'unico posto dove quel testo deve vivere.
           throw err;
         }
-
-        if (Array.isArray(result)) {
-          // I metadati distinguono più result set dai normali nomi di colonna.
-          const isMulti = result.length > 0 && (Array.isArray(result[0]) || Array.isArray(fields?.[0]));
-
-          if (isMulti) {
-            // Cerchiamo l'ultimo result set che ha righe di dati (SELECT)
-            let selectRes = null;
-            let selectFields = null;
-            let totalAffected = 0;
-            let statementCount = result.length;
-
-            for (let i = 0; i < result.length; i++) {
-              const resItem = result[i];
-              if (Array.isArray(resItem)) {
-                selectRes = resItem;
-                selectFields = Array.isArray(fields) && fields[i] ? fields[i] : null;
-              } else if (resItem && typeof resItem.affectedRows === 'number') {
-                totalAffected += resItem.affectedRows;
-              }
-            }
-
-            if (selectRes) {
-              const rows = selectRes.slice(0, cap);
-              const columns = (selectFields || []).map((f) => f.name || f);
-              return { docs: rows.map((r) => serializeRow(r, selectFields || [])), columns, total: selectRes.length, skip: 0, limit: cap, resultSet: true, truncated: selectRes.length > cap };
-            }
-
-            // Soltanto statement di scrittura/DDL (INSERT, UPDATE, CREATE, ecc.)
-            const summary = { istruzioniEseguite: statementCount, righeCoinvolteTotali: totalAffected };
-            return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap };
-          }
-
-          // Singola SELECT
-          const rows = result.slice(0, cap);
-          const columns = (fields || []).map((f) => f.name);
-          return { docs: rows.map((r) => serializeRow(r, fields || [])), columns, total: result.length, skip: 0, limit: cap, resultSet: true, truncated: result.length > cap };
+        if (risposta.righe) return risposta.righe;
+        if (risposta.istruzioni > 1) {
+          const summary = { istruzioniEseguite: risposta.istruzioni, righeCoinvolteTotali: risposta.coinvolte };
+          return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap };
         }
-
+        const result = risposta.header;
         // Statement senza result set (UPDATE, DELETE, DDL...): riepilogo.
         const summary = { righeCoinvolte: result ? (result.affectedRows || 0) : 0 };
         if (result && result.insertId) summary.insertId = result.insertId;
@@ -966,6 +788,9 @@ class MySqlStrategy extends DbStrategy {
         // per leggere il result set arretrato della query uccisa.
         if (letturaIsolata && !avvelenata) await query('ROLLBACK').catch(() => {});
       }
+    } catch (err) {
+      erroreIstruzione = err;
+      throw err;
     } finally {
       let statoServer;
       try {
@@ -980,8 +805,15 @@ class MySqlStrategy extends DbStrategy {
         }
       } catch (err) {
         avvelenata = true;
+        err.sqlTransactionLost = true;
         if (eseguita) throw err;
-      } finally { await lease.termina(eseguita, avvelenata, statoServer); }
+      } finally {
+        if (erroreIstruzione && (avvelenata || (lease.transazione && erroreIstruzione.code === 'ER_LOCK_DEADLOCK') ||
+            (transazioneInCorso && Number.isInteger(statoNativo.status) && !(statoNativo.status & 1)))) {
+          erroreIstruzione.sqlTransactionLost = true;
+        }
+        await lease.termina(eseguita, avvelenata, statoServer);
+      }
     }
   }
 
@@ -1064,188 +896,6 @@ class MySqlStrategy extends DbStrategy {
     } finally {
       if (altra) altra.release();
     }
-  }
-
-  /* --- Monitor delle sessioni ---------------------------------------------
-   * `information_schema.PROCESSLIST`: senza il privilegio PROCESS il server non
-   * dà errore, restituisce le sole sessioni dell'utente collegato — una lista
-   * corta e perfettamente credibile. Si controllano quindi i grant e lo si
-   * dichiara, perché "nessuno sta bloccando il database" e "non ti è dato
-   * vedere chi lo sta bloccando" portano a decisioni opposte.
-   * ---------------------------------------------------------------------- */
-  async listSessions() {
-    const pool = this.requirePool();
-    const conn = await pool.getConnection();
-    try {
-      // ORDER BY … LIMIT sposta ordinamento e troncamento sul server, così la
-      // riga che interessa non è mai fra quelle scartate dal tetto.
-      //
-      // Il solo `TIME DESC` non bastava, e sbagliava nel verso peggiore: in
-      // PROCESSLIST `TIME` è il tempo trascorso nello STATO CORRENTE, che per un
-      // thread `Sleep` è da quanto è inattivo. Su un server con centinaia di
-      // connessioni applicative aperte da ore le prime 500 righe erano tutte
-      // `Sleep`, e la query che gira da quaranta secondi — l'unica ragione per
-      // cui questo pannello viene aperto — cadeva oltre il tetto: non compariva
-      // in tabella e non entrava in `diagnosi()`, che rispondeva «nessuna query
-      // lenta». Un verdetto falso, non incompleto. Le sessioni che stanno
-      // facendo qualcosa vengono quindi prima, e solo dentro quei due gruppi
-      // conta la durata.
-      const [rows] = await conn.query(
-        `SELECT p.ID, p.USER, p.HOST, p.DB, p.COMMAND, p.TIME, p.STATE, p.INFO,
-                t.THREAD_ID AS STABLE_ID
-           FROM information_schema.PROCESSLIST p
-           LEFT JOIN performance_schema.threads t ON t.PROCESSLIST_ID = p.ID
-          ORDER BY (p.COMMAND <> 'Sleep') DESC, p.TIME DESC
-          LIMIT ${sessioni.MAX_SESSIONI + 1}`
-      );
-
-      // I privilegi dell'utente della connessione non cambiano mentre il
-      // pannello è aperto: si chiedono una volta sola per connessione, invece
-      // che a ogni refresh (il pannello si aggiorna ogni 5 s, e sarebbe una
-      // query in più ogni volta solo per decidere il testo di una nota).
-      if (this._notaPrivilegi === undefined) {
-        this._notaPrivilegi = null;
-        try {
-          const [grants] = await conn.query('SHOW GRANTS FOR CURRENT_USER()');
-          const testo = grants.map((r) => Object.values(r)[0]).join('\n');
-          if (!/\b(PROCESS|ALL PRIVILEGES)\b/i.test(testo)) {
-            this._notaPrivilegi = 'Vengono mostrate solo le sessioni dell\'utente collegato: manca il privilegio PROCESS, necessario per vedere quelle degli altri utenti.';
-          }
-        } catch { /* SHOW GRANTS negato: si preferisce nessuna nota a una sbagliata */ }
-      }
-      const nota = this._notaPrivilegi;
-
-      const { coppie, saBloccanti, transazioni } = await this.attesePerLock(conn);
-      const troncato = rows.length > sessioni.MAX_SESSIONI;
-      const lista = sessioni.ordina(sessioni.collegaBlocchi(
-        sessioni.normalizzaMysql(rows.slice(0, sessioni.MAX_SESSIONI), {
-          threadIds: this.threadIdsDelPool(),
-          transazioni,
-        }),
-        coppie
-      ));
-      return {
-        sessioni: lista,
-        capacita: { annullaQuery: true, terminaConnessione: true, saBloccanti },
-        troncato,
-        nota,
-      };
-    } finally {
-      conn.release();
-    }
-  }
-
-  /**
-   * Coppie "chi aspetta → chi tiene il lock" per i lock InnoDB.
-   *
-   * Non è un di più: davanti a "il database è fermo" si vede la sessione in
-   * attesa, la si termina, e non cambia nulla — quella è la vittima. Il lock
-   * ce l'ha un'altra, spesso una connessione che non sta eseguendo niente e
-   * che quindi non compare fra le query lente.
-   *
-   * Due dialetti e nessuno dei due garantito: `performance_schema.data_lock_waits`
-   * esiste da MySQL 8, `information_schema.innodb_lock_waits` era la forma di
-   * 5.7 (e MariaDB); entrambe richiedono privilegi che l'utente della
-   * connessione può non avere. Il fallimento non è un errore da mostrare — il
-   * resto del pannello funziona benissimo lo stesso — ma nemmeno da nascondere:
-   * torna `saBloccanti: false`, e l'interfaccia dice che questo database non
-   * sa indicare il bloccante invece di far credere che non ce ne siano.
-   *
-   * Restano fuori i lock di METADATO ("Waiting for table metadata lock", il
-   * caso tipico di una ALTER dietro una transazione aperta): stanno in
-   * `performance_schema.metadata_locks`, con un'altra forma. Limite noto.
-   */
-  async attesePerLock(conn) {
-    const query = (sql) => conn.query(sql).then(([r]) => r);
-    const mappa = (rows) => rows
-      .filter((r) => r.attesa != null && r.blocca != null)
-      .map((r) => ({ attesa: String(r.attesa), blocca: String(r.blocca) }));
-
-    // Thread con una transazione aperta: su MySQL non c'è uno stato che lo
-    // dica (un `Sleep` con i lock in mano è indistinguibile da un `Sleep`
-    // qualunque), ed è proprio la sessione che finisce col bloccare tutti.
-    let transazioni = [];
-    try {
-      transazioni = (await query('SELECT trx_mysql_thread_id AS id FROM information_schema.innodb_trx'))
-        .map((r) => r.id).filter((v) => v != null);
-    } catch { /* privilegi mancanti: si rinuncia al dettaglio, non al pannello */ }
-
-    try {
-      return {
-        transazioni,
-        coppie: mappa(await query(
-          `SELECT r.trx_mysql_thread_id AS attesa, b.trx_mysql_thread_id AS blocca
-             FROM performance_schema.data_lock_waits w
-             JOIN information_schema.innodb_trx r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID
-             JOIN information_schema.innodb_trx b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID`
-        )),
-        saBloccanti: true,
-      };
-    } catch (_e8) {
-      try {
-        return {
-          transazioni,
-          coppie: mappa(await query(
-            `SELECT r.trx_mysql_thread_id AS attesa, b.trx_mysql_thread_id AS blocca
-               FROM information_schema.innodb_lock_waits w
-               JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id
-               JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id`
-          )),
-          saBloccanti: true,
-        };
-      } catch (_e57) {
-        return { transazioni, coppie: [], saBloccanti: false };
-      }
-    }
-  }
-
-  /**
-   * Id dei thread del NOSTRO pool. mysql2 non ha un'API pubblica per
-   * enumerarli (come per le statistiche del pool in `health()`): si leggono in
-   * modo difensivo i contatori interni. Un fallimento qui non è grave in sé ma
-   * lo diventa nell'interfaccia — le connessioni di CodeDB comparirebbero come
-   * terminabili — quindi l'assenza del dato vale "non lo so", e il monitor
-   * segnala comunque la connessione con cui sta interrogando (che è certa).
-   */
-  threadIdsDelPool() {
-    const ids = [];
-    try {
-      const raw = (this.pool && this.pool.pool) || this.pool;
-      const all = raw && raw._allConnections;
-      const arr = !all ? [] : (typeof all.toArray === 'function' ? all.toArray() : Array.from(all));
-      for (const c of arr) {
-        const id = c && (c.threadId != null ? c.threadId : (c.connection && c.connection.threadId));
-        if (id != null) ids.push(id);
-      }
-    } catch { /* internals non disponibili */ }
-    return ids;
-  }
-
-  async killSession(id, modo, identitaOsservata) {
-    const pool = this.requirePool();
-    // L'id arriva dal client: va usato come NUMERO in un comando che non
-    // ammette parametri preparati (`KILL` non li accetta), quindi se non è un
-    // intero non si costruisce alcuna stringa SQL con esso.
-    const num = Number(String(id).trim());
-    if (!Number.isInteger(num) || num <= 0) throw new Error(`Id di sessione non valido: "${id}".`);
-    const conn = await pool.getConnection();
-    try {
-      const [correnti] = await conn.query(
-        'SELECT THREAD_ID AS STABLE_ID FROM performance_schema.threads WHERE PROCESSLIST_ID = ?',
-        [num]
-      );
-      const corrente = correnti[0] && `mysql-thread:${correnti[0].STABLE_ID}`;
-      sessioni.assertIdentitaSessione(identitaOsservata, corrente);
-      await conn.query(modo === 'connessione' ? `KILL CONNECTION ${num}` : `KILL QUERY ${num}`);
-      return { terminata: true, modo: modo === 'connessione' ? 'connessione' : 'query' };
-    } finally {
-      conn.release();
-    }
-  }
-
-  async cancelQuery(opHandle) {
-    if (!opHandle || !opHandle.connectionId || !this.pool) return { cancelled: false };
-    return { cancelled: await this.uccidiSulServer(opHandle.connectionId) };
   }
 
   // Piano di esecuzione: EXPLAIN sulla SELECT costruita da filter/sort correnti
@@ -1406,642 +1056,21 @@ class MySqlStrategy extends DbStrategy {
     return cellaCsv(v);
   }
 
-  // CREATE TABLE della tabella: usato dall'export di interi database per
-  // ricreare lo schema all'import.
-  async tableDdl(db, coll) {
-    const pool = this.requirePool();
-    return require('./mysql-ddl').mysqlTableDdl(pool, db, coll, this.metadataPool || pool);
-  }
-
-  async tableAuxDdl(db, coll) {
-    const pool = this.requirePool();
-    const ddl = await require('./mysql-ddl').mysqlTableDdl(pool, db, coll, this.metadataPool || pool);
-    const [[count]] = await pool.query(`SELECT COUNT(*) AS n FROM information_schema.TABLE_CONSTRAINTS
-      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_TYPE = 'FOREIGN KEY'`, [db, coll]);
-    if (!Number.isSafeInteger(Number(count?.n)) || Number(count.n) < 0) throw new Error('Conteggio delle chiavi esterne MySQL non valido.');
-    return { indexes: [], foreignKeys: require('../backup/lib/engine').splitMySqlForeignKeys(ddl, coll, Number(count.n)).foreignKeys };
-  }
-
-  async dbSchema(db) {
-    const pool = this.requirePool();
-    // `TABLE_ROWS` viaggia con lo schema perche' il grafo deve poter nascondere
-    // le tabelle VUOTE, e senza un conteggio quella decisione non e'
-    // esprimibile: il filtro cadeva su `fields.length === 0`, cioe' sulle
-    // tabelle senza COLONNE, che in SQL non esistono. E' una stima InnoDB —
-    // ricavata dai campionamenti dell'indice, non un `COUNT(*)`, che su un
-    // centinaio di tabelle sarebbe una scansione ciascuna — quindi il
-    // chiamante la tratta come tale: si nasconde solo cio' che la stima
-    // dichiara a zero, mai cio' che non sa (`null`).
-    const [tables] = await pool.query(
-      `SELECT TABLE_NAME, TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME`,
-      [db]
-    );
-
-    const [columns] = await pool.query(
-      `SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY
-       FROM information_schema.COLUMNS
-       WHERE TABLE_SCHEMA = ?
-       ORDER BY TABLE_NAME, ORDINAL_POSITION`,
-      [db]
-    );
-
-    const colsByTable = new Map();
-    for (const row of columns) {
-      if (!colsByTable.has(row.TABLE_NAME)) colsByTable.set(row.TABLE_NAME, []);
-      colsByTable.get(row.TABLE_NAME).push({
-        name: row.COLUMN_NAME,
-        types: [row.DATA_TYPE || row.COLUMN_TYPE || 'varchar'],
-        pk: row.COLUMN_KEY === 'PRI',
-        nullable: row.IS_NULLABLE === 'YES',
-        presence: row.IS_NULLABLE === 'YES' ? 0 : 100, // coerente con PostgreSqlStrategy
-      });
-    }
-
-    const collections = tables.map((t) => ({
-      name: t.TABLE_NAME,
-      fields: colsByTable.get(t.TABLE_NAME) || [],
-      rowsApprox: t.TABLE_ROWS == null ? null : Number(t.TABLE_ROWS),
-    }));
-
-    const [fkRows] = await pool.query(
-      `SELECT CONSTRAINT_NAME, ORDINAL_POSITION, TABLE_NAME, COLUMN_NAME,
-              REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
-       FROM information_schema.KEY_COLUMN_USAGE
-       WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL
-    ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION`,
-      [db]
-    );
-
-    const relations = [];
-    const fkSet = new Set();
-    for (const fk of fkRows) {
-      relations.push({
-        from: fk.TABLE_NAME,
-        field: fk.COLUMN_NAME,
-        to: fk.REFERENCED_TABLE_NAME,
-        toDb: fk.REFERENCED_TABLE_SCHEMA || db,
-        external: !!fk.REFERENCED_TABLE_SCHEMA && fk.REFERENCED_TABLE_SCHEMA !== db,
-        many: true,
-        // Identità del vincolo e colonna di DESTINAZIONE: senza, una FK
-        // composta arrivava al diagramma come N relazioni indipendenti fra gli
-        // stessi due nodi, indistinguibili da N chiavi esterne distinte.
-        constraint: fk.CONSTRAINT_NAME,
-        ordine: Number(fk.ORDINAL_POSITION) || 1,
-        toField: fk.REFERENCED_COLUMN_NAME,
-        origine: 'vincolo',
-      });
-      fkSet.add(`${fk.TABLE_NAME}.${fk.COLUMN_NAME}->${fk.REFERENCED_TABLE_NAME}`);
-    }
-
-    const detected = DbStrategy.detectRelations(collections);
-    for (const r of detected) {
-      const key = `${r.from}.${r.field}->${r.to}`;
-      if (!fkSet.has(key)) {
-        relations.push(r);
-      }
-    }
-
-    return { collections, relations };
-  }
-
-  // Chiavi esterne uscenti dalla sola tabella indicata (pannello di riferimento
-  // della griglia). Si legge REFERENCED_TABLE_SCHEMA e non lo si dà per uguale a
-  // `db`: in MySQL una FK può attraversare i database, e assumendo lo schema di
-  // partenza il pannello interrogherebbe una tabella omonima sbagliata — o
-  // inesistente, che è il caso fortunato perché almeno si vede.
-  async columnRelations(db, coll) {
-    const pool = this.requirePool();
-    const [rows] = await pool.query(
-      `SELECT k.CONSTRAINT_NAME, k.ORDINAL_POSITION, k.COLUMN_NAME,
-              k.REFERENCED_TABLE_SCHEMA, k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME,
-              r.DELETE_RULE, r.UPDATE_RULE
-         FROM information_schema.KEY_COLUMN_USAGE k
-         JOIN information_schema.REFERENTIAL_CONSTRAINTS r
-           ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.TABLE_NAME = k.TABLE_NAME AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME
-        WHERE k.TABLE_SCHEMA = ? AND k.TABLE_NAME = ? AND k.REFERENCED_TABLE_NAME IS NOT NULL
-     ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION`,
-      [db, coll]
-    );
-    return raggruppaVincoli(rows.map((r) => ({
-      nome: r.CONSTRAINT_NAME,
-      onDelete: r.DELETE_RULE, onUpdate: r.UPDATE_RULE,
-      ordine: r.ORDINAL_POSITION,
-      campo: r.COLUMN_NAME,
-      db: r.REFERENCED_TABLE_SCHEMA || db,
-      tabella: r.REFERENCED_TABLE_NAME,
-      colonna: r.REFERENCED_COLUMN_NAME,
-    })));
-  }
-
-
-  // Esporta un blocco di righe come CSV (format: 'csv', header a parte),
-  // come statement INSERT (format: 'sql') o come righe Extended JSON
-  // (format: 'json', una riga-oggetto per riga di tabella: è il formato
-  // dell'export di interi database, reimportabile con collectionImport).
-  // Paginazione keyset sulla chiave primaria (evita l'O(n²) di OFFSET su
-  // tabelle grandi): payload.after = EJSON dei valori PK dell'ultima riga
-  // ricevuta. Senza chiave primaria non esiste un ordinamento stabile su cui
-  // costruire un cursore, quindi si ripiega su skip/offset (comportamento
-  // precedente, invariato per questo caso). `total` (COUNT(*) sull'intera
-  // tabella) viaggia solo nella risposta della PRIMA pagina: chi pagina lo
-  // riusa da lì invece di aspettarselo — e pagarlo — su ogni blocco.
-  async collectionExport(db, coll, payload) {
-    const pool = this.requirePool();
-    const format = ['sql', 'json'].includes(payload.format) ? payload.format : 'csv';
-    const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 500, 1), 1000);
-    const table = qtable(db, coll);
-    const pk = await this.primaryKey(db, coll);
-    // Geometrie e binari viaggiano nei byte nativi, numerici e temporali come testo esatto.
-    const primaPagina = !payload.after && !(Number(payload.skip) > 0);
-    const metadati = format !== 'csv'
-      ? await this.metadatiEsportazione(db, coll, primaPagina)
-      : null;
-    const selectList = metadati ? require('./sqlTransfer').projection(metadati.info, true) : '*';
-
-    let rows;
-    let fields;
-    let nextAfter = null;
-    if (pk.length) {
-      const pkCols = pk.map(c=>`${table}.${qid(c)}`).join(', ');
-      const ordinalPk = new Set((metadati?.info.columns || []).filter(require('./mysql-ordinal').isOrdinal).map(c=>c.name));
-      let whereSql = '';
-      let params = [];
-      if (payload.after != null && payload.after !== '') {
-        let afterVals;
-        try {
-          afterVals = parseClientValue(payload.after);
-        } catch {
-          throw new Error('Cursore di paginazione non valido.');
-        }
-        if (!Array.isArray(afterVals) || afterVals.length !== pk.length) {
-          throw new Error('Cursore di paginazione non valido.');
-        }
-        const keys = pk.map(c=>ordinalPk.has(c)?`CAST(${qid(c)} AS UNSIGNED)`:qid(c));
-        whereSql = ` WHERE (${keys.join(', ')}) > (${pk.map(c=>ordinalPk.has(c)?'CAST(? AS UNSIGNED)':'?').join(', ')})`;
-        params = afterVals.map(toSqlValue);
-      }
-      [rows, fields] = await pool.query(
-        `SELECT ${selectList} FROM ${table}${whereSql} ORDER BY ${pkCols} LIMIT ?`,
-        [...params, limit]
-      );
-      if (rows.length) {
-        const last = rows[rows.length - 1];
-        nextAfter = EJSON.stringify(pk.map((c) => Buffer.isBuffer(last[c]) ? new Binary(last[c]) : last[c]), { relaxed: false });
-      }
-    } else {
-      const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
-      [rows, fields] = await pool.query(
-        `SELECT ${selectList} FROM ${table} LIMIT ? OFFSET ?`, [limit, skip]);
-    }
-    // Il conteggio (COUNT(*), una scansione dell'intera tabella) si calcola
-    // solo alla PRIMA pagina — vedi db/sqlMetadati.js: totaleEsportazione.
-    const total = await this.totaleEsportazione(table, primaPagina);
-    let columns = (fields || []).map((f) => f.name);
-
-    if (metadati) {
-      // Una colonna GENERATA non si puo' nominare in un INSERT: esportarla
-      // rendeva il file non reimportabile riga per riga. Il suo valore lo
-      // ricalcola il database dalla definizione, che viaggia nel DDL.
-      const scrivibili = metadati.scrivibili;
-      const generate = columns.filter((c) => !scrivibili.has(c));
-      if (generate.length) {
-        for (const row of rows) for (const c of generate) delete row[c];
-        columns = columns.filter((c) => scrivibili.has(c));
-      }
-    }
-
-    let lines;
-    if (format === 'sql') {
-      lines = rows.map(r => require('./databaseExport').insertSql('mysql', table, require('./sqlTransfer').encodeRow(r, metadati.info.columns), metadati.info).trim());
-    } else if (format === 'json') {
-      // EJSON canonico per i binari/ordinali; date e decimali restano testo nativo.
-      lines = rows.map(r => require('./sqlTransfer').encodeRow(r, metadati.info.columns));
-    } else {
-      lines = rows.map((r) => rigaCsv(columns.map((c) => r[c]), { modalita: payload.csvMode }));
-    }
-    return {
-      lines,
-      count: rows.length,
-      total,
-      format,
-      header: format === 'csv' ? rigaCsv(columns, { modalita: payload.csvMode }) : null,
-      nextAfter,
-    };
-  }
-
-  // Importa un blocco di righe Extended JSON senza arrotondare i valori numerici.
-  // Le righe con lo stesso insieme di colonne (stesso ordine, il caso
-  // comune quando arrivano da un export della stessa tabella) vengono
-  // raggruppate in un unico INSERT multi-VALUES, come già fa il restore dei
-  // backup; un batch che fallisce viene ripetuto riga per riga per isolare
-  // l'errore e non perdere le righe valide, mantenendo il report ok/errori.
-  async collectionImport(db, coll, payload) {
-    const pool = this.requirePool();
-    const raw = Array.isArray(payload.docs) ? payload.docs : [];
-    if (!raw.length) throw new Error('Nessuna riga da importare nel blocco.');
-    const table = qtable(db, coll);
-    let inserted = 0;
-    const errors = [];
-    const conflictColumns = Array.isArray(payload.conflictColumns)
-      ? payload.conflictColumns.filter((c) => typeof c === 'string' && c)
-      : [];
-    if (payload.upsert && !conflictColumns.length) {
-      throw new Error(`Upsert rifiutato per "${coll}": il piano non dichiara un'identita stabile.`);
-    }
-
-    // Geometrie e colonne scrivibili si leggono dal catalogo della tabella di
-    // DESTINAZIONE: e' lei a dire come va scritto un valore, non il file.
-    let geo = new Map();
-    let scrivibili = new Set();
-    let colonneReali = new Set();
-    let columnTypes = new Map();
-    try {
-      const info = await this.tableColumnsInfo(db, coll);
-      columnTypes = new Map(info.columns.map(c => [c.name, c]));
-      colonneReali = new Set(info.columns.map(c => c.name));
-      geo = info.geo || geo;
-      scrivibili = new Set(info.columns.filter(c => !c.generated).map(c => c.name));
-    } catch { /* metadati non leggibili: vale il comportamento storico */ }
-
-    const parsed = [];
-    for (let i = 0; i < raw.length; i++) {
-      try {
-        const row = deserializeClientObject(raw[i]);
-        if (!row || typeof row !== 'object' || Array.isArray(row)) {
-          throw new Error('la riga deve essere un oggetto { "colonna": valore }');
-        }
-        // Una colonna GENERATA arriva dai file esportati dalle versioni che la
-        // scrivevano: nominarla in un INSERT e' un errore, e farebbe fallire
-        // OGNI riga. Si scarta qui, cosi' i file gia' prodotti restano
-        // importabili invece di richiedere un nuovo export.
-        for (const nome of Object.keys(row)) {
-          if (colonneReali.has(nome) && !scrivibili.has(nome)) delete row[nome];
-        }
-        const cols = Object.keys(row);
-        // I valori NON vengono piu' convertiti qui: `geoBinding` decide per
-        // ciascuna colonna se serve un segnaposto normale o
-        // ST_GeomFromGeoJSON, ed e' lui a chiamare `toSqlValue`.
-        parsed.push({ i, cols, values: cols.map((c) => row[c]) });
-      } catch (err) {
-        if (errors.length < 10) errors.push(`Riga ${i + 1}: ${(err && err.message) || err}`);
-      }
-    }
-
-    if (payload.upsert) {
-      const incompleta = parsed.find((p) => conflictColumns.some((c) => !p.cols.includes(c)));
-      if (incompleta) {
-        throw new Error(
-          `Upsert rifiutato per "${coll}": la riga ${incompleta.i + 1} non contiene tutta l'identita stabile `
-          + `(${conflictColumns.join(', ')}).`
-        );
-      }
-    }
-
-    const coda = (cols) => {
-      if (!payload.upsert) return '';
-      const aggiornabili = cols.filter((c) => !conflictColumns.includes(c));
-      const assegnazioni = aggiornabili.length
-        ? aggiornabili.map((c) => `${qid(c)} = VALUES(${qid(c)})`)
-        : [`${qid(conflictColumns[0])} = ${qid(conflictColumns[0])}`];
-      const stessaIdentita = conflictColumns.map(c => `${qid(c)} <=> VALUES(${qid(c)})`).join(' AND ');
-      // Una UNIQUE secondaria non deve aggiornare una riga con un'altra PK.
-      const guardia = `${qid(conflictColumns[0])} = IF(${stessaIdentita}, ${qid(conflictColumns[0])}, NULL)`;
-      return ` ON DUPLICATE KEY UPDATE ${[guardia, ...assegnazioni].join(', ')}`;
-    };
-
-    // Una tupla per riga con i suoi parametri: le colonne geometriche prendono
-    // ST_GeomFromGeoJSON col SRID della colonna (la stessa via di docInsert),
-    // le altre un segnaposto. Prima si usava `VALUES ?` con la lista dei
-    // valori, che per una geometria manda al server l'oggetto GeoJSON grezzo:
-    // MySQL risponde «Cannot get geometry object» su OGNI riga.
-    const inserimento = (cols, righe) => {
-      const params = [];
-      const zeroColumns = [];
-      const tuple = righe.map((r, rowIndex) => {
-        const ph = r.values.map((valore, indice) => {
-          const ordinal = require('./mysql-ordinal').binding(valore, columnTypes.get(cols[indice]));
-          const bind = ordinal || MySqlStrategy.geoBinding(cols[indice], valore, geo, { importazione: true });
-          if (ordinal?.zero) zeroColumns.push({column:cols[indice],row:rowIndex+1});
-          params.push(bind.param);
-          return bind.sql;
-        });
-        return `(${ph.join(', ')})`;
-      });
-      return {
-        sql: `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES ${tuple.join(', ')}${coda(cols)}`,
-        params, zeroColumns,
-      };
-    };
-
-    const BATCH_SIZE = 500;
-    const groups = [];
-    let cur = null;
-    for (const p of parsed) {
-      const sig = p.cols.join('\u0000');
-      const bytes = Buffer.byteLength(JSON.stringify(p.values), 'utf8');
-      if (cur && cur.sig === sig && cur.rows.length < BATCH_SIZE && cur.bytes + bytes <= 1024 * 1024) {
-        cur.rows.push(p);
-        cur.bytes += bytes;
-      } else {
-        cur = { sig, cols: p.cols, rows: [p], bytes };
-        groups.push(cur);
-      }
-    }
-
-    const conn = await pool.getConnection();
-    let session;
-    try {
-      [[session]] = await conn.query('SELECT @@SESSION.time_zone AS timezone, @@SESSION.sql_mode AS mode');
-      await conn.query("SET SESSION time_zone = ?, SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO,STRICT_ALL_TABLES'", [payload.timeZone || '+00:00']);
-      const write = (sql, params, zeroColumns) => require('./mysql-ordinal').write(conn, sql, params, zeroColumns);
-      for (const g of groups) {
-        try {
-          const q = inserimento(g.cols, g.rows);
-          await write(q.sql, q.params, q.zeroColumns);
-          // affectedRows vale 2 per una riga aggiornata da ON DUPLICATE KEY:
-          // il conteggio applicato misura righe sorgente, non effetti interni.
-          inserted += g.rows.length;
-        } catch (err) {
-          assertImportOutcomeKnown(err);
-          // Un vincolo violato da una sola riga fa fallire tutto il batch:
-          // si ripete riga per riga per isolare quale e non perdere le altre.
-          for (const r of g.rows) {
-            try {
-              const q = inserimento(g.cols, [r]);
-              await write(q.sql, q.params, q.zeroColumns);
-              inserted += 1;
-            } catch (err) {
-              assertImportOutcomeKnown(err);
-              if (errors.length < 10) errors.push(`Riga ${r.i + 1}: ${(err && err.message) || err}`);
-            }
-          }
-        }
-      }
-    } finally {
-      try {
-        if (session) await conn.query('SET SESSION time_zone = ?, SESSION sql_mode = ?', [session.timezone, session.mode]);
-        conn.release();
-      } catch (err) { conn.destroy(); throw err; }
-    }
-    return { inserted, failed: raw.length - inserted, errors };
-  }
-
-  async createCollection(db, name, payload = {}) {
-    const pool = this.requirePool();
-    const table = String(name || '').trim();
-    if (!table) throw new Error('Nome della tabella mancante.');
-    DbStrategy.assertCreatableName(table, 'della tabella');
-    const cols = Array.isArray(payload.columns) ? payload.columns : [];
-    let defs;
-    if (!cols.length) {
-      defs = [`${qid('id')} INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY`];
-    } else {
-      defs = cols.map(columnSql);
-      const pk = cols.filter((c) => c.primaryKey).map((c) => qid(String(c.name).trim()));
-      if (pk.length) defs.push(`PRIMARY KEY (${pk.join(', ')})`);
-    }
-    await pool.query(`CREATE TABLE ${qtable(db, table)} (${defs.join(', ')})`);
-  }
-
-  async renameCollection(db, coll, newName) {
-    const pool = this.requirePool();
-    const to = String(newName || '').trim();
-    if (!to) throw new Error('Nuovo nome della tabella mancante.');
-    DbStrategy.assertCreatableName(to, 'della tabella');
-    await pool.query(`RENAME TABLE ${qtable(db, coll)} TO ${qtable(db, to)}`);
-    this._cacheColonne.clear();
-  }
-
-  async dropCollection(db, coll) {
-    const pool = this.requirePool();
-    await pool.query(`DROP TABLE ${qtable(db, coll)}`);
-    this._cacheColonne.clear();
-  }
-
-  async addColumn(db, coll, column) {
-    const pool = this.requirePool();
-    await pool.query(`ALTER TABLE ${qtable(db, coll)} ADD COLUMN ${columnSql(column || {})}`);
-    this._cacheColonne.clear(); // i metadati di colonna in cache non valgono più
-  }
-
-  // payload: { oldName, column: { name, type, nullable, default } }
-  async alterColumn(db, coll, payload) {
-    const sql = await this.columnAlterSql(db, coll, payload);
-    await this.requirePool().query(sql);
-    this._cacheColonne.clear();
-  }
-
-  // La stessa istruzione alimenta l'anteprima UML e la modifica immediata.
-  async columnAlterSql(db, coll, payload) {
-    const oldName = String((payload && payload.oldName) || '').trim();
-    if (!oldName) throw new Error('Nome della colonna da modificare mancante.');
-    return MySqlStrategy.columnAlterSql(db, coll, { ...payload, oldName }, await this.columnDefinition(db, coll, oldName));
-  }
-
-  async columnDefinition(db, coll, oldName) {
-    const pool = this.requirePool();
-    const [rows] = await pool.query(
-      `SELECT EXTRA AS extra, COLUMN_DEFAULT AS defaultValue, COLUMN_TYPE AS columnType, GENERATION_EXPRESSION AS generationExpression,
-              COLUMN_COMMENT AS comment, CHARACTER_SET_NAME AS charset, COLLATION_NAME AS collation
-         FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
-      [db, coll, oldName]
-    );
-    const originale = rows[0];
-    if (!originale) throw new Error(`Colonna ${oldName} non trovata.`);
-    if (/default_generated/i.test(originale.extra || '') && originale.defaultValue != null) {
-      originale.defaultExpression = defaultDaCreate(await this.tableDdl(db, coll), qid(oldName));
-    }
-    if (/^(geometry|point|linestring|polygon|multipoint|multilinestring|multipolygon|geometrycollection)$/i.test(originale.columnType)) {
-      try {
-        const [srids] = await pool.query('SELECT SRS_ID AS srid FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?', [db, coll, oldName]);
-        originale.srid = srids[0]?.srid;
-      } catch (err) {
-        if (err.code !== 'ER_BAD_FIELD_ERROR') throw err; // MariaDB e MySQL precedenti non hanno SRS_ID.
-      }
-    }
-    return originale;
-  }
-
-  // I metadati arrivano dal server; la bozza li aggiorna dopo ogni ALTER.
-  static columnAlterSql(db, coll, payload, originale) {
-    const oldName = payload.oldName;
-    if (String(originale.generationExpression || '').trim()) {
-      throw new Error(
-        'La modifica visuale di una colonna generata non è supportata: usa una DDL esplicita per non perderne l’espressione.'
-      );
-    }
-    const extra = String(originale.extra || '');
-    const sconosciuti = extra
-      .replace(/auto_increment/ig, '')
-      .replace(/default_generated/ig, '')
-      .replace(/\bINVISIBLE\b/ig, '')
-      .replace(/on update CURRENT_TIMESTAMP(?:\(\d+\))?/ig, '')
-      .trim();
-    if (sconosciuti) {
-      throw new Error(`La colonna contiene attributi MySQL non modificabili in sicurezza (${sconosciuti}). Usa una DDL esplicita.`);
-    }
-    const column = { ...(payload.column || {}) };
-    // AUTO_INCREMENT è metadato autorevole del server: un client vecchio o un
-    // form incompleto non deve rimuoverlo accidentalmente.
-    column.autoIncrement = /auto_increment/i.test(extra);
-    // Idem per la visibilità (MySQL 8.0.23+): senza conservarla, modificare il
-    // tipo di una colonna nascosta la rendeva visibile — cioè la faceva
-    // ricomparire in tutte le `SELECT *` delle applicazioni che la usano.
-    column.invisible = /\bINVISIBLE\b/i.test(extra);
-    const tipoTestuale = /^(?:char|varchar|tinytext|text|mediumtext|longtext|enum|set)\b/i.test(String(column.type || '').trim());
-    let definizione = columnSql({ ...column,
-      invisible: false, autoIncrement: false,
-      charset: tipoTestuale ? originale.charset : undefined,
-      collation: tipoTestuale ? originale.collation : undefined,
-      // Le espressioni già presenti sono metadati del DB, non SQL del client.
-      default: /default_generated/i.test(extra) && String(column.default ?? '') === String(originale.defaultValue ?? '') ? undefined : column.default,
-    });
-    if (/default_generated/i.test(extra) && String(column.default ?? '') === String(originale.defaultValue ?? '') && originale.defaultValue != null) {
-      definizione += ` DEFAULT ${originale.defaultExpression}`;
-    }
-    if (column.invisible) definizione += ' INVISIBLE';
-    if (column.autoIncrement) definizione += ' AUTO_INCREMENT';
-    const onUpdate = extra.match(/on update CURRENT_TIMESTAMP(?:\(\d+\))?/i);
-    if (onUpdate) definizione += ` ${onUpdate[0].toUpperCase()}`;
-    if (originale.comment) definizione += ` COMMENT ${mysql.escape(String(originale.comment))}`;
-    if (/^(geometry|point|linestring|polygon|multipoint|multilinestring|multipolygon|geometrycollection)$/i.test(String(column.type).trim())) {
-      if (originale.srid != null) definizione += ` SRID ${Number(originale.srid)}`;
-    }
-    return `ALTER TABLE ${qtable(db, coll)} CHANGE COLUMN ${qid(oldName)} ${definizione}`;
-  }
-
-  async dropColumn(db, coll, name) {
-    const pool = this.requirePool();
-    const column = String(name || '').trim();
-    if (!column) throw new Error('Nome della colonna da eliminare mancante.');
-    await pool.query(`ALTER TABLE ${qtable(db, coll)} DROP COLUMN ${qid(column)}`);
-  }
-
-  async createIndex(db, coll, payload) {
-    const pool = this.requirePool();
-    let spec;
-    try {
-      spec = JSON.parse(String(payload.fields || ''));
-    } catch {
-      throw new Error('Specifica dei campi non valida: usa ad es. {"email": 1}.');
-    }
-    if (!spec || typeof spec !== 'object' || Array.isArray(spec) || !Object.keys(spec).length) {
-      throw new Error('Specifica dei campi non valida: usa ad es. {"email": 1}.');
-    }
-    const cols = Object.entries(spec).map(([c, dir]) => `${qid(c)} ${Number(dir) < 0 ? 'DESC' : 'ASC'}`);
-    const name = String(payload.name || '').trim() || `${Object.keys(spec).join('_')}_idx`;
-    await pool.query(
-      `CREATE ${payload.unique ? 'UNIQUE ' : ''}INDEX ${qid(name)} ON ${qtable(db, coll)} (${cols.join(', ')})`
-    );
-    return { name };
-  }
-
-  async dropIndex(db, coll, name) {
-    const pool = this.requirePool();
-    const idx = String(name || '').trim();
-    if (!idx) throw new Error('Nome dell\'indice da eliminare mancante.');
-    if (idx.toUpperCase() === 'PRIMARY') {
-      await pool.query(`ALTER TABLE ${qtable(db, coll)} DROP PRIMARY KEY`);
-    } else {
-      await pool.query(`ALTER TABLE ${qtable(db, coll)} DROP INDEX ${qid(idx)}`);
-    }
-  }
-
-  /**
-   * Documento pronto da inserire come duplicato della riga ricevuta: chiavi
-   * risolte secondo la modalità (vedi db/duplica.js), valori nuovi calcolati
-   * qui perché solo il database sa qual è il MAX e cosa è già occupato.
-   */
-  async duplicatePlan(db, coll, payload) {
-    const pool = this.requirePool();
-    const doc = documentoSorgente(payload.doc);
-    const fields = await this.tableFields(db, coll);
-    if (!fields.length) throw new Error(`Tabella "${coll}" non trovata in "${db}".`);
-    const colonne = fields.map((f) => ({
-      name: f.name,
-      tipo: f.types[0],
-      pk: f.key === 'PRI',
-      nullable: f.nullable,
-      generabile: f.autoIncrement,
-      generata: f.generated,
-    }));
-    const piano = pianificaDuplicazione({
-      doc,
-      colonne,
-      uniche: await this.uniqueIndexes(db, coll),
-      conChiavi: payload.conChiavi === true,
-      idVirtuale: !fields.some((f) => f.name === '_id'),
-    });
-
-    const table = qtable(db, coll);
-    for (const nome of piano.ricalcola) {
-      const col = colonne.find((c) => c.name === nome);
-      const nuovo = await calcolaNuovoValore({
-        tipo: col.tipo,
-        originale: valoreSemplice(doc[nome]),
-        massimo: async () => {
-          const [[r]] = await pool.query(`SELECT MAX(${qid(nome)}) AS m FROM ${table}`);
-          return r ? r.m : null;
-        },
-        esiste: async (v) => {
-          const [rows] = await pool.query(`SELECT 1 FROM ${table} WHERE ${qid(nome)} = ? LIMIT 1`, [v]);
-          return rows.length > 0;
-        },
-        uuid: () => randomUUID(),
-      });
-      applicaRicalcolo(piano, nome, nuovo, { pk: col.pk, etichetta: col.tipo });
-    }
-    return { doc: JSON.stringify(piano.doc), note: piano.note, azioni: piano.azioni };
-  }
-
-  async collectionStats(db, coll) {
-    const pool = this.requirePool();
-    const [[t]] = await pool.query(
-      `SELECT TABLE_ROWS, DATA_LENGTH, INDEX_LENGTH, AVG_ROW_LENGTH
-         FROM information_schema.TABLES
-        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
-      [db, coll]
-    );
-    if (!t) throw new Error(`Tabella "${coll}" non trovata in "${db}".`);
-
-    let indexes = [];
-    try {
-      const [idx] = await pool.query(`SHOW INDEX FROM ${qtable(db, coll)}`);
-      const byName = new Map();
-      for (const i of idx) {
-        let entry = byName.get(i.Key_name);
-        if (!entry) byName.set(i.Key_name, (entry = { name: i.Key_name, key: {}, unique: !Number(i.Non_unique) }));
-        entry.key[i.Column_name] = 1;
-      }
-      indexes = [...byName.values()];
-    } catch { /* le view non hanno indici */ }
-
-    const fields = await this.tableFields(db, coll);
-    return {
-      stats: {
-        count: Number(t.TABLE_ROWS) || 0, // stima InnoDB
-        size: Number(t.DATA_LENGTH) || 0,
-        storageSize: (Number(t.DATA_LENGTH) || 0) + (Number(t.INDEX_LENGTH) || 0),
-        avgObjSize: Number(t.AVG_ROW_LENGTH) || 0,
-        totalIndexSize: Number(t.INDEX_LENGTH) || 0,
-        nindexes: indexes.length,
-      },
-      indexes,
-      fields,
-      sampled: Number(t.TABLE_ROWS) || 0,
-    };
-  }
 }
 
 // I metodi comuni ai due motori SQL (chiave primaria, informazioni sulle
 // colonne, elenco dei campi, indici unici, paginazione a chiave, conteggio)
-// arrivano dal modulo già legati al dialetto MySQL dichiarato in testa: non
-// sono più scritti qui, e non possono più divergere da quelli di PostgreSQL.
+// arrivano dal modulo già legati al dialetto MySQL; catalogo/DDL, trasferimento
+// massivo e monitor delle sessioni vivono nei rispettivi sottosistemi dedicati.
 installaMetadati(MySqlStrategy.prototype, DIALETTO_METADATI);
+installaCatalogoMysql(MySqlStrategy.prototype);
+installaTrasferimentoMysql(MySqlStrategy.prototype);
+installaSessioniMysql(MySqlStrategy.prototype);
 
 MySqlStrategy.scegliCollazione = scegliCollazione;
-
-module.exports = MySqlStrategy;
 MySqlStrategy.columnSql = columnSql;
 MySqlStrategy.defaultSql = defaultSql;
+MySqlStrategy.columnAlterSql = columnAlterSqlStatica;
+
+module.exports = MySqlStrategy;
+

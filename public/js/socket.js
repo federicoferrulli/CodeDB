@@ -40,14 +40,47 @@ export function setToken(token) {
  * ------------------------------------------------------------------------- */
 
 let reale = null;
+let verificaRipresa, idVerificato, sessioneNota;
 
 /** Il socket vero, aperto alla prima richiesta. */
 export function socketReale() {
   if (!reale && typeof window !== 'undefined' && window.frameElement?.codedbPanel) reale = window.frameElement.codedbPanel.socket;
   // `auth` come funzione viene rivalutata a ogni tentativo di connessione: dopo
   // un login il socket si riconnette portando il token appena ottenuto.
-  if (!reale) reale = io({ auth: (cb) => cb({ token: getToken() }) });
+  if (!reale) {
+    // Una chiave per la vita della pagina: un'altra finestra e un F5 aprono sessioni distinte.
+    const recoveryKey = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+    const pagina = io({ auth: cb => cb({ token: getToken(), recoveryKey }) });
+    reale = pagina;
+    pagina.on('connect', () => statoRipresaSocket().catch(() => {}));
+    window.addEventListener('pagehide', e => { if (!e.persisted) pagina.disconnect(); });
+  }
   return reale;
+}
+
+/** Tutti i run, anche nei pannelli, verificano una sola volta l'identità del nuovo collegamento. */
+export function statoRipresaSocket() {
+  const pannello = typeof window !== 'undefined' && window.frameElement?.codedbPanel;
+  if (pannello?.statoRipresaSocket) return pannello.statoRipresaSocket();
+  const s = socketReale();
+  const interrotto = () => Object.assign(new Error('Collegamento interrotto durante la ripresa.'), { code: 'SOCKET_DISCONNECTED' });
+  if (!s.connected) return Promise.reject(interrotto());
+  if (verificaRipresa && idVerificato === s.id) return verificaRipresa;
+  idVerificato = s.id;
+  verificaRipresa = new Promise((resolve, reject) => {
+    const caduta = () => { s.off('disconnect', caduta); reject(interrotto()); };
+    s.on('disconnect', caduta);
+    const id = s.id;
+    s.emit('session:recovery', {}, res => {
+      s.off('disconnect', caduta);
+      if (!s.connected || s.id !== id) { reject(interrotto()); return; }
+      if (!res?.ok) { reject(new Error(res?.error || 'Impossibile verificare la sessione.')); return; }
+      const recuperata = res.recovered === true && (!sessioneNota || res.sessionId === sessioneNota);
+      sessioneNota = res.sessionId;
+      resolve(recuperata);
+    });
+  });
+  return verificaRipresa;
 }
 
 /**
@@ -56,6 +89,7 @@ export function socketReale() {
  */
 export function impostaSocket(finto) {
   reale = finto || null;
+  verificaRipresa = idVerificato = sessioneNota = undefined;
 }
 
 /**

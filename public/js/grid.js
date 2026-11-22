@@ -180,6 +180,7 @@ export function runQuery(opts = {}) {
     tabId: activeTab()?.id, collTabId: originColl,
     db: payload.db, coll: payload.coll, filter: payload.filter,
     filtro: payload.filtro, cercaOvunque: payload.cercaOvunque,
+    modoFiltro: modoFiltro(), testoFiltro: $('#filter-input').value.trim(),
     sort: payload.sort, skip: payload.skip, limit: payload.limit, runId,
   });
   if (opts.auto) payload._bg = true;
@@ -211,6 +212,8 @@ export function runQuery(opts = {}) {
     // `fetchMore` e del conteggio, letta dal contesto congelato alla chiamata.
     if (originDocument && originDocument.gridRunId === runId && st.activeCollId !== originColl) {
       if (!st.collTabs.includes(originDocument)) return;
+      originDocument.ultimaLettura = richiesta;
+      originDocument.totaleLettura = res.approx ? null : res.total;
       Object.assign(originDocument.snap ||= {}, {
         docs: res.docs, columns: res.columns, columnMeta: res.columnMeta || {},
         skip: res.skip, limit: res.limit, total: res.total, docsParziali: false,
@@ -220,6 +223,7 @@ export function runQuery(opts = {}) {
       if (res.total == null) emit('collection:count', { ...payload, tabId: richiesta.tabId, _bg: true }).then(count => {
         if (originDocument.gridRunId !== runId) return;
         originDocument.snap.total = count.total;
+        originDocument.totaleLettura = count.approx ? null : count.total;
         if (originTab.state.activeCollId === originColl) {
           originTab.state.total = count.total;
           if (activeTab() === originTab) updateFooter();
@@ -236,7 +240,11 @@ export function runQuery(opts = {}) {
     // database risponde con errore o timeout.
     st.dataDirty = false;
     const originCt = st.collTabs.find((ct) => ct.id === originColl);
-    if (originCt) originCt.dataDirty = false;
+    if (originCt) {
+      originCt.dataDirty = false;
+      originCt.ultimaLettura = richiesta;
+      originCt.totaleLettura = res.approx ? null : res.total;
+    }
     st.docs = res.docs;
     st.columns = res.columns;
     st.columnMeta = res.columnMeta || {};
@@ -290,6 +298,7 @@ export function runQuery(opts = {}) {
     if (mode !== 'aggregate' && !reuseCount && res.total == null) {
       requestTotalCount(payload, st, originColl, res._tab ? res._tab.id : undefined);
     }
+    return richiesta;
   }).catch((err) => {
     // Errore di una find annullata/superata: non disturbare l'utente, la
     // richiesta più recente sta già gestendo la vista.
@@ -418,6 +427,9 @@ function requestTotalCount(payload, origin = state, originColl = state.activeCol
       // (`origin`), non quello attivo alla risposta.
       const st = res._state;
       if (st !== origin) return; // il tab è cambiato sotto: conteggio non pertinente
+      if (document && document.gridRunId === gridRunId && document.ultimaLettura?.runId === gridRunId) {
+        document.totaleLettura = res.approx ? null : res.total;
+      }
       if (document?.snap && document.gridRunId === gridRunId) {
         Object.assign(document.snap, { total: res.total, countApprox: !!res.approx, countTimedOut: res.total == null });
       }
@@ -1313,30 +1325,42 @@ export async function deleteSelectedDocs() {
   });
 }
 
+function anteprimaFiltroCorrente(lettura) {
+  return lettura && lettura.runId === state.gridRunId
+    && lettura.tabId === activeTab()?.id && lettura.collTabId === state.activeCollId
+    && lettura.db === state.db && lettura.coll === state.coll
+    && lettura.modoFiltro === modoFiltro() && lettura.testoFiltro === $('#filter-input').value.trim()
+    && $('#query-mode').value !== 'aggregate';
+}
+
 export async function deleteAllWithFilter() {
-  if ($('#query-mode').value === 'aggregate') return; // solo in modalità find
-  // Il filtro con cui si cancella dev'essere lo STESSO che ha prodotto le
-  // righe a schermo. Mandare il testo grezzo mentre la griglia filtra in
-  // modalità rapida — dove quel testo è una parola da cercare, non una
-  // clausola — significherebbe cancellare in base a qualcosa che l'utente non
-  // ha mai visto.
-  const condizione = filtroCorrente();
-  const filter = String($('#filter-input').value).trim();
-  const total = state.total;
-  const isSql = isSqlType(state.dbType);
-  if (total === 0) {
-    notifica(isSql ? 'Nessuna riga da eliminare' : 'Nessun documento da eliminare', { tipo: 'avviso', titolo: "Operazione sui dati" });
-    return;
-  }
-  // Il totale può essere sconosciuto (conteggio disaccoppiato ancora in corso o
-  // in timeout): in tal caso non lo citiamo nel messaggio di conferma.
-  const count = total != null ? `${total} ` : '';
-  const msg = filter
-    ? `Eliminare ${isSql ? `le ${count}righe` : `i ${count}documenti`} che soddisfano questo filtro? Questa azione non si può annullare.`
-    : `Nessun filtro impostato: eliminare ${isSql ? `TUTTE le ${count}righe` : `TUTTI i ${count}documenti`} di "${state.coll}"? Questa azione non si può annullare.`;
+  const documento = currentCollTab();
+  if (!documento || $('#query-mode').value === 'aggregate') return;
   const origin = captureContext();
   const bersaglio = { tabId: origin.tabId, db: origin.st.db, coll: origin.st.coll };
-  if (!await chiediConferma(msg)) return;
+  let lettura = documento.ultimaLettura;
+  if (!anteprimaFiltroCorrente(lettura)) {
+    origin.st.skip = 0;
+    lettura = await runQuery();
+    if (!origin.isStillActive() || !anteprimaFiltroCorrente(lettura)) return;
+  }
+  if (documento.totaleLettura === 0) {
+    toast('Nessuna corrispondenza da eliminare.');
+    return;
+  }
+  const { filter, cercaOvunque } = lettura;
+  const condizione = { filter, cercaOvunque };
+  const isSql = isSqlType(state.dbType);
+  const cosa = isSql ? 'le righe' : 'i documenti';
+  const criterio = cercaOvunque ? `ricerca «${cercaOvunque.valore}»` : `condizione «${filter}»`;
+  const msg = filter || cercaOvunque
+    ? `Eliminare ${cosa} di "${lettura.coll}" che soddisfano la ${criterio} al momento della cancellazione? Questa azione non si può annullare.`
+    : `Eliminare ${isSql ? 'TUTTE le righe' : 'TUTTI i documenti'} di "${lettura.coll}"? Questa azione non si può annullare.`;
+  const totale = documento.totaleLettura;
+  const conteggio = totale == null ? 'Conteggio esatto non disponibile.'
+    : `Ultima lettura: ${totale} ${totale === 1 ? 'corrispondenza' : 'corrispondenze'}.`;
+  if (!await chiediConferma(msg + ' ' + conteggio + ' Il numero può cambiare prima dell’eliminazione.')) return;
+  if (!origin.isStillActive() || !anteprimaFiltroCorrente(lettura)) return;
 
   // La conferma è asincrona su mobile: il bersaglio si
   // congela lo stesso: la regola "una scrittura non legge il Proxy `state`" vale
@@ -1384,7 +1408,9 @@ export function updateBulkDeleteUI() {
   }
 
   if (deleteAllBtn) {
-    deleteAllBtn.disabled = state.total === 0 || $('#query-mode').value === 'aggregate';
+    const documento = currentCollTab();
+    deleteAllBtn.disabled = !documento || $('#query-mode').value === 'aggregate'
+      || (documento.totaleLettura === 0 && anteprimaFiltroCorrente(documento.ultimaLettura));
   }
 }
 
@@ -1427,6 +1453,7 @@ export function initGrid() {
       applicaModoFiltro(nuovo);
       const chiaveDopo = nuovo === 'rapido' ? 'testoRapido' : 'testoCondizione';
       gruppo.dataset[chiaveDopo] = $('#filter-input').value;
+      updateBulkDeleteUI();
       $('#filter-input').focus();
     });
   });
@@ -1451,6 +1478,7 @@ export function initGrid() {
       gruppo.dataset[chiave] = $('#filter-input').value;
     }
     aggiornaPuliziaInput($('#filter-input'));
+    updateBulkDeleteUI();
   });
   aggiornaPuliziaInput($('#filter-input'));
   $('#sort-input')?.addEventListener('input', (e) => aggiornaPuliziaInput(e.currentTarget));

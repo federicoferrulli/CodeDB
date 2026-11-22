@@ -1,4 +1,6 @@
 'use strict';
+
+const { collectionDiSistema } = require('../../db/DbStrategy');
 const { colonnaGenerata } = require('../../db/mysqlColonne');
 const { confinePostgres, confineMySql } = require('./confine-sql');
 
@@ -252,7 +254,7 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, p
     }
 
     const descriptor = { collection: coll, identity: { kind: 'mongodb-id', columns: ['_id'] }, encoding: require('../../db/mongoBson').ENCODING };
-    const delta = require('./content-state').creaDelta(previousStates.get(coll), descriptor, { incremental: !!since, explicit: !!sinceColumn });
+    const delta = require('./content-state').creaDelta(previousStates.get(coll), descriptor, { incremental: mode !== 'full', explicit: !!sinceColumn });
     let selected = null;
     if (sinceColumn) {
       selected = new Set();
@@ -881,9 +883,9 @@ async function pgStableIdentity(client, table, schema, columnSchema) {
  * Il client è quello della snapshot: lo schema descritto è lo stesso istante
  * dei dati salvati.
  */
-async function pgTableDdl(client, schema, table) {
+async function pgTableDdl(client, schema, table, partizione = null) {
   const q = (sql, params) => client.query(sql, params);
-  const ddl = await pgCreateTable(q, schema, table, { qualificato: true });
+  const ddl = await pgCreateTable(q, schema, table, { qualificato: true, partizione });
   if (!ddl) throw new Error(`La tabella PostgreSQL "${schema}.${table}" non ha colonne leggibili.`);
   return ddl;
 }
@@ -920,6 +922,12 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, pr
       await client.query(`LOCK TABLE ${lockTargets.join(', ')} IN ACCESS SHARE MODE`);
     }
 
+    const partizioni = await require('../../db/pg-partizioni').catalogoPartizioni((s,p)=>client.query(s,p),schema);
+    // La selezione di un padre include le foglie che contengono le sue righe.
+    const inclusi = new Set(collections);
+    for (const name of inclusi) for (const p of partizioni.values()) if (p.parentSchema === schema && p.parent === name) inclusi.add(p.name);
+    for (const name of inclusi) qualificati.set(name, pgQid(schema) + '.' + pgQid(name));
+    collections = require('../../db/pg-partizioni').ordinaPartizioni([...inclusi], partizioni);
     // Solo dopo i lock si apre la snapshot e si leggono i metadati. Da questo
     // punto schema, PK e pagine dati passano tutti dallo stesso client.
     const risolte = new Map();
@@ -947,12 +955,24 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, pr
       );
       log.info(`  ATTENZIONE: "${table}" è omonima in ${resolved.ambiguous.join(', ')}: salvata ${resolved.schema || '?'}.${table}`);
     }
-    const ddl = await pgTableDdl(client, resolved.schema || schema, table);
+    const part = partizioni.get(table);
+    if (part?.schemaFigliaEsterna || (part?.parentSchema && part.parentSchema !== schema)) {
+      throw new Error('La gerarchia di partizioni di "'+table+'" attraversa più schemi. Il backup di un singolo schema non può ricostruirla.');
+    }
+    const valoriAutonomi = [];
+    const partizione = part ? { ...part, valoriAutonomi, parent:part.parentSchema === schema && inclusi.has(part.parent) ? part.parent : null } : null;
+    const ddl = await pgTableDdl(client, resolved.schema || schema, table, partizione);
     if (ddl) {
       const relSchema = `schema/${safeName(table)}.sql`;
       fs.mkdirSync(path.join(backupDir, 'schema'), { recursive: true });
       fs.writeFileSync(path.join(backupDir, relSchema), ddl + '\n', 'utf8');
       files.push({ path: relSchema, collection: table, kind: 'schema', schema: resolved.schema || undefined, ...fileDigest(path.join(backupDir, relSchema)) });
+      if (partizione?.parent) {
+        const standalone = 'schema-autonomo/' + safeName(table) + '.sql';
+        fs.mkdirSync(path.join(backupDir,'schema-autonomo'),{recursive:true});
+        fs.writeFileSync(path.join(backupDir,standalone), await pgTableDdl(client,schema,table,{...partizione,parent:null})+'\n');
+        files.push({ path:standalone, collection:table, kind:'schema-standalone', ...fileDigest(path.join(backupDir,standalone)) });
+      }
     }
 
     // Indici e chiavi esterne della tabella: applicati dal restore nella terza
@@ -961,7 +981,9 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, pr
     const aux = await pgAuxDdl(
       (sql, p) => client.query(sql, p), resolved.schema || schema, table, { qualificato: true },
     );
-    indici.push(...aux.indexes);
+    // Gli indici specifici delle foglie devono esistere prima dell'indice
+    // partizionato che li collega, anche quando hanno nomi personalizzati.
+    indici.unshift(...aux.indexes);
     chiaviEsterne.push(...aux.foreignKeys);
 
     // Colonne da salvare e come leggerle: esclude le GENERATE (PostgreSQL
@@ -1012,7 +1034,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, pr
     // Il cursore mantiene i tipi e l'ordine del server: nessun alias testuale
     // nella paginazione, né ctid ripetuti fra partizioni della stessa tabella.
     const selection = boundary ? `, (${pgQid(sinceColumn)} ${boundary.operator} ${boundary.expression}) AS ${pgQid(selectedAlias)}` : '';
-    await client.query(`DECLARE codedb_backup_rows NO SCROLL CURSOR FOR SELECT ${listaSelect}${selection} FROM ${qualified}`, boundary ? [boundary.parameter] : []);
+    await client.query(`DECLARE codedb_backup_rows NO SCROLL CURSOR FOR SELECT ${listaSelect}${selection} FROM ${partizione ? 'ONLY ' : ''}${qualified}`, boundary ? [boundary.parameter] : []);
     try {
       for (;;) {
         const res = await client.query(`FETCH FORWARD ${BATCH} FROM codedb_backup_rows`);
@@ -1046,7 +1068,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, pr
         : `COUNT(DISTINCT (${identity.columns.map(pgQid).join(', ')}))`;
     await controllo.avanza(table, count, 'verifica', true);
     const sourceCounts = await client.query(
-      `SELECT COUNT(*) AS cardinality, ${distinctExpr} AS "distinctIdentities" FROM ${qualified}`,
+      `SELECT COUNT(*) AS cardinality, ${distinctExpr} AS "distinctIdentities" FROM ${partizione ? 'ONLY ' : ''}${qualified}`,
     );
     const sourceCardinality = Number(sourceCounts.rows[0].cardinality);
     const sourceDistinctIdentities = identity ? Number(sourceCounts.rows[0].distinctIdentities) : null;
@@ -1054,6 +1076,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, pr
     deletionStates.set(table, tombstones);
     files.push({
       path: rel, collection: table, kind: 'data', schema: resolved.schema || undefined,
+      ...(partizione ? { pgPhysical:true, partitionParent:partizione.parent, partitionKey:partizione.key, partitionBound:partizione.parent ? partizione.bound : null, ...(valoriAutonomi.length ? { valoriAutonomi } : {}) } : {}),
       mode, sinceColumn, count, bytes, sha256,
       ...(sinceType ? { sinceType, sinceTimezone: 'UTC' } : {}),
       columns: savedColumns, columnSchema, identity,
@@ -1119,12 +1142,18 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, pr
 // perche' li' il predefinito e' `true`. Un chiamante che ometteva il parametro
 // otteneva percio' contenuto gzip sotto un nome `.ndjson`, e il ripristino
 // falliva con un errore di JSON illeggibile invece che con «backup corrotto».
-async function runBackup({ session, connName, db, type, onlyCollections, sinceField, destRoot, compress = true, level, log, signal, onProgress }) {
+async function runBackup({ session, connName, db, type, onlyCollections, sinceField, destRoot, compress = true, level, log, signal, onProgress, origine }) {
   const controllo = require('./controllo').creaControllo({ signal, onProgress });
   await controllo.avanza(null, 0, 'preparazione', true);
   const { strategy, dbType } = session;
   const groupDir = backupGroupDir(destRoot, connName, db, dbType);
   const base = resolveBase(groupDir, type, { connName, db, dbType });
+  if (origine && base) {
+    const catena = require('./restore').resolveChain(path.join(groupDir, base.id));
+    if (catena.some(({ manifest }) => manifest.origine?.id !== origine.id || manifest.origine.firma !== origine.firma(manifest))) {
+      throw new Error('Il backup di base ha una provenienza diversa o non verificabile. Esegui un nuovo backup full.');
+    }
+  }
   const since = base ? base.startedAt : null;
   const id = makeBackupId(type);
   const backupDir = path.join(groupDir, id);
@@ -1146,24 +1175,24 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
   //    lì. Bastava una view nel database perché il suo backup non fosse più
   //    ripristinabile — e il backup risultava "riuscito".
   const all = (await controllo.attendi(strategy.listCollections(db, { includeCounts: false })))
-    .filter((c) => c.type !== 'view' && !String(c.name).startsWith('system.'))
+    .filter((c) => c.type !== 'view' && !collectionDiSistema(dbType, c.name))
     .map((c) => c.name);
   const collections = onlyCollections
     ? all.filter((c) => onlyCollections.includes(c))
     : all;
-  if (onlyCollections) {
-    for (const c of onlyCollections) {
-      if (!all.includes(c)) throw new Error(`Collection/tabella "${c}" non trovata nel database "${db}".`);
-    }
+  const previousStates = base ? await require('./content-state').caricaStatoCatena(path.join(groupDir, base.id), controllo) : new Map();
+  let selezione = onlyCollections;
+  if (selezione && base && ['postgres', 'postgresql'].includes(dbType)) {
+    const catena = require('./restore').resolveChain(path.join(groupDir, base.id));
+    selezione = require('../../db/pg-partizioni').selezionePartizioni(require('./inventario-entita').livelliAttivi(catena), selezione);
   }
-  if (!collections.length && type !== 'full') {
-    throw new Error(`Il database "${db}" non contiene collection/tabelle da salvare.`);
+  for (const c of onlyCollections || []) {
+    if (!all.includes(c) && !previousStates.has(c)) throw new Error(`Collection/tabella "${c}" non trovata nel database "${db}".`);
   }
 
   fs.mkdirSync(backupDir, { recursive: true });
   let result;
   try {
-    const previousStates = base ? await require('./content-state').caricaStatoCatena(path.join(groupDir, base.id), controllo) : new Map();
     const args = { strategy, db, collections, type, since, sinceField, previousStates, backupDir, compress, level, log, controllo };
     result = dbType === 'mysql'
       ? await dumpMySql(args)
@@ -1174,6 +1203,7 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
     await controllo.avanza(null, 0, 'catalogo', true);
     assertUniqueFilePaths(result.files);
 
+    const entitaSalvate = result.files.filter(f => f.kind === 'data').map(f => f.collection);
     const manifest = {
       tool: 'codedb-backup',
       version: TOOL_VERSION,
@@ -1192,9 +1222,11 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
       coerenza: result.coerenza || null,
       notes: result.notes,
       deletions: dichiarazioneCancellazioni(),
+      entityInventory: require('./inventario-entita').inventarioEntita(previousStates.keys(), entitaSalvate, selezione && [...selezione, ...entitaSalvate]),
       files: result.files,
     };
     validaManifestIdentita(manifest);
+    if (origine) manifest.origine = { id: origine.id, firma: origine.firma(manifest) };
     fs.writeFileSync(path.join(backupDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
     // Il catalogo pubblica soltanto catene che il resolver può ripristinare.
     // Un cambiamento incompatibile dello schema richiede già un nuovo full:
@@ -1217,4 +1249,4 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
   return { backupDir, id, collections: dataFiles.length, totalDocs, totalBytes };
 }
 
-module.exports = { runBackup, splitMySqlForeignKeys, mysqlSchemaObjects };
+module.exports = { runBackup, backupGroupDir, splitMySqlForeignKeys, mysqlSchemaObjects };

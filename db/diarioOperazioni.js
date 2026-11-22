@@ -8,15 +8,15 @@
  *
  * Ogni voce è un file JSON per tenant (`<radice>/<opId>.json`), scritto in
  * modo atomico all'accettazione, a ogni cambio di fase e alla conclusione. Il
- * contenuto è lo stato PUBBLICO (niente adapter, niente strategy, niente
- * segreti): fingerprint del piano, connessione, destinazione, fase, riferimenti
- * a staging/recupero, errore. Alla ripartenza `riconcilia` dichiara
+ * contenuto comprende lo stato pubblico e un inventario privato per la pulizia.
+ * Il registro espone solo i riferimenti pubblici. Alla ripartenza `riconcilia` dichiara
  * `intervento_richiesto` con `esitoIncerto: true` tutto ciò che era ancora in
  * volo — mai «completato», mai cancellato: un recupero con errore non si
  * elimina da solo.
  */
 
 const fs = require('fs');
+const lockfile = require('proper-lockfile');
 const path = require('path');
 
 /**
@@ -77,16 +77,16 @@ function creaDiario({ radicePer, now = () => new Date().toISOString() } = {}) {
   function scrivi(ownerId, operationId, voce) {
     const file = fileDi(ownerId, operationId);
     const tmp = `${file}.tmp-${process.pid}`;
-    fs.writeFileSync(tmp, JSON.stringify({ v: 1, ...voce }));
+    fs.writeFileSync(tmp, JSON.stringify({ v: 1, ...voce }), { mode: 0o600 });
     fs.renameSync(tmp, file);
   }
 
   return {
-    registra({ ownerId, operationId, fingerprint, connection, targetDb, attore = null, tabId = null }) {
+    registra({ ownerId, operationId, fingerprint, connection, backupOriginId = null, targetDb, attore = null, tabId = null }) {
       scrivi(ownerId, operationId, {
         operationId: idSicuro(operationId, 'Operazione'),
         ownerId: proprietarioSicuro(ownerId),
-        attore, tabId, fingerprint, connection: connection || null, targetDb: targetDb || null,
+        attore, tabId, fingerprint, connection: connection || null, ...(backupOriginId ? { backupOriginId } : {}), targetDb: targetDb || null,
         status: 'in_corso', phase: 'accettata', progress: [],
         iniziatoAl: now(), terminatoAl: null, recovery: null, staging: null,
         errore: null, esitoIncerto: false,
@@ -119,19 +119,36 @@ function creaDiario({ radicePer, now = () => new Date().toISOString() } = {}) {
       scrivi(ownerId, operationId, voce);
     },
 
-    conclude({ ownerId, operationId, status, recovery = null, staging = null, errore = null }) {
+    conclude({ ownerId, operationId, status, recovery = null, staging = null, errore = null, risorse = null, errorePulizia = null }) {
       const voce = this.leggi({ ownerId, operationId });
       if (!voce) return;
       voce.status = status;
       voce.phase = 'terminata';
       voce.recovery = recovery;
       voce.staging = staging;
+      voce.risorse = risorse;
+      voce.errorePulizia = errorePulizia;
       voce.errore = errore;
       // L'esito c'e': se un riconcilia l'aveva dichiarato incerto mentre
       // l'operazione era ancora viva, l'incertezza finisce qui.
       voce.esitoIncerto = false;
       voce.vivoAl = now();
       voce.terminatoAl = now();
+      scrivi(ownerId, operationId, voce);
+    },
+
+    async conPulizia({ ownerId, operationId }, fn) {
+      const file = fileDi(ownerId, operationId);
+      const rilascia = await lockfile.lock(file, { retries: { retries: 25, factor: 1.3, minTimeout: 50, maxTimeout: 500 } });
+      try { return await fn(this.leggi({ ownerId, operationId })); }
+      finally { await rilascia(); }
+    },
+
+    aggiornaPulizia({ ownerId, operationId, risorse, cleanupAt = null }) {
+      const voce = this.leggi({ ownerId, operationId });
+      if (!voce) throw new Error('Diario della pulizia non disponibile.');
+      voce.risorse = risorse;
+      voce.cleanupAt = cleanupAt;
       scrivi(ownerId, operationId, voce);
     },
 
@@ -177,6 +194,10 @@ function creaDiario({ radicePer, now = () => new Date().toISOString() } = {}) {
     riconcilia(ownerId, { grazia = GRAZIA_MS, adesso = Date.now() } = {}) {
       const riconciliate = [];
       for (const voce of this.elenca(ownerId)) {
+        if (voce.cleanupAt && Date.parse(voce.cleanupAt) + 24 * 3600000 < adesso) {
+          this.rimuovi({ ownerId, operationId: voce.operationId });
+          continue;
+        }
         if (voce.status !== 'in_corso' || voce.esitoIncerto) continue;
         if (voce.istanza === ISTANZA) continue;
         const battito = Date.parse(voce.vivoAl || voce.iniziatoAl || '');

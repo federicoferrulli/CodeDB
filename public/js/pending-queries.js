@@ -1,13 +1,13 @@
 import { chiediConferma } from './conferma.js';
 import { mountArcControls, renderDataEmpty } from '../arc/ui.js';
 import { $, esc, toast, lucideIconHtml as ICO, refreshLucideIcons, notifica } from './utils.js';
-import { socket } from './socket.js';
 import { tabs, switchTab, activeTab, allaChiusura } from './tabs.js';
 import { switchCollTab, openCollTab, openDbTab } from './colltabs.js';
 import { runQuery, updateEditorHighlight, setQueryTarget } from './query-tab.js';
 import { queryDocument } from './query-document.js';
 import { setView } from './main.js';
-import { knowsScriptRun, focusScriptRun, resumeScript } from './script-run.js';
+import { knowsScriptRun, focusScriptRun, resumeScript, chiudiRunFile } from './script-run.js';
+import { acceptPerRipresaFile } from './query-file.js';
 
 const STORAGE_KEY = 'codedb:pending';
 const ospite = typeof window !== 'undefined' ? window.frameElement?.codedbPanel : null;
@@ -118,6 +118,7 @@ export function trackPending(meta) {
     id,
     runId: id,
     code: String(meta.code || '').trim(),
+    ...(meta.fileChunk ? { fileChunk: meta.fileChunk } : {}),
     engine: meta.engine || 'auto',
     db: meta.db || '',
     coll: meta.coll || '',
@@ -139,6 +140,7 @@ export function trackPending(meta) {
     eseguiti: 0,
     falliti: 0
   };
+  if (meta.sourceFile) Object.defineProperty(item, 'sourceFile', { value: meta.sourceFile, configurable: true });
 
   pendingQueries.unshift(item);
   potaRegistro();
@@ -158,7 +160,7 @@ export function trackPending(meta) {
     },
     fail(err, elapsedMs) {
       const q = pendingQueries.find((x) => x.id === id);
-      if (q && q.status === 'running') {
+      if (q && (q.status === 'running' || (q.kind === 'script' && q.status === 'paused'))) {
         q.status = 'error';
         q.error = (err && err.message) || String(err || 'Errore durante l\'esecuzione');
         q.endedAt = Date.now();
@@ -223,33 +225,17 @@ export function markPaused(runId) {
   }
 }
 
-export function markDisconnectedAllRunning() {
-  let changed = false;
-  const now = Date.now();
-  for (const q of pendingQueries) {
-    if (q.status === 'running') {
-      q.status = 'disconnected';
-      q.endedAt = now;
-      q.elapsedMs = now - q.startedAt;
-      changed = true;
-    }
-  }
-  if (changed) {
-    save();
-    notify();
-  }
-}
-
 // Chiudere un tab abbandona le sue query in corso. La registrazione sta qui e
 // non in tabs.js perche' e' questo pannello ad avere qualcosa da chiudere: un
 // modulo di base non deve conoscere i pannelli che lo osservano.
 allaChiusura((tabId) => markAbandonedByTab(tabId));
 
 export function markAbandonedByTab(tabId) {
+  chiudiRunFile({ tabId });
   let changed = false;
   const now = Date.now();
   for (const q of pendingQueries) {
-    if (q.tabId === tabId && q.status === 'running') {
+    if (q.tabId === tabId && (q.status === 'running' || (q.fileChunk && q.status === 'paused'))) {
       q.status = 'abbandonata';
       q.endedAt = now;
       q.elapsedMs = now - q.startedAt;
@@ -263,10 +249,11 @@ export function markAbandonedByTab(tabId) {
 }
 
 export function markAbandonedByCollTab(collTabId) {
+  chiudiRunFile({ collTabId });
   let changed = false;
   const now = Date.now();
   for (const q of pendingQueries) {
-    if (q.collTabId === collTabId && q.status === 'running') {
+    if (q.collTabId === collTabId && (q.status === 'running' || (q.fileChunk && q.status === 'paused'))) {
       q.status = 'abbandonata';
       q.endedAt = now;
       q.elapsedMs = now - q.startedAt;
@@ -483,7 +470,7 @@ function renderPendingDetail(animate = false) {
       ${item.error ? `<div class="pending-error">${ICO('circle-alert')}<div><strong>Da correggere prima di ripartire</strong><p>${esc(item.error)}</p></div></div>` : ''}
       ${item.kind === 'script' ? buildScriptProgressHtml(item) : ''}
       <div class="pending-code-panel">
-        <div class="pending-code-label">${ICO(item.kind === 'script' ? 'scroll-text' : 'terminal')} ${item.kind === 'script' ? 'Script' : 'Query'}<span>${String(item.code || '').split('\n').length} righe</span></div>
+        <div class="pending-code-label">${ICO(item.kind === 'script' ? 'scroll-text' : 'terminal')} ${item.kind === 'script' ? 'Script' : 'Query'}<span>${item.fileChunk ? `Anteprima · ${esc(item.fileChunk.name)} · blocco ${item.fileChunk.index + 1}` : `${String(item.code || '').split('\n').length} righe`}</span></div>
         <pre class="pending-code" tabindex="0" aria-label="Codice della query"><code>${esc(item.code)}</code></pre>
       </div>
       <p class="pending-resume-hint">${editorOnly ? 'Il codice viene aperto nell’editor, senza avviare una nuova esecuzione.' : item.kind === 'script' ? 'Lo script riparte dal cursore conservato nella sessione.' : 'Riprendi esegue la query sulla connessione di origine.'}</p>
@@ -649,7 +636,7 @@ function attachPendingVScroll() {
     const resumeBtn = e.target.closest('.btn-resume-pending');
     if (resumeBtn) {
       const id = resumeBtn.getAttribute('data-id');
-      if (id) resumePendingQuery(id);
+      if (id) resumePendingQuery(id).catch(err => notifica(err.message, { tipo: 'errore', titolo: 'Registro query' }));
       return;
     }
 
@@ -659,10 +646,10 @@ function attachPendingVScroll() {
       const item = currentPendingItems.find((x) => x.id === id);
       if (item && item.code) {
         if (navigator.clipboard) {
-          navigator.clipboard.writeText(item.code).then(() => {
+          codiceDalRegistro(item).then(code => code == null ? null : navigator.clipboard.writeText(code).then(() => {
             toast('Codice query copiato negli appunti');
-          }).catch(() => {
-            notifica('Impossibile copiare negli appunti', { tipo: 'errore', titolo: "Registro query" });
+          })).catch(err => {
+            notifica(err.message, { tipo: 'errore', titolo: "Registro query" });
           });
         }
       }
@@ -700,11 +687,39 @@ export function renderPendingModalList() {
   attachPendingVScroll();
 }
 
+// Il registro conserva posizione e anteprima. Finché la pagina è aperta può
+// rileggere il File originale; dopo F5 il browser richiede una nuova selezione.
+async function codiceDalRegistro(item) {
+  const chunk = item.fileChunk;
+  if (!chunk) return item.code;
+  let source = item.sourceFile;
+  if (!source) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    const origine = tabs.list.find(t => t.id === item.tabId);
+    input.accept = acceptPerRipresaFile(chunk.name, origine?.dbType);
+    toast(`Seleziona ${chunk.name} per riaprire il blocco ${chunk.index + 1}.`);
+    source = await new Promise(resolve => {
+      input.onchange = () => resolve(input.files[0]);
+      input.oncancel = () => resolve(null);
+      input.click();
+    });
+    if (!source) return null;
+    if (source.name !== chunk.name || source.size !== chunk.size || source.lastModified !== chunk.lastModified) {
+      throw new Error(`Il blocco proviene da un’altra versione del file ${chunk.name}.`);
+    }
+    Object.defineProperty(item, 'sourceFile', { value: source, configurable: true });
+  }
+  return ((chunk.prefix || '') + await source.slice(chunk.startByte, chunk.endByte).text()).trim();
+}
+
 export async function resumePendingQuery(id) {
   const item = pendingQueries.find((x) => x.id === id);
   if (!item) return;
   if (item.paneId) {
-    import('./splitview.js').then(m => m.riprendiQueryPane(item)).catch(err => notifica(err.message, { tipo: 'errore', titolo: "Registro query" }));
+    const code = await codiceDalRegistro(item);
+    if (code == null) return;
+    await (await import('./splitview.js')).riprendiQueryPane({ ...item, code });
     $('#modal-pending')?.classList.add('hidden');
     return;
   }
@@ -717,7 +732,7 @@ export async function resumePendingQuery(id) {
   // Uno SCRIPT non si "rilancia": si RIPRENDE dal cursore che il server ha
   // conservato, altrimenti si rieseguirebbero istruzioni già applicate (per un
   // INSERT significa duplicare). La ripresa vale finché il run esiste ancora
-  // lato server: dopo un F5 o una riconnessione la pagina non lo conosce più e
+  // lato server: dopo un F5 la pagina non lo conosce più e
   // si ricade sul comportamento normale (ricaricare il codice nell'editor).
   if (item.kind === 'script' && item.status === 'paused' && knowsScriptRun(item.runId)) {
     const modaleScript = $('#modal-pending');
@@ -733,6 +748,8 @@ export async function resumePendingQuery(id) {
     toast('Lo script non è più in esecuzione su questa sessione: il codice viene ricaricato nell\'editor.');
   }
 
+  const code = await codiceDalRegistro(item);
+  if (code == null || !tabs.list.includes(origine)) return;
   // 1. Attiva il tab di connessione se esiste
   if (item.tabId && tabs.list.some((t) => t.id === item.tabId)) {
     switchTab(item.tabId);
@@ -752,10 +769,10 @@ export async function resumePendingQuery(id) {
 
   // 3. Riempi l'editor della query
   const editorInput = $('#query-editor-input');
-  if (queryDocument()?.dirty && editorInput?.value !== item.code
+  if (queryDocument()?.dirty && editorInput?.value !== code
     && !await chiediConferma('Sostituire la query non salvata con quella del registro?')) return;
   if (editorInput) {
-    editorInput.value = item.code;
+    editorInput.value = code;
     editorInput.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
@@ -783,13 +800,8 @@ export function initPendingQueries() {
   if (ospite) return;
   load();
 
-  // Socket disconnect hook
-  if (socket) {
-    socket.on('disconnect', () => {
-      markDisconnectedAllRunning();
-    });
-  }
-
+  // Un'interruzione del trasporto lascia vive le esecuzioni della pagina.
+  // Al ricaricamento, load() distingue quelle rimaste nel registro salvato.
   // Auto update listener: il badge è già aggiornato da notify().
   // Ridisegniamo la lista solo se il modale è aperto (a modale chiuso
   // il DOM virtualizzato non è visibile: ridisegnarlo è puro spreco).

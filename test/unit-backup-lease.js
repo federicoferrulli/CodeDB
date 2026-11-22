@@ -11,12 +11,19 @@ const adapter = require('../db/backupRestoreAdapter');
 const modulePath = require.resolve('../server/eventi-backup');
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 
+function scriviManifest(dir) {
+  fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify({
+    version: 1, type: 'full', id: path.basename(dir), db: 'dati', connection: 'prova',
+    dbType: 'mongodb', startedAt: '2026-01-01T00:00:00Z', files: [],
+  }));
+}
+
 async function scenario(chiusura, errore, paralleli) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-restore-lease-'));
   const original = adapter.runRestoreViaPlan, cached = require.cache[modulePath];
   const barriers = Array.from({ length: paralleli }, () => ({ start: deferred(), release: deferred() }));
   let active = 0, teardown = 0, lifecycle, module, pending = [];
-  fs.writeFileSync(path.join(temp, 'manifest.json'), '{}');
+  scriviManifest(temp);
   try {
     adapter.runRestoreViaPlan = async () => {
       const barrier = barriers[active++]; barrier.start.resolve(); await barrier.release.promise;
@@ -38,7 +45,10 @@ async function scenario(chiusura, errore, paralleli) {
     }], { connessioni: { teardownConnection: async () => { teardown++; } } });
     module.registraEventi(ctx);
     pending = barriers.map((_, index) => ctx.socket.chiama('backup:restore', { tabId: 'tab', from: temp, operationId: 'restore-' + index }));
-    await Promise.all(barriers.map(barrier => barrier.start.promise));
+    await Promise.all(barriers.map((barrier, index) => Promise.race([
+      barrier.start.promise,
+      pending[index].then(result => { throw new Error(result.error || 'Il ripristino è terminato prima della barriera.'); }),
+    ])));
     if (chiusura === 'tab') await lifecycle.closeSession('tab');
     else {
       for (const fn of ctx.socket.handler.get('disconnect') || []) fn();
@@ -77,7 +87,7 @@ async function preparazioneFallita() {
   const cached = require.cache[modulePath];
   let lifecycle, module, teardown = 0;
   try {
-    fs.writeFileSync(path.join(temp, 'manifest.json'), '{}');
+    scriviManifest(temp);
     const destination = path.join(temp, 'non-directory'); fs.writeFileSync(destination, 'fixture');
     delete require.cache[modulePath];
     if (process.argv.includes('--mutant-preparazione')) {

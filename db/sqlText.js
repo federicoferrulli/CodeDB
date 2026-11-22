@@ -170,7 +170,7 @@ function stripSqlNoise(sql, { keepIdentifiers = false, backslashEscape = false, 
  *   `start`/`end` = offset nel sorgente; `line` = riga 1-based del primo
  *   carattere non bianco (serve a puntare l'errore nell'editor).
  */
-function splitStatementsDetailed(sql, { backslashEscape = false, dbms = '' } = {}) {
+function splitStatementsDetailed(sql, { backslashEscape = false, dbms = '', soloEseguibili = false } = {}) {
   let blocchi = require('../public/js/sql-blocchi.mjs').blocchiSql();
   const s = String(sql == null ? '' : sql);
   const out = [];
@@ -200,6 +200,7 @@ function splitStatementsDetailed(sql, { backslashEscape = false, dbms = '' } = {
   };
 
   const push = (end) => {
+    if (soloEseguibili && !haCodice) return;
     const raw = s.slice(stmtStart, end);
     const lead = raw.length - raw.trimStart().length;
     const text = raw.trim();
@@ -225,11 +226,11 @@ function splitStatementsDetailed(sql, { backslashEscape = false, dbms = '' } = {
     if (c === '-' && next === '-' && (dbms !== 'mysql' || !s[i + 2] || /\s/.test(s[i + 2]))) { while (i < s.length && s[i] !== '\n') i++; continue; }
     if (c === '#' && dbms !== 'postgresql' && next !== '>' && next !== '-') { while (i < s.length && s[i] !== '\n') i++; continue; }
     if (c === '/' && next === '*') {
-      if (s[i + 2] === '!') haCodice = true;
+      if (dbms === 'mysql' && (s[i + 2] === '!' || s.startsWith('M!', i + 2))) haCodice = true;
       i = fineCommentoBlocco(s, i, dbms === 'postgresql');
       continue;
     }
-    if (!/\s/.test(c)) haCodice = true;
+    if (c !== ';' && !/\s/.test(c)) haCodice = true;
 
     if (c === '$' && dbms !== 'mysql') {
       const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(s.slice(i));

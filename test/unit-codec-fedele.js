@@ -106,8 +106,11 @@ function tipoDi(v) {
   const motore = senzaCommenti(fs.readFileSync(path.join(__dirname, '..', 'backup', 'lib', 'engine.js'), 'utf8'));
   assert.ok(!/relaxed:\s*true/.test(motore), 'engine.js non deve più scrivere relaxed');
   assert.ok(!/EJSON\./.test(motore), 'engine.js passa dal codec, non usa EJSON diretto');
-  const restore = senzaCommenti(fs.readFileSync(path.join(__dirname, '..', 'backup', 'lib', 'restore.js'), 'utf8'));
-  assert.ok(!/relaxed:\s*true/.test(restore), 'restore.js non deve leggere relaxed');
+  const dirBackupLib = path.join(__dirname, '..', 'backup', 'lib');
+  for (const nome of fs.readdirSync(dirBackupLib).filter((f) => /^restore.*\.js$/.test(f))) {
+    const sorgente = senzaCommenti(fs.readFileSync(path.join(dirBackupLib, nome), 'utf8'));
+    assert.ok(!/relaxed:\s*true/.test(sorgente), `${nome} non deve leggere relaxed`);
+  }
   console.log('  OK   guardia statica: relaxed distruttivo assente da engine e restore');
 
   // La scansione ora usa un cursore DBMS: copertura reale in e2e-tipi-pagine.js.

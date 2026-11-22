@@ -47,10 +47,17 @@ async function fixture(action, { status = 'completato', thrown = false } = {}) {
     operations = require('../server/operazioni').createModule({ config, identita });
     const root = operations.backupRootOf(main);
     const from = path.join(root, 'gruppo', 'backup-a'), otherFrom = path.join(root, 'gruppo', 'backup-b');
-    for (const source of [from, otherFrom]) { fs.mkdirSync(source, { recursive: true }); fs.writeFileSync(path.join(source, 'manifest.json'), '{}'); }
+    const vault = { loadConnections: () => ({ origine: { backupOriginId: 'id-origine' } }), connectionsFileFor: () => path.join(dir, 'test.ini') };
+    const autorita = require('../backup/lib/origine').autorita(vault.connectionsFileFor(), 'id-origine');
+    for (const source of [from, otherFrom]) {
+      const manifest = { type: 'full', id: path.basename(source), db: 'dati', connection: 'origine', dbType: 'mongodb', startedAt: new Date().toISOString(), files: [] };
+      manifest.origine = { id: autorita.id, firma: autorita.firma(manifest) };
+      fs.mkdirSync(source, { recursive: true });
+      fs.writeFileSync(path.join(source, 'manifest.json'), JSON.stringify(manifest));
+    }
     delete require.cache[eventFile];
     const register = require(eventFile).createModule({ lock: { normTabId: value => value }, identita,
-      operazioni: operations, config, audit: { auditWrite() {} }, errori: { errMsg: error => error.message } });
+      operazioni: operations, config, vault, audit: { auditWrite() {} }, errori: { errMsg: error => error.message } });
     const accepted = new Map();
     module = giuntura([(context, lifecycle) => {
       lifecycles.set(context, lifecycle);
@@ -212,9 +219,9 @@ for (const [kind, principal] of [['owner', owner('tenant-b')], ['actor', owner('
   });
 }
 test('permesso-connessione-rivalutato', async f => {
-  await f.finish(f.start()); const observer = f.client(owner('tenant-a', 'tenant-a', ['collaudo']));
+  await f.finish(f.start()); const observer = f.client(owner('tenant-a', 'tenant-a', ['collaudo', 'origine']));
   await f.read(observer);
-  const restricted = owner('tenant-a', 'tenant-a', ['altra']);
+  const restricted = owner('tenant-a', 'tenant-a', ['altra', 'origine']);
   assert.throws(() => f.assertActualPermission(restricted, 'collaudo'), /Permesso|permess/);
   f.revalidate(observer, restricted);
   const denied = await f.send(observer, 'backup:restore:state', { operationId: f.payload.operationId, connName: 'altra' });
@@ -231,11 +238,18 @@ test('stato-non-espone-credenziali', async f => {
   assert(!/"(effectiveCfg|strategy|principal|handshake)"/.test(text), '[REGISTRO-SEGRETI] nessun oggetto sessione nello stato pubblico');
 });
 test('avvio-rispetta-connScope', async f => {
-  const restricted = f.client(owner('tenant-a', 'tenant-a', ['altra']), true);
+  const restricted = f.client(owner('tenant-a', 'tenant-a', ['origine', 'altra']), true);
   const request = f.start({ ...f.payload, connName: 'altra' }, restricted); await tick();
   f.gate.resolve(); const response = await request;
   assert.equal(response.ok, false, '[REGISTRO-PERMESSI] il payload non concede accesso al driver');
   assert.equal(f.calls.length, 0, '[REGISTRO-PERMESSI] rifiuto prima della mutazione');
+});
+test('avvio-rispetta-origine', async f => {
+  const restricted = f.client(owner('tenant-a', 'tenant-a', ['collaudo']), true);
+  const response = await f.finish(f.start(f.payload, restricted));
+  assert.equal(response.ok, false);
+  assert.match(response.error, /origine/i);
+  assert.equal(f.calls.length, 0);
 });
 test('identificatore-non-valido', async f => {
   const response = await f.start({ ...f.payload, operationId: '../non-valido' });

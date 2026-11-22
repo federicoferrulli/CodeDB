@@ -153,10 +153,15 @@ const { startTestServer } = require('./e2e-harness');
       assert.match(await page.locator('#dbimport-report').textContent(), /Verifica non riuscita/);
       if (status === 'intervento_richiesto') assert.match(await page.locator('#dbimport-report').textContent(), /Ripristino non riuscito/);
       await fits();
-      await page.locator('[data-dbimport-cleanup]').hover();
-      assert.equal(await page.locator('[data-dbimport-cleanup]').evaluate(el => getComputedStyle(el).color), await page.locator('#dbimport-report').evaluate(el => getComputedStyle(el).getPropertyValue('--danger').trim()).then(hex => {
-        const n = parseInt(hex.slice(1), 16); return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
-      }), 'Il testo dell’azione distruttiva resta leggibile anche all’hover');
+      const pulizia = page.locator('[data-dbimport-cleanup]');
+      if (status === 'intervento_richiesto') {
+        assert.equal(await pulizia.count(), 0, 'Le risorse per il recupero manuale devono essere conservate');
+      } else {
+        await pulizia.hover();
+        assert.equal(await pulizia.evaluate(el => getComputedStyle(el).color), await page.locator('#dbimport-report').evaluate(el => getComputedStyle(el).getPropertyValue('--danger').trim()).then(hex => {
+          const n = parseInt(hex.slice(1), 16); return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
+        }), 'Il testo dell’azione distruttiva resta leggibile anche all’hover');
+      }
       await page.screenshot({ path: `test-reports/import-feedback/mobile-${status}.png` });
       await page.locator('#dbimport-new').scrollIntoViewIfNeeded();
       assert(await page.locator('#dbimport-new').isEnabled());

@@ -144,10 +144,13 @@ final class AvvioView extends LinearLayout {
         aggiornaMovimento();
     }
 
-    void errore(String messaggio) {
+    void errore(String messaggio) { errore(messaggio, false); }
+
+    void errore(String messaggio, boolean nuovoProcesso) {
         if (concluso) return;
         errore = true;
-        stato.setText(messaggio);
+        stato.setText(nuovoProcesso ? messaggio + " Per riprovare, riapri CodeDB dopo la chiusura." : messaggio);
+        riprova.setText(nuovoProcesso ? "Chiudi CodeDB" : "Riprova");
         riprova.setVisibility(VISIBLE);
         aggiornaMovimento();
     }

@@ -1,18 +1,18 @@
 'use strict';
 const assert = require('node:assert/strict');
-const vm = require('node:vm');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const vm = require('node:vm');
 const { trasforma, preparaUnicode } = require('../android/unicode.cjs');
+const identSql = '(?:"(?:[^" ]|""| )+"|`(?:[^`]|``)+`|[\\p{L}_][\\p{L}\\p{N}_$]*)';
 const source = String.raw`[
   /\P{ASCII}/u, /^[$_\p{ID_Start}][$\u200c\u200d\p{ID_Continue}]*$/u,
   /[\p{Cs}\p{Cn}]/u, /\p{Cs}/u,
   RegExp("^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$", "u"),
   RegExp("^[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$", "u"),
   RegExp("^(?=[\\s\\S]*[\\p{Extended_Pictographic}\\p{Regional_Indicator}\\u20E3])[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$", "u"),
-  RegExp('(?:"(?:[^" ]|""| )+"|\`(?:[^\`]|\`\`)+\`|[\\p{L}_][\\p{L}\\p{N}_$]*)', "iu")
-]`;
+` + `  RegExp(${JSON.stringify(identSql)}, "iu")\n]`;
 const result = trasforma(source);
 const compatibile = code => assert(!/\\[pP]\{/.test(code), 'Proprietà Unicode non compilata');
 assert.throws(() => compatibile(source), /non compilata/);
@@ -30,15 +30,21 @@ compatibile(trasforma(template));
 // Anche i sorgenti applicativi, non soltanto node_modules, devono essere compilati.
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-unicode-'));
 try {
-  for (const file of ['db/backupRestoreAdapter.js', 'db/importSql.js']) {
+  const fileApp = [
+    'db/backupRestoreAdapter.js',
+    'db/importSql.js',
+    'public/js/intellisense.js',
+    'public/js/query-lexer.js',
+  ];
+  for (const file of fileApp) {
     const originale = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
-    assert.throws(() => compatibile(originale), /non compilata/);
+    assert.throws(() => compatibile(originale), /non compilata/, `${file} contiene proprietà Unicode da compilare`);
     const target = path.join(temp, file);
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, originale);
   }
-  assert.equal(preparaUnicode(temp), 2);
-  for (const file of ['db/backupRestoreAdapter.js', 'db/importSql.js']) {
+  assert.equal(preparaUnicode(temp), fileApp.length);
+  for (const file of fileApp) {
     compatibile(fs.readFileSync(path.join(temp, file), 'utf8'));
   }
   assert.equal(preparaUnicode(temp), 0);

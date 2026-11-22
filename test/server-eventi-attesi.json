@@ -176,6 +176,10 @@
     "famiglia": "safeOn"
   },
   {
+    "evento": "database:export:execute",
+    "famiglia": "operazioneLunga"
+  },
+  {
     "evento": "database:export:plan",
     "famiglia": "delegate"
   },
@@ -396,6 +400,10 @@
     "famiglia": "operazioneLunga"
   },
   {
+    "evento": "query:state",
+    "famiglia": "operazioneLunga"
+  },
+  {
     "evento": "roles:list",
     "famiglia": "amministrativo"
   },
@@ -430,6 +438,14 @@
   {
     "evento": "script:state",
     "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "script:upload",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "session:recovery",
+    "famiglia": "safeOn"
   },
   {
     "evento": "ssh:key:validate",

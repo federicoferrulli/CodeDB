@@ -7,7 +7,7 @@ if (['confirmation-reuse', 'sql-partial-commit'].includes(process.env.CODEDB_LAB
   const path = require('node:path');
   const Module = require('node:module');
   const sqlMutant = process.env.CODEDB_LAB_MCP_MUTANT === 'sql-partial-commit';
-  const target = path.resolve(__dirname, sqlMutant ? '../../db/sqlWriteBatch.js' : '../../mcp/McpGateway.js');
+  const target = path.resolve(__dirname, sqlMutant ? '../../db/sqlWriteBatch.js' : '../../mcp/conferma.js');
   const original = Module._extensions['.js'];
   Module._extensions['.js'] = function compile(mod, filename) {
     if (path.resolve(filename) !== target) return original(mod, filename);

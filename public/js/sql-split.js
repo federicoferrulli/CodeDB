@@ -5,41 +5,30 @@
  * istruzioni solo se sta FUORI da stringhe, commenti, identificatori quotati e
  * blocchi dollar-quoted.
  *
- * Qui serve a UNA sola cosa: decidere se il testo nell'editor è una query
- * singola o uno script, cioè su quale evento instradarlo (`query:execute` o
- * `script:execute`). La divisione che conta davvero — quella su cui si esegue —
- * resta quella del server: il client non deve mai poter influenzare COSA viene
- * eseguito, solo su quale percorso viaggia.
+ * L'editor distingue query e script. L'indice dei file SQL usa gli stessi
+ * intervalli per trasportare istruzioni intere. Il server verifica e divide
+ * il testo ricevuto prima di eseguirlo.
  */
 
-/**
- * Percorre il testo e restituisce le istruzioni con la riga di partenza.
- * @returns {Array<{sql: string, line: number}>}
- */
 import { blocchiSql } from './sql-blocchi.mjs';
 
-export function splitStatements(code, { dbms = '', backslashEscape = false } = {}) {
+// next è l'offset UTF-16 dopo il separatore. L'ultimo intervallo, con next
+// nullo, può proseguire nella successiva finestra di lettura di un file.
+export function* intervalliSql(code, { dbms = '', backslashEscape = false, delimiter = ';' } = {}) {
   let blocchi = blocchiSql();
   const s = String(code == null ? '' : code);
-  const out = [];
   let i = 0;
   let stmtStart = 0;
   let line = 1;
   let stmtLine = 1;
   let visto = false; // c'è del contenuto non bianco nell'istruzione corrente?
-  let delimitatore = ';', haCodice = false;
+  let delimitatore = delimiter, haCodice = false;
 
   const avanza = (fino) => {
     while (i < fino && i < s.length) {
       if (s[i] === '\n') line++;
       i++;
     }
-  };
-
-  const chiudi = (end) => {
-    const testo = s.slice(stmtStart, end).trim();
-    if (testo) out.push({ sql: testo, line: stmtLine });
-    visto = false;
   };
 
   while (i < s.length) {
@@ -51,7 +40,8 @@ export function splitStatements(code, { dbms = '', backslashEscape = false } = {
       if (direttiva) { delimitatore = direttiva[1]; avanza(i + direttiva[0].length); stmtStart = i; visto = false; continue; }
     }
     if (delimitatore !== ';' && s.startsWith(delimitatore, i)) {
-      chiudi(i); avanza(i + delimitatore.length); stmtStart = i; haCodice = false; blocchi = blocchiSql(); continue;
+      yield { start: stmtStart, end: i, next: i + delimitatore.length, line: stmtLine, delimiter: delimitatore, haCodice };
+      avanza(i + delimitatore.length); stmtStart = i; visto = false; haCodice = false; blocchi = blocchiSql(); continue;
     }
 
     if (!visto && !/\s/.test(c)) {
@@ -62,7 +52,7 @@ export function splitStatements(code, { dbms = '', backslashEscape = false } = {
     if (c === '-' && next === '-' && (dbms !== 'mysql' || !s[i + 2] || /\s/.test(s[i + 2]))) { avanza(indexOrEnd(s, '\n', i)); continue; }
     if (c === '#' && dbms !== 'postgresql' && next !== '>' && next !== '-') { avanza(indexOrEnd(s, '\n', i)); continue; }
     if (c === '/' && next === '*') {
-      if (s[i + 2] === '!') haCodice = true;
+      if (dbms === 'mysql' && (s[i + 2] === '!' || s.startsWith('/*M!', i))) haCodice = true;
       avanza(i + 2);
       let profondita = 1;
       while (i < s.length && profondita) {
@@ -72,7 +62,7 @@ export function splitStatements(code, { dbms = '', backslashEscape = false } = {
       }
       continue;
     }
-    if (!/\s/.test(c)) haCodice = true;
+    if (c !== ';' && !/\s/.test(c)) haCodice = true;
 
     if (c === '$' && dbms !== 'mysql') {
       const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(s.slice(i));
@@ -118,9 +108,10 @@ export function splitStatements(code, { dbms = '', backslashEscape = false } = {
       blocchi.parola(token); avanza(i + token.length); continue;
     }
     if (c === ';' && delimitatore === ';' && blocchi.separa()) {
-      chiudi(i);
+      yield { start: stmtStart, end: i, next: i + 1, line: stmtLine, delimiter: delimitatore, haCodice };
       avanza(i + 1);
       stmtStart = i;
+      visto = false;
       haCodice = false;
       continue;
     }
@@ -128,7 +119,16 @@ export function splitStatements(code, { dbms = '', backslashEscape = false } = {
     avanza(i + 1);
   }
 
-  chiudi(s.length);
+  yield { start: stmtStart, end: s.length, next: null, line: stmtLine, delimiter: delimitatore, haCodice };
+}
+
+export function splitStatements(code, opts) {
+  const s = String(code ?? '');
+  const out = [];
+  for (const st of intervalliSql(s, opts)) {
+    const sql = s.slice(st.start, st.end).trim();
+    if (sql) out.push({ sql, line: st.line });
+  }
   return out;
 }
 

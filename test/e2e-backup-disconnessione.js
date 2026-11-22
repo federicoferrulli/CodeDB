@@ -40,7 +40,8 @@ async function fixture(mutant) {
       + (mutant === 'ripristino-ripetuto' ? `socket.on('connect', () => { if (ultimaRichiestaLab) { window.__labMutationHits++; socket.emit('backup:restore', ultimaRichiestaLab, () => {}); } });\n` : '');
     await route.fulfill({ response, body });
   });
-  await page.goto(server.url); await page.waitForSelector('html[data-arc-ready="true"]');
+  await page.goto(server.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForSelector('html[data-arc-ready="true"]', { timeout: 30000 });
   await page.evaluate(async () => {
     const [{ createTab, tabs }, { socketReale, impostaSocket }, tabbar, workspace] = await Promise.all([
       import('/js/tabs.js'), import('/js/socket.js'), import('/js/tabbar.js'), import('/js/workspace.js'),

@@ -136,8 +136,8 @@ async function chiavePrimaria(dialetto, strategia, db, table) {
 // ogni lettura di dati le richiede. Le query al catalogo e l'eventuale
 // arricchimento sono del dialetto; la cache, la forma del risultato e la
 // classificazione per tipo sono qui.
-async function infoColonne(dialetto, strategia, db, coll) {
-  const chiave = chiaveColonne(dialetto, db, coll);
+async function infoColonne(dialetto, strategia, db, coll, { includiInvisibili = false } = {}) {
+  const chiave = (includiInvisibili ? 'invisibili\u0000' : '') + chiaveColonne(dialetto, db, coll);
   const ora = Date.now();
   const cache = strategia._cacheColonne;
   const hit = cache.get(chiave);
@@ -164,7 +164,7 @@ async function infoColonne(dialetto, strategia, db, coll) {
       generated: d.generato ? !!d.generato(r) : false,
       ...(d.dettagli ? d.dettagli(r) : {}),
     }));
-  const info = { columns: tutte.filter((_c, i) => visibile(rows[i])) };
+  const info = { columns: includiInvisibili ? tutte : tutte.filter((_c, i) => visibile(rows[i])) };
   // Le classi sono dichiarate dal dialetto e valutate NELL'ORDINE dichiarato:
   // su PostgreSQL un tipo geometrico nativo (point, polygon) non è una
   // geometria PostGIS, e la prima classe che riconosce il tipo se lo prende.
@@ -398,8 +398,8 @@ function metodi(dialetto) {
     primaryKey(db, table) {
       return chiavePrimaria(dialetto, this, db, table);
     },
-    tableColumnsInfo(db, coll) {
-      return infoColonne(dialetto, this, db, coll);
+    tableColumnsInfo(db, coll, opzioni) {
+      return infoColonne(dialetto, this, db, coll, opzioni);
     },
     tableFields(db, table) {
       return elencoCampi(dialetto, this, db, table);

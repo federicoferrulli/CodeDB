@@ -17,7 +17,13 @@ const { startTestServer } = require('./e2e-harness');
       const { impostaSocket } = await import('/js/socket.js');
       const tab = createTab({ id: 'negozio' }); tab.dbType = 'mongodb'; tab.label = 'Locale'; tab.state.connected = true;
       window.sent = []; window.queue = [];
-      impostaSocket({ connected: true, on() {}, off() {}, emit(name, p, ack) {
+      const interruzioni = new Set();
+      window.interrompiSocket = () => { for (const fn of [...interruzioni]) fn('transport close'); };
+      impostaSocket({ connected: true,
+        on(evento, fn) { if (evento === 'disconnect') interruzioni.add(fn); },
+        off(evento, fn) { if (evento === 'disconnect') interruzioni.delete(fn); },
+        emit(name, p, ack) {
+        if (window.trattieni && name === 'doc:replace') { window.ackTardivo = ack; return; }
         window.sent.push({ name, p });
         if (name === 'collection:find') { window.queue.push({ p, ack }); return; }
         ack?.({ ok: true, collections: ['ordini', 'clienti', 'prodotti', 'fatture'], relazioni: [], total: 5 });
@@ -53,6 +59,20 @@ const { startTestServer } = require('./e2e-harness');
     const writes = await page.evaluate(() => window.sent.filter(x => x.name === 'doc:update'));
     assert.equal(writes.length, 1); assert.equal(writes[0].p.tabId, 'negozio'); assert.equal(writes[0].p.coll, 'prodotti'); assert.equal(writes[0].p.id, '100');
     console.log('OK: cambio bersaglio annullabile, bozza preservata e scrittura congelata sul documento originale');
+    await page.evaluate(() => { window.trattieni = true; });
+    await frame.evaluate(async () => {
+      const { emit } = await import('/js/trasporto.js');
+      window.esito = emit('doc:replace', { db: 'negozio', coll: 'prodotti', id: '100', doc: '{}' }).catch(err => err.message);
+    });
+    const statoPadre = () => page.evaluate(async () => (await import('/js/tabs.js')).tabs.list.find(t => t.id === 'negozio').state.writesInFlight);
+    assert.equal(await statoPadre(), 1);
+    await page.evaluate(() => window.interrompiSocket());
+    assert.equal(await statoPadre(), 0, 'Il bridge libera il tab padre anche senza ack');
+    assert.equal(await frame.evaluate(async () => (await import('/js/state.js')).state.writesInFlight), 0);
+    assert.match(await frame.evaluate(() => window.esito), /da verificare/);
+    await page.evaluate(() => window.ackTardivo({ ok: true }));
+    assert.equal(await statoPadre(), 0, 'Un ack tardivo non sottrae una seconda volta');
+    console.log('OK: caduta del socket e ack tardivo nel pannello split');
     assert.deepEqual(errors, []);
   } finally { await browser.close(); await server.stop(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

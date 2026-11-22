@@ -18,9 +18,8 @@ const report = { suite: 'tema-navigatore', iniziato: new Date().toISOString(), r
   sorgenti: Object.fromEntries(sourceFiles.map(file => [file, hash(fs.readFileSync(path.join(repo, file)))])) };
 let browser, server, bundle;
 
-async function fixture(width, panel, mutant) {
-  const context = await browser.newContext({ viewport: { width, height: 960 }, hasTouch: width < 900 });
-  const page = await context.newPage(); page.setDefaultTimeout(6000);
+async function fixture(page, width, panel, mutant) {
+  page.setDefaultTimeout(6000);
   page.labErrors = []; page.on('pageerror', error => page.labErrors.push(error.message));
   await page.route('**/arc/ui.js*', route => route.fulfill({ contentType: 'text/javascript', body: bundle['ui.js'] }));
   await page.route('**/arc/ui.css*', route => route.fulfill({ contentType: 'text/css', body: bundle['ui.css'] }));
@@ -37,8 +36,19 @@ async function fixture(width, panel, mutant) {
     window.__labThemeMutationHits = 0;
   }, require('../package.json').version);
   await page.goto(server.url); await page.waitForSelector('html[data-arc-ready="true"]');
-  await page.evaluate(async () => {
-    const [tabs, socket, bar, workspace, colls, manager] = await Promise.all(['tabs', 'socket', 'tabbar', 'workspace', 'colltabs', 'connmanager'].map(name => import(`/js/${name}.js`)));
+  await page.addScriptTag({ type: 'module', content: `
+    import '/js/main.js';
+    import * as tabs from '/js/tabs.js';
+    import * as socket from '/js/socket.js';
+    import * as bar from '/js/tabbar.js';
+    import * as workspace from '/js/workspace.js';
+    import * as colls from '/js/colltabs.js';
+    import * as manager from '/js/connmanager.js';
+    window.__labModules = { tabs, socket, bar, workspace, colls, manager };
+  ` });
+  await page.waitForFunction(() => !!window.__labModules);
+  await page.evaluate(() => {
+    const { tabs, socket, bar, workspace, colls, manager } = window.__labModules;
     const connections = Array.from({ length: 80 }, (_, i) => ({ name: `Connessione prova ${i}`, label: `Mongo prova ${i}`, dbType: 'mongodb' }));
     const collections = Array.from({ length: 80 }, (_, i) => ({ name: `misure_${i}` }));
     const databases = [{ name: 'laboratorio_ui', collections }];
@@ -54,7 +64,7 @@ async function fixture(width, panel, mutant) {
     Object.assign(tab.state, { connected: true, connLabel: tab.label, dbType: 'mongodb', databases, limit: 20 });
     tabs.tabs.activeId = tab.id; bar.renderTabBar(); workspace.renderWorkspace(); colls.openCollTab('laboratorio_ui', 'misure_0');
     tab.state.editDrafts = new Map([['bozza-fixture', 'contenuto da conservare']]);
-    window.__labModules = { tabs, colls }; manager.loadSavedConnections();
+    manager.loadSavedConnections();
     window.__labThemeClosed = 0;
     document.getElementById('modal-theme').addEventListener('codedb:dialog-closed', () => window.__labThemeClosed++);
   });
@@ -76,7 +86,6 @@ async function fixture(width, panel, mutant) {
   await page.evaluate(({ tree, search }) => {
     window.__labTreeNode = document.querySelector(tree); window.__labSearchNode = document.querySelector(search);
   }, { tree, search });
-  return { page, context, tree, search };
 }
 
 async function snapshot(page, panel) {
@@ -147,16 +156,19 @@ async function scenario(page, width, panel, close) {
 async function run(mutant) {
   const results = [], output = path.join(dir, mutant ? 'mutante' : 'controllo'); fs.mkdirSync(output, { recursive: true });
   for (const width of [1440, 390]) for (const panel of ['database', 'connessioni']) for (const close of ['escape', 'pulsante']) {
-    const item = { id: `${width}-${panel}-${close}`, width, panel, close, ok: false }; let current;
+    const item = { id: `${width}-${panel}-${close}`, width, panel, close, ok: false };
+    const context = await browser.newContext({ viewport: { width, height: 960 }, hasTouch: width < 900 });
+    let page;
     try {
-      current = await fixture(width, panel, mutant); item.evidence = await scenario(current.page, width, panel, close); item.ok = true;
+      page = await context.newPage();
+      await fixture(page, width, panel, mutant); item.evidence = await scenario(page, width, panel, close); item.ok = true;
     } catch (error) {
-      item.errore = error.stack; item.evidence = current?.page.labEvidence;
-      await current?.page.screenshot({ path: path.join(output, `${item.id}.png`), fullPage: true }).catch(() => {});
+      item.errore = error.stack; item.evidence = page?.labEvidence;
+      await page?.screenshot({ path: path.join(output, `${item.id}.png`), fullPage: true }).catch(() => {});
     } finally {
-      item.erroriPagina = current?.page.labErrors || [];
-      item.mutazioni = current ? await current.page.evaluate(() => window.__labThemeMutationHits).catch(() => 0) : 0;
-      await current?.context.close(); results.push(item);
+      item.erroriPagina = page?.labErrors || [];
+      item.mutazioni = page ? await page.evaluate(() => window.__labThemeMutationHits).catch(() => 0) : 0;
+      await context.close(); results.push(item);
       console.log(formattaOutputMutante(mutant ? 'tema' : null,
         `${item.ok ? 'PASS' : 'FAIL'} ${mutant ? 'mutante' : 'controllo'}/${item.id}${item.errore ? ': ' + item.errore.split('\n')[0].slice(0, 200) : ''}`));
       fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(results, null, 2));

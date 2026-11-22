@@ -56,7 +56,7 @@ module.exports = (async () => {
   const files = require('../package.json').build.files;
   assert(!files.includes('**/*'));
   for (const voce of INCLUSIONI) assert(files.includes(voce));
-  for (const file of ['/export-clienti.json', '/.scratch/credenziali.txt', '/landing/node_modules/prova.js']) {
+  for (const file of ['/export-clienti.json', '/.scratch/credenziali.txt', '/landing/node_modules/prova.js', '/auth/profilo.ini.backup-signing-key', '/db/demo/vault.json', '/server/.env.sviluppo', '/public/demo/connections.ini']) {
     assert(regexPackager().some(re => re.test(file)), `File locale incluso nel portatile: ${file}`);
   }
 

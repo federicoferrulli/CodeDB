@@ -49,6 +49,19 @@ const { creaPianoImport } = require('../db/importPlan');
   assert.ok(riepilogo.avvisi.some((a) => /non ricreabile/.test(a)), 'vincolo senza bersaglio dichiarato');
   console.log('  OK   export: conteggi, esclusioni e avvisi dall oggetto vero');
 
+  const pianoSql = { ...exportPlan, formato: 'sql', opzioniSql: { tabelle: 'ricrea', righe: 'aggiorna' },
+    oggetti: [...exportPlan.oggetti, { tipo: 'tabella', nome: 'dipendenza', struttura: true, aggiuntoPerDipendenza: true }] };
+  const sql = riepilogoPiano(pianoSql);
+  const vociSql = Object.fromEntries(sql.voci.map(v => [v.etichetta, v.valore]));
+  assert.equal(vociSql['Tabelle da ricreare'], 'ordini', 'il DROP riguarda solo le strutture richieste');
+  assert.match(vociSql['Righe nello script'], /ON CONFLICT DO UPDATE/);
+  assert(sql.avvisi.some(a => a.includes('perde tutti i dati')));
+  const soleDipendenze = riepilogoPiano({ ...pianoSql, oggetti: [pianoSql.oggetti.at(-1)] });
+  assert(soleDipendenze.voci.some(v => v.valore.includes('IF NOT EXISTS')));
+  assert(!soleDipendenze.voci.some(v => v.etichetta === 'Tabelle da ricreare' || v.etichetta === 'Righe nello script'));
+  assert(!riepilogo.voci.some(v => v.etichetta.includes('nello script')));
+  console.log('  OK   anteprima SQL circoscrive DROP, dipendenze e conflitti al piano confermato');
+
   /* --- Import: piano vero ------------------------------------------------------------ */
 
   const importPlan = creaPianoImport({
@@ -58,6 +71,7 @@ const { creaPianoImport } = require('../db/importPlan');
         { name: 'clienti', indexes: [], docs: [{ _id: 1 }, { _id: 2 }] },
         { name: 'ordini', indexes: [], docs: [{ _id: 1 }] },
       ],
+      objects: { views: [{ name: 'v_ordini', viewOn: 'ordini', pipeline: [] }] },
     },
     expectedDbType: 'mongodb', connection: 'locale', targetDb: 'destinazione', drop: true,
   });
@@ -65,7 +79,8 @@ const { creaPianoImport } = require('../db/importPlan');
   assert.strictEqual(riepilogoImport.titolo, 'Import verso destinazione');
   assert.strictEqual(riepilogoImport.fingerprint, importPlan.fingerprint);
   const voceImport = (etichetta) => riepilogoImport.voci.find((v) => v.etichetta === etichetta).valore;
-  assert.strictEqual(voceImport('Oggetti'), '2');
+  assert.strictEqual(voceImport('Viste'), 'v_ordini');
+  assert.strictEqual(voceImport('Oggetti'), '3');
   assert.strictEqual(voceImport('Righe/documenti'), '3');
   assert.strictEqual(voceImport('Sostituisce la destinazione'), 'sì');
   assert.ok(riepilogoImport.avvisi.some((a) => /recupero/.test(a)), 'drop con recupero dichiarato');

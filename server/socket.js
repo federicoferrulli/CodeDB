@@ -5,9 +5,15 @@ const { eventCapability } = require('../auth/capabilities');
 const { invalidaSnapshot } = require('../db/schemaSnapshot');
 const { can } = require('../auth/permissions');
 const { payloadEsecuzione } = require('../db/payloadEsecuzione');
+const { createHash } = require('node:crypto');
+const { isDeepStrictEqual } = require('node:util');
+
+const ATTESA_RIPRESA_MS = 10 * 60 * 1000;
+const CADUTA_TRASPORTO = new Set(['transport close', 'transport error', 'ping timeout', 'forced close']);
 
 function createModule({ identita, trasporto, budget, config, connessioni, lock, errori, query, audit, registratori, now = Date.now }) {
   const contesti = new Set();
+  const recuperabili = new Map();
   const pendenti = new Set();
   let inChiusura = false;
   function track(promise) {
@@ -16,19 +22,61 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
     p.then(() => pendenti.delete(p), () => pendenti.delete(p));
     return p;
   }
+
+  function interrompiQuery(sess) {
+    const attive = new Set(sess.inflight?.values());
+    for (const run of sess.scripts?.values() || []) {
+      const handle = run.currentStatement?.opHandle;
+      if (handle) attive.add(handle);
+      run.abort();
+    }
+    return Promise.allSettled([...attive].map(async handle => {
+      if (handle.interrotto) return;
+      handle.interrotto = true;
+      if (handle.cancelMongosh) await handle.cancelMongosh();
+      else await sess.strategy?.cancelQuery?.(handle);
+    }));
+  }
+
   function beginShutdown() {
     inChiusura = true;
     for (const ctx of contesti) for (const sess of ctx.sessions.values()) {
-      if (sess.scripts) for (const run of sess.scripts.values()) run.abort();
+      if (ctx.timerRipresa) track(interrompiQuery(sess));
+      else if (sess.scripts) for (const run of sess.scripts.values()) run.abort();
       if (sess.mongosh) track(sess.mongosh.close());
       sess.cancelReconnectWait?.();
     }
   }
   async function drain() { while (pendenti.size) await Promise.allSettled([...pendenti]); }
   async function close() {
+    for (const ctx of contesti) clearTimeout(ctx.timerRipresa);
+    recuperabili.clear();
     await Promise.allSettled([...contesti].map(ctx => ctx.socket.closeAllSessions()));
     await drain();
     contesti.clear();
+  }
+
+  function terminaContesto(ctx) {
+    clearTimeout(ctx.timerRipresa);
+    if (recuperabili.get(ctx.chiave) === ctx) recuperabili.delete(ctx.chiave);
+    track(ctx.socket.closeAllSessions().finally(() => contesti.delete(ctx))).catch(err => {
+      console.error('[Sessioni] Errore chiudendo le sessioni del socket:', errori.errMsg(err));
+    });
+  }
+
+  function chiudiSessioniSospese(userId) {
+    for (const ctx of recuperabili.values()) {
+      if (ctx.timerRipresa && String(ctx.principal.id) === String(userId)) terminaContesto(ctx);
+    }
+  }
+
+  function chiudiLogin(token) {
+    if (!token) return;
+    for (const ctx of contesti) {
+      if (ctx.socket.handshake.auth?.token !== token) continue;
+      if (ctx.timerRipresa) terminaContesto(ctx);
+      else ctx.socket.disconnect(true);
+    }
   }
 
   /* ---------------------------------------------------------------------------
@@ -58,7 +106,8 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
   function creaContestoSocket(socket) {
     return {
       socket,
-      ip: socket.handshake.address,
+      sessionId: socket.id,
+      ip: socket.request ? trasporto.ipClient(socket.request) : socket.handshake.address,
       // Chi è l'utente di questo socket: risolto dal gate dell'handshake
       // (io.use). Con RBAC spento è l'owner locale e nessun controllo ha effetto.
       // È MUTABILE: `rivalidaPrincipal` lo sostituisce quando i grant cambiano.
@@ -70,7 +119,8 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
 
   trasporto.io.on('connection', (socket) => {
     if (inChiusura) { socket.disconnect(true); return; }
-    const ip = socket.handshake.address;
+    const nuovo = creaContestoSocket(socket);
+    const { ip, principal } = nuovo;
     const currentSocketsForIp = budget.ipConnections.get(ip) || 0;
 
     // Controllo limiti connessioni WebSocket
@@ -86,12 +136,37 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
     }
     budget.ipConnections.set(ip, currentSocketsForIp + 1);
 
-    registraEventi(creaContestoSocket(socket));
+    const auth = socket.handshake.auth || {};
+    if (typeof auth.recoveryKey === 'string' && /^[a-f0-9]{32}$/.test(auth.recoveryKey)) {
+      nuovo.chiave = createHash('sha256').update(JSON.stringify([principal.ownerId, principal.id, auth.token || '', auth.recoveryKey])).digest('hex');
+      const prima = recuperabili.get(nuovo.chiave);
+      if (prima) {
+        // Il client può avere già rilevato la caduta mentre il server aspetta ancora il ping.
+        if (!prima.timerRipresa) {
+          prima.sostituito = true;
+          prima.socket.disconnect(true);
+        }
+        if (prima.timerRipresa && now() < prima.scadenza && isDeepStrictEqual(prima.principal, principal)) {
+          clearTimeout(prima.timerRipresa);
+          Object.assign(prima, { socket, ip, principal, timerRipresa: null, sostituito: false });
+          for (const sess of prima.sessions.values()) {
+            sess.ip = ip;
+            sess.principal = principal;
+            if (sess.guardCtx) sess.guardCtx.principal = principal;
+          }
+          registraEventi(prima, true);
+          return;
+        }
+        if (prima.timerRipresa) terminaContesto(prima);
+      }
+      recuperabili.set(nuovo.chiave, nuovo);
+    }
+    registraEventi(nuovo);
   });
 
-  function registraEventi(ctx) {
+  function registraEventi(ctx, recuperato = false) {
     if (inChiusura) throw new Error('Server in chiusura.');
-    if (contesti.has(ctx)) throw new Error('Eventi già registrati per questo contesto.');
+    if (contesti.has(ctx) && !recuperato) throw new Error('Eventi già registrati per questo contesto.');
     contesti.add(ctx);
 
     const { socket, ip, sessions } = ctx;
@@ -100,13 +175,14 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
     let ultimaRivalida = now();
     let verifica;
     let revocata = false;
-    function rivalidaPrincipal() {
+    function rivalidaPrincipal(forza = false) {
       if (!config.rbacOn()) return Promise.resolve(true);
       if (revocata) return Promise.resolve(false);
       if (verifica) return verifica;
-      if (now() - ultimaRivalida < REVALIDA_PRINCIPAL_MS) return Promise.resolve(true);
+      if (!forza && now() - ultimaRivalida < REVALIDA_PRINCIPAL_MS) return Promise.resolve(true);
       verifica = (async () => {
         const fresco = await identita.resolvePrincipalFromToken((socket.handshake.auth || {}).token);
+        if (socketClosed && ctx.socket !== socket) return false;
         if (!fresco) { revocata = true; return false; }
         ctx.principal = socket.principal = fresco;
         for (const sess of sessions.values()) {
@@ -134,9 +210,10 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
 
     async function finalizzaSessione(sess) {
       try {
+        sess.closeScriptUploads?.();
+        await interrompiQuery(sess);
         await sess.mongosh?.close();
         if (sess.scripts) {
-          for (const run of sess.scripts.values()) run.abort();
           await Promise.allSettled([...sess.scripts.values()].map(run => run.completion));
           sess.scripts.clear();
         }
@@ -171,9 +248,8 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
 
     socket.closeAllSessions = closeAllSessions;
 
-    // Serializzazione delle aperture/chiusure di connessione per tab (vedi
-    // makeConnectLocks): una mappa di lock privata per ogni socket.
-    const withConnectLock = lock.makeConnectLocks();
+    // Anche dopo il cambio di trasporto, apertura e chiusura del tab condividono il lock.
+    const withConnectLock = ctx.withConnectLock ||= lock.makeConnectLocks();
 
     // Il socket può cadere mentre una connessione è ancora in apertura: in quel
     // caso `closeAllSessions()` non la vede (non è ancora nella mappa) e resterebbe
@@ -204,8 +280,12 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
             setTimeout(() => socket.disconnect(true), 0);
             return;
           }
+          if (socketClosed || inChiusura) throw new Error('Sessione chiusa o server in arresto.');
           if (payload != null && (typeof payload !== 'object' || Array.isArray(payload))) {
             throw new Error('Payload non valido: è richiesto un oggetto.');
+          }
+          if (payload?.dbSessionId != null && sessions.get(lock.normTabId(payload.tabId))?.dbSessionId !== payload.dbSessionId) {
+            throw new Error('La sessione del database è cambiata. Verifica le istruzioni già applicate prima di ripeterle.');
           }
           await fn(payload || {}, cb, ctx);
         } catch (err) {
@@ -390,6 +470,7 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
     }
 
     const lifecycle = {
+      recuperato,
       track,
       rivalidaPrincipal,
       acquisisciLeaseOperazione,
@@ -405,16 +486,14 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
       scriviAuditAmministrativo,
     };
     for (const registra of registratori) registra(ctx, lifecycle);
-    socket.on('disconnect', () => {
-      // Il gestore è sincrono, quindi la chiusura non si può attendere; ciò che
-      // NON deve mancare è il `.catch` (CDB-18): senza, un errore nella chiusura
-      // di una strategia (rete già caduta, tunnel morto) diventa un unhandled
-      // rejection, e in un processo che lo tratta come fatale basta una
-      // disconnessione sfortunata per farlo terminare — cioè per far cadere le
-      // sessioni di tutti gli altri utenti.
-      track(closeAllSessions().finally(() => contesti.delete(ctx))).catch((err) => {
-        console.error('[Sessioni] Errore chiudendo le sessioni del socket:', errori.errMsg(err));
-      });
+    socket.on('disconnect', motivo => {
+      if (!inChiusura && !revocata && ctx.chiave && sessions.size && (ctx.sostituito || CADUTA_TRASPORTO.has(motivo))) {
+        ctx.scadenza = now() + ATTESA_RIPRESA_MS;
+        ctx.timerRipresa = setTimeout(() => terminaContesto(ctx), ATTESA_RIPRESA_MS);
+        ctx.timerRipresa.unref();
+      } else {
+        terminaContesto(ctx);
+      }
 
       const count = budget.ipConnections.get(ip);
       if (count > 1) {
@@ -426,7 +505,7 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
   }
 
   return {
-    beginShutdown, drain, close,
+    beginShutdown, drain, close, chiudiSessioniSospese, chiudiLogin,
     creaContestoSocket,
     registraEventi
   };

@@ -23,6 +23,27 @@ concurrency:
   group: laboratorio-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  host-docker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: npm run build:ui
+      - run: npx --no-install playwright install --with-deps chromium
+      - name: Verifica i dialoghi con i tre database temporanei
+        run: |
+          docker pull postgres:latest
+          docker pull mysql:8
+          docker pull mongo:6.0
+          node test/e2e-schema-dialogs.js
+      - name: Verifica la migrazione dei volumi con l’immagine del checkout
+        run: |
+          docker build -t codedb-prova-volumi .
+          node test/e2e-dati-docker.js codedb-prova-volumi
   laboratorio:
     runs-on: ubuntu-24.04
     timeout-minutes: 120

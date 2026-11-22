@@ -43,6 +43,9 @@ function probeServer({ host = '127.0.0.1', port, secret, timeout = 500, httpModu
         } catch { resolve(false); }
       });
     });
+    // Una risposta che invia byte a intervalli non deve prolungare la verifica.
+    const deadline = setTimeout(() => { req.destroy(); resolve(false); }, timeout);
+    req.once('close', () => clearTimeout(deadline));
     req.on('error', () => resolve(false));
     req.on('timeout', () => { req.destroy(); resolve(false); });
   });

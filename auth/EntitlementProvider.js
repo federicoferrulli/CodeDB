@@ -53,12 +53,12 @@ class LocalEntitlementProvider extends EntitlementProvider {
         'sono le credenziali del primo owner (amministratore) dell\'istanza.',
       );
     }
-    return this.store.upsertOwner({ email, password, plan: 'self-hosted' });
+    return this.store.bootstrapLocalOwner({ email, password, legacyId: String(this.env.CODEDB_LOCAL_OWNER_ID || '').trim() });
   }
 
   async verifyOwner({ email, password }) {
-    const owner = await this.store.findOwnerByEmail(email);
-    if (!owner || owner.status !== 'active') return null;
+    const owner = await this.store.findUserById(this.store.localOwnerId);
+    if (!owner || owner.email !== String(email || '').trim().toLowerCase() || owner.status !== 'active') return null;
     if (!verifyPassword(password, owner.passwordHash)) return null;
     return owner;
   }

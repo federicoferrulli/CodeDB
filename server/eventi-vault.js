@@ -31,7 +31,7 @@ function createModule({ vault, identita, config }) {
       // durante i quali l'event loop è fermo per tutte le sessioni, e senza limite
       // questo è insieme un oracolo per la passphrase e un modo per bloccare il
       // server. La chiave è l'indirizzo del client, come per /auth/login.
-      const ipClient = socketContext.socket.handshake.address || 'unknown';
+      const ipClient = socketContext.ip || 'unknown';
       if (identita.loginBlocked(ipClient)) {
         throw new Error('Troppi tentativi di sblocco falliti: riprova tra un minuto.');
       }
@@ -212,7 +212,7 @@ function createModule({ vault, identita, config }) {
         );
         delete conns[oldName];
       }
-      conns[name] = next;
+      conns[name] = vault.identificaOrigine(next, previous);
       vault.saveConnections(conns, socketContext.principal.ownerId);
       cb({ ok: true });
       }));
@@ -278,13 +278,15 @@ function createModule({ vault, identita, config }) {
         }
         const salt = Buffer.from(String(intestazione.salt || ''), 'hex');
         if (!salt.length) throw new Error('Intestazione del file di export incompleta: manca il salt.');
-        chiaveFile = Vault.deriveKek(pass, salt, {
-          N: Number(intestazione.N) || Vault.SCRYPT.N,
-          r: Number(intestazione.r) || Vault.SCRYPT.r,
-          p: Number(intestazione.p) || Vault.SCRYPT.p,
-          keylen: Number(intestazione.keylen) || Vault.SCRYPT.keylen,
+        const leggiParam = (val, fallback) => (val != null && String(val).trim() !== '' ? Number(val) : fallback);
+        const parametri = Vault.validaParametriScrypt({
+          N: leggiParam(intestazione.N, Vault.SCRYPT.N),
+          r: leggiParam(intestazione.r, Vault.SCRYPT.r),
+          p: leggiParam(intestazione.p, Vault.SCRYPT.p),
+          keylen: leggiParam(intestazione.keylen, Vault.SCRYPT.keylen),
           maxmem: Vault.SCRYPT.maxmem,
         });
+        chiaveFile = Vault.deriveKek(pass, salt, parametri);
       }
 
       const names = Object.keys(incoming);
@@ -320,7 +322,7 @@ function createModule({ vault, identita, config }) {
           }
         }
         if (conns[name]) overwritten += 1; else imported += 1;
-        conns[name] = cfg;
+        conns[name] = vault.identificaOrigine(cfg);
       }
       if (!imported && !overwritten) throw new Error('Il file non contiene connessioni valide.');
       vault.saveConnections(conns, socketContext.principal.ownerId);

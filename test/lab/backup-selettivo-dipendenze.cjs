@@ -19,7 +19,8 @@ async function worker(type) {
   const mysql = type === 'mysql', registry = createE2eTargetRegistry({ destructive: true, prefix: mysql ? 'lab_sd_y' : 'lab_sd_p' });
   const report = { suite: 'backup-selettivo-dipendenze', motore: type, iniziato: new Date().toISOString(), verifiche: [], operazioni: [], sorgenti: {} };
   const sourceFiles = ['db/schema-merge.js', 'db/pg-routine-selezione.js', 'db/pg-promozione.js', 'db/pg-restore-transaction.js', 'db/importPlan.js', 'db/backupRestoreAdapter.js', 'db/importArtifactAdapter.js', 'db/schemaObjects.js', 'db/pg-ddl.js', 'db/pg-types.js',
-    'backup/lib/restore.js', 'backup/lib/schema-snapshot.js', 'test/lab/backup-selettivo-dipendenze.cjs'];
+    'db/pg-schema-compare.js', 'backup/lib/restore.js', 'backup/lib/restore-postgres.js',
+    'backup/lib/restore-oggetti.js', 'backup/lib/schema-snapshot.js', 'test/lab/backup-selettivo-dipendenze.cjs'];
   for (const file of sourceFiles) report.sorgenti[file] = hash(fs.readFileSync(path.resolve(__dirname, '../..', file)));
   const q = name => mysql ? '`' + name.replaceAll('`', '``') + '`' : '"' + name.replaceAll('"', '""') + '"';
   const table = (db, name) => `${q(db)}.${q(name)}`;
@@ -111,8 +112,8 @@ async function worker(type) {
     await query(`CREATE TABLE ${table(db, name)} (id INT PRIMARY KEY,valore INT NOT NULL)`);
     for (const [id, value] of values) await query(`INSERT INTO ${table(db, name)} VALUES (${id},${value})`);
   }
-  async function backup(source) {
-    return runBackup({ session: { strategy, dbType: type }, connName: 'selettivo-dipendenze', db: source,
+  async function backup(source, lettura = strategy) {
+    return runBackup({ session: { strategy: lettura, dbType: type }, connName: 'selettivo-dipendenze', db: source,
       type: 'full', destRoot: path.join(reportDir, 'archivi'), compress: true, log });
   }
   async function restore(id, archive, target, drop, selective = true) {
@@ -274,7 +275,17 @@ async function worker(type) {
       await query(`CREATE TYPE ${table(typeSource, 'colore')} AS ENUM ('rosso','verde')`);
       await query(`CREATE TABLE ${table(typeSource, 'scelta')} (id INT PRIMARY KEY,valore ${table(typeSource, 'colore')} NOT NULL)`);
       await query(`INSERT INTO ${table(typeSource, 'scelta')} VALUES (1,'rosso')`);
-      const typeBefore = await snapshot(typeSource), typeArchive = await backup(typeSource);
+      const typeBefore = await snapshot(typeSource);
+      // Un archivio prodotto con quote_all_identifiers deve essere ripristinabile
+      // anche quando il PostgreSQL di destinazione usa la quotatura predefinita.
+      const letturaQuotata = new (require('../../db/PostgreSqlStrategy'))();
+      letturaQuotata.pool = new (require('pg').Pool)({
+        host: native.host, port: native.port, user: native.user, password: native.password,
+        database: native.database, options: '-c quote_all_identifiers=on',
+      });
+      let typeArchive;
+      try { typeArchive = await backup(typeSource, letturaQuotata); }
+      finally { await letturaQuotata.disconnect(); }
       {
         const target = await database('tipo_nuovo'); await simple(target, 'ignorata', [[10,1000]]);
         const operation = await restore('tipo-nuovo', typeArchive, target, true);

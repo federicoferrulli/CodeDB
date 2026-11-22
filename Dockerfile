@@ -41,6 +41,9 @@ ENV HOST=0.0.0.0
 # sia -p 127.0.0.1:3030:3030 sia -e CODEDB_PUBLIC_BIND=127.0.0.1.
 ENV CODEDB_PUBLIC_BIND=0.0.0.0
 ENV CODEDB_CONNECTIONS_FILE=/app/data/connections.ini
+ENV CODEDB_UI_AUDIT_FILE=/app/data/ui-audit.log
+ENV CODEDB_MCP_AUDIT_FILE=/app/data/mcp-audit.log
+ENV CODEDB_MCP_SETTINGS_FILE=/app/data/mcp-settings.json
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "require('http').get('http://127.0.0.1:'+(process.env.PORT||3030)+'/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"

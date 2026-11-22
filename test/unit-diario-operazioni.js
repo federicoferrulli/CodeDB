@@ -159,12 +159,57 @@ const eseguiOk = async (plan, { onProgress }) => {
     assert.strictEqual(stato.status, 'completato');
     assert.strictEqual(stato.esitoIncerto || false, false);
     let pulizie = 0;
-    await r.cleanup(accettata.operationId, 'ada', { async cleanup() { pulizie += 1; } });
+    const cleaner = { async cleanup() { pulizie += 1; } };
+    await assert.rejects(r.cleanup(accettata.operationId,'ada',cleaner,null,{ connection:'altro-nome' }),/connessione/);
+    assert.equal(pulizie,0);
+    await r.cleanup(accettata.operationId, 'ada', cleaner, null, { connection:piano.connection });
     assert.strictEqual(pulizie, 1);
     assert.strictEqual(diario.leggi({ ownerId: 'ada', operationId: accettata.operationId }), null,
       'la pulizia esplicita chiude anche il diario');
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log('  OK   completato e pulito: diario chiuso con l operazione');
+  }
+
+  {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-diario-'));
+    try {
+      const { creaRegistro, diario } = contesto(tmp);
+      const primo = creaRegistro(eseguiOk);
+      const adapter = {
+        async inventarioPulizia() { return [{ tipo: 'file', relativo: 'privato' }, { tipo: 'schema', nome: 'staging' }]; },
+      };
+      const origine = 'originale-privata';
+      const connessione = { connection: 'rinominata', backupOriginId: origine };
+      const riutilizzata = { connection: piano.connection, backupOriginId: 'altra-origine' };
+      const { operationId } = primo.start({ plan: piano, adapter, ownerId: 'ada', actorId: 'operatore', backupOriginId: origine });
+      await primo.wait(operationId);
+      let tentativi = 0;
+      const sentinella = { async eliminaRisorsa() { tentativi++; } };
+      await assert.rejects(primo.cleanup(operationId,'ada',sentinella,'operatore',riutilizzata), /connessione/);
+      assert.equal(tentativi,0);
+      assert.equal(diario.leggi({ownerId:'ada',operationId}).backupOriginId,origine);
+      assert(!JSON.stringify(primo.get(operationId,'ada')).includes(origine));
+      await primo.close();
+      const nuovo = creaRegistro(eseguiOk);
+      const rimossi = [];
+      let guasto = true;
+      const cleaner = { async eliminaRisorsa(risorsa) {
+        if (risorsa.tipo === 'schema' && guasto) { guasto = false; throw new Error('Riprova'); }
+        rimossi.push(risorsa.tipo);
+      } };
+      await assert.rejects(nuovo.cleanup(operationId, 'ada', cleaner, 'ospite'), /non trovata/);
+      await assert.rejects(nuovo.cleanup(operationId, 'bea', cleaner, 'operatore'), /non trovata/);
+      assert(!JSON.stringify(nuovo.get(operationId, 'ada')).includes('privato'));
+      assert(!JSON.stringify(nuovo.get(operationId,'ada')).includes(origine));
+      await assert.rejects(nuovo.cleanup(operationId,'ada',cleaner,'operatore',riutilizzata), /connessione/);
+      await assert.rejects(nuovo.cleanup(operationId,'ada',cleaner,'operatore',{ connection:piano.connection }), /connessione/);
+      assert.deepEqual(rimossi,[]);
+      await assert.rejects(nuovo.cleanup(operationId, 'ada', cleaner, 'operatore',connessione), /Riprova/);
+      const terzo = creaRegistro(eseguiOk);
+      assert((await terzo.cleanup(operationId, 'ada', cleaner, 'operatore',connessione)).cleanupAt);
+      assert((await creaRegistro(eseguiOk).cleanup(operationId, 'ada', cleaner, 'operatore',connessione)).cleanupAt);
+      assert.deepStrictEqual(rimossi, ['file', 'schema']);
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   }
 
   /* --- L'errore sopravvive alla retention ---------------------------------------- */

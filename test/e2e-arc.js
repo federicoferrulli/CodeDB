@@ -56,14 +56,16 @@ function checked(name) { report.checks.push(name); console.log('OK', name); }
     await page.locator('#connect-form [name="port"]').fill('1');
     await page.locator('#conn-test-btn').click();
     assert(await page.locator('#conn-test-btn').isDisabled());
-    await page.waitForSelector('#connect-error:not(.hidden)');
+    const connectionError = page.locator('#feedback-container').getByRole('alert').filter({ hasText: /connessione/i });
+    await connectionError.waitFor();
     assert.equal(await page.locator('#conn-test-btn').isDisabled(), false);
-    assert.match(await page.locator('#connect-error').textContent(), /Errore|connessione/i);
-    assert.equal(await page.locator('#connect-error [role="alert"]').count(), 1);
+    assert.equal(await connectionError.evaluate(el => !!el.closest('[aria-hidden="true"]')), false);
+    assert(await page.locator('#connect-error').isHidden());
     checked('Wizard: tre DBMS, porte, salto SSH e errore di connessione reale');
     await page.evaluate(async () => (await import('/js/utils.js')).showToast('Errore annunciato anche nel dialogo.', 'error', 0));
-    await page.waitForSelector('.arc-notifications [role="alert"]');
-    assert.equal(await page.locator('.arc-notifications [role="alert"]').evaluate(e => !!e.closest('[aria-hidden="true"]')), false);
+    const dialogError = page.locator('#feedback-container').getByRole('alert').filter({ hasText: 'Errore annunciato anche nel dialogo.' });
+    await dialogError.waitFor();
+    assert.equal(await dialogError.evaluate(el => !!el.closest('[aria-hidden="true"]')), false);
     // Il focus non deve uscire dal dialogo, nemmeno dopo un intero giro.
     for (let i = 0; i < 22; i++) {
       await page.keyboard.press('Tab');
@@ -74,7 +76,7 @@ function checked(name) { report.checks.push(name); console.log('OK', name); }
     await page.waitForSelector('#connect-overlay.hidden', { state: 'attached' });
     await page.waitForFunction(() => document.querySelector('#welcome button') === document.activeElement);
     checked('Contenimento e ripristino del focus, Escape sul wizard');
-    while (await page.locator('.arc-notifications button').count()) await page.locator('.arc-notifications button').first().click();
+    await dialogError.getByRole('button', { name: 'Chiudi messaggio' }).click();
 
     await page.evaluate(() => { window.arcValue = undefined; import('/js/utils.js').then(m => m.chiediTesto({ titolo: 'Rinomina tabella', etichetta: 'Nome', valore: 'origine' })).then(v => window.arcValue = v); });
     await page.waitForSelector('#askinput-overlay[data-arc-dialog="open"]');
@@ -131,10 +133,12 @@ function checked(name) { report.checks.push(name); console.log('OK', name); }
       toast('Errore di prova: controlla il collegamento e riprova. '.repeat(5), true);
       showToast('Operazione di prova completata.', 'success', 0);
     });
-    await page.waitForSelector('.arc-notifications [role="alert"]');
-    assert.match(await page.locator('.arc-notifications [role="alert"]').textContent(), /riprova/);
+    const longError = page.locator('#feedback-container').getByRole('alert').filter({ hasText: 'Errore di prova' });
+    await longError.waitFor();
+    assert.match(await longError.textContent(), /riprova/);
     assert.equal(await page.locator('.arc-notifications [data-tone="success"]').count(), 1);
     await page.screenshot({ path: `${dir}/notifications-1440.png` });
+    await longError.getByRole('button', { name: 'Chiudi messaggio' }).click();
     while (await page.locator('.arc-notifications button').count()) await page.locator('.arc-notifications button').first().click();
     checked('Notifiche: errore annunciato, testo lungo integro, successo e chiusura');
 
