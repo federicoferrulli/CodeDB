@@ -24,10 +24,18 @@ function proteggi(server, secret) {
   }
 }
 
+const MODULI_CONDIVISI = [
+  'identificatori',
+  'sql-mongo-funzioni',
+  'sql-blocchi',
+  'sql-file-limits',
+  'query-error',
+];
+
 async function precaricaModuliCondivisi() {
   // Node Mobile 18 supporta import(), ma non require(ESM). Il ponte conserva
   // la stessa implementazione usata da backend e frontend senza trascriverla.
-  for (const name of ['identificatori', 'sql-mongo-funzioni', 'sql-blocchi']) {
+  for (const name of MODULI_CONDIVISI) {
     const file = path.join(__dirname, `public/js/${name}.mjs`);
     const modulo = new (require('node:module'))(file);
     modulo.exports = await import(require('node:url').pathToFileURL(file).href);
@@ -87,4 +95,4 @@ if (require.main === module) {
     console.error(error);
   });
 }
-module.exports = { avvia, proteggi, precaricaModuliCondivisi };
+module.exports = { avvia, proteggi, precaricaModuliCondivisi, MODULI_CONDIVISI };

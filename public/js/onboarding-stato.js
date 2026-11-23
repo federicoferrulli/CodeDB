@@ -61,12 +61,12 @@ export const TRAGUARDI = [
  */
 export const NOVITA = [
   {
-    versione: '0.3.0-beta.2',
+    versione: '0.3.0-beta.3',
     punti: [
       "Export e import SQL/MongoDB potenziati: su MySQL e PostgreSQL ora puoi scegliere la politica su tabelle e viste esistenti (DROP IF EXISTS, ricreazione) e la gestione dei conflitti sulle righe (INSERT, INSERT IGNORE, REPLACE INTO, ON DUPLICATE KEY UPDATE / ON CONFLICT), con anteprima esplicita del piano prima dell’esecuzione. Su MongoDB lo script di copia per mongosh (.js) dichiara chiaramente il database di destinazione e scarica il file senza avviare copie dirette indesiderate.",
       "Integrità dati, backup e strategie: chiuse tutte le criticità dell’audit di novembre — identificazione univoca su tabelle partizionate PostgreSQL via (tableoid, ctid), preservazione dei tipi _id su MongoDB, cancellazione massiva allineata al filtro confermato, backup incrementali e partizioni PostgreSQL, budget byte nell’editor SQL, persistenza impostazioni MCP e audit in Docker e pulizia post-riavvio degli import.",
       "Sicurezza e hardening: aggiornata la dipendenza @hono/node-server, autenticazione e controllo Host eseguiti prima del parsing JSON da 50 MB su /mcp, limiti di sicurezza sui parametri scrypt del vault e degli import .ini, header HTTP anti-clickjacking/MIME-sniffing, controllo Origin su /auth/login e /auth/logout e permessi 0600 su vault.json e connections.ini.",
-      "Compatibilità Android: estesa la compilazione delle proprietà Unicode ai sorgenti applicativi per il runtime libnode senza ICU e stabilizzati i test di animazione su RenderThread.",
+      "Compatibilità Android: estesa la compilazione delle proprietà Unicode ai sorgenti applicativi per il runtime libnode senza ICU, completati i ponti ESM su Node 18 per limiti file SQL e diagnostica errori query, e stabilizzati i test di animazione su RenderThread.",
     ],
   },
   {

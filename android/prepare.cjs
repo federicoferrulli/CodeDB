@@ -35,6 +35,18 @@ function copiaApplicazione(root, dest) {
   }
 }
 
+function aggiornaRiferimento(dest, fileRel, from, to) {
+  const full = path.join(dest, fileRel);
+  const source = fs.readFileSync(full, 'utf8');
+  if (!source.includes(from)) throw new Error(`Aggiornare il percorso Android in ${fileRel}: manca ${from}`);
+  fs.writeFileSync(full, source.split(from).join(to));
+}
+
+function esponiModuloEsm(dest, fromRel, toRel, rimpiazzi = []) {
+  fs.copyFileSync(path.join(dest, fromRel), path.join(dest, toRel));
+  for (const [from, to] of rimpiazzi) aggiornaRiferimento(dest, toRel, from, to);
+}
+
 function estraiZip(archive, directory) {
   // Il JDK è già richiesto dalla build Android; jar legge ZIP anche su Linux.
   const jar = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'jar.exe' : 'jar') : 'jar';
@@ -61,12 +73,12 @@ async function prepara() {
   copiaApplicazione(ROOT, DEST);
   fs.copyFileSync(path.join(__dirname, 'mobile.cjs'), path.join(DEST, 'mobile.cjs'));
   // Node 18 non deduce ESM dalla sintassi dei .js: estensione esplicita nella
-  // sola copia Android del modulo foglia importato dal gateway MCP.
-  fs.copyFileSync(path.join(DEST, 'public/js/schema-analisi.js'), path.join(DEST, 'public/js/schema-analisi.mjs'));
-  const moduloAnalisiMcp = path.join(DEST, 'mcp/risorse-e-prompt.js');
-  const gatewaySource = fs.readFileSync(moduloAnalisiMcp, 'utf8');
-  if (!gatewaySource.includes("'schema-analisi.js'")) throw new Error('Aggiornare il percorso Android del modulo di analisi MCP.');
-  fs.writeFileSync(moduloAnalisiMcp, gatewaySource.replace("'schema-analisi.js'", "'schema-analisi.mjs'"));
+  // sola copia Android dei moduli ESM foglia usati dal backend (senza toccare i .js serviti al browser).
+  esponiModuloEsm(DEST, 'public/js/schema-analisi.js', 'public/js/schema-analisi.mjs');
+  aggiornaRiferimento(DEST, 'mcp/risorse-e-prompt.js', "'schema-analisi.js'", "'schema-analisi.mjs'");
+  esponiModuloEsm(DEST, 'public/js/query-lexer.js', 'public/js/query-lexer.mjs');
+  esponiModuloEsm(DEST, 'public/js/query-error.js', 'public/js/query-error.mjs', [["'./query-lexer.js'", "'./query-lexer.mjs'"]]);
+  aggiornaRiferimento(DEST, 'db/queryError.js', "'../public/js/query-error'", "'../public/js/query-error.mjs'");
   // Nessun addon compilato per il runner dentro l'APK: ssh2 ha già il fallback JavaScript.
   const npm = process.env.npm_execpath || (process.platform === 'win32'
     ? path.join(path.dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js')

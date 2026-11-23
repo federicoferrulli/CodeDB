@@ -161,9 +161,9 @@ il pan sono simulati tramite `visualViewport`; il pinch zoom non ridispone
 il layout. Su browser mobile gli stessi limiti proteggono anche la barra
 inferiore, la palette e il pannello delle relazioni.
 
-Per Node 18 il bootstrap precarica i moduli condivisi di identificatori, funzioni SQL e blocchi SQL
+Per Node 18 il bootstrap precarica i moduli ESM condivisi (`identificatori`, funzioni SQL, blocchi SQL, limiti file SQL e diagnostica errori query)
 con `import()` e li espone al ponte CommonJS esistente; la preparazione assegna
-inoltre l'estensione `.mjs` alla copia Android del modulo di analisi MCP.
+inoltre l'estensione `.mjs` alla copia Android dei moduli ESM `.js` letti dal backend (`schema-analisi`, `query-lexer`, `query-error`).
 I sorgenti e il comportamento del desktop restano invariati.
 
 Il libnode incluso non dispone di ICU/`Intl` e rifiuta le proprietà Unicode nelle
