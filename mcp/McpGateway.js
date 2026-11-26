@@ -1,26 +1,12 @@
 'use strict';
 
-/* ---------------------------------------------------------------------------
- * Gateway MCP (Model Context Protocol): trasporto Streamable HTTP su Express
- * (POST/GET/DELETE su /mcp), autenticazione API key, ciclo di vita delle
- * sessioni e orchestrazione di strumenti, risorse e prompt.
- *
- * Le famiglie funzionali vivono in moduli dedicati sotto `mcp/`:
- * - `guardie.js`: validazione SQL/MQL e formattazione risposte/errori
- * - `conferma.js`: flusso human-in-the-loop con token monouso e quote
- * - `strumenti-lettura.js`: connessioni, topologia, query e diagnostica schema
- * - `strumenti-scrittura.js`: scritture singole/batch, DDL e flag readOnly
- * - `strumenti-artefatti.js`: backup, catalogo, verifica, restore e import
- * - `risorse-e-prompt.js`: risorse dinamiche (`schema://`, `graph://`) e prompt
- * ------------------------------------------------------------------------- */
+/* Gateway MCP (Streamable HTTP su /mcp): autenticazione API key, ciclo di vita sessioni,
+ * orchestrazione di strumenti (lettura, scrittura, artefatti), risorse e prompt. */
 
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const { hostConsentito } = require('../server/esposizione');
-const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
-const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
-const { isInitializeRequest } = require('@modelcontextprotocol/sdk/types.js');
 
 const { makeAuditor } = require('../db/AuditLog');
 const { ConfirmQuota } = require('./ConfirmQuota');
@@ -33,13 +19,18 @@ const {
   errMsg, errorResult,
   assertReadOnlySql, hasTopLevelSqlKeyword, assertWriteSql, assertDdlSql, assertReadOnlyPipeline,
 } = require('./guardie');
-const { creaFlussoConferma } = require('./conferma');
-const { registraRisorseEPrompt } = require('./risorse-e-prompt');
-const { registraStrumentiLettura } = require('./strumenti-lettura');
-const { registraStrumentiScrittura } = require('./strumenti-scrittura');
-const {
-  registraStrumentiArtefatti, resolveBackupSelection, backupVerificationPayload,
-} = require('./strumenti-artefatti');
+
+// SDK MCP e moduli strumenti caricati pigramente alla prima sessione /mcp.
+let _mcpRuntime = null;
+const caricaRuntimeMcp = () => (_mcpRuntime ||= {
+  McpServer: require('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
+  StreamableHTTPServerTransport: require('@modelcontextprotocol/sdk/server/streamableHttp.js').StreamableHTTPServerTransport,
+  isInitializeRequest: require('@modelcontextprotocol/sdk/types.js').isInitializeRequest,
+  ...require('./conferma'), ...require('./risorse-e-prompt'), ...require('./strumenti-lettura'),
+  ...require('./strumenti-scrittura'), ...require('./strumenti-artefatti'),
+});
+const resolveBackupSelection = (...a) => require('./strumenti-artefatti').resolveBackupSelection(...a);
+const backupVerificationPayload = (...a) => require('./strumenti-artefatti').backupVerificationPayload(...a);
 
 const MCP_PATH = '/mcp';
 const SWEEP_INTERVAL_MS = 60 * 1000;
@@ -92,6 +83,7 @@ function refreshWritesAllowed(session, dbSess, deps) {
 }
 
 function buildMcpServer(session, deps) {
+  const { McpServer, creaFlussoConferma, registraRisorseEPrompt, registraStrumentiLettura, registraStrumentiScrittura, registraStrumentiArtefatti } = caricaRuntimeMcp();
   const env = deps.env || process.env;
   const backupRootOf = current => backupRootFor(
     env.CODEDB_BACKUPS_DIR || path.join(__dirname, '..', 'backups'),
@@ -174,9 +166,14 @@ function buildMcpServer(session, deps) {
  */
 function attachMcp(app, deps) {
   const env = deps.env || process.env;
-  const memory = [];
+  const memory = [], memorySizes = [];
+  let memoryBytes = 0;
   const auditStore = deps.auditStore || (deps.audit ? {
-    audit: entry => { memory.push(entry); if (memory.length > 50000) memory.shift(); },
+    audit: entry => {
+      const sz = Buffer.byteLength(JSON.stringify(entry) || '');
+      memory.push(entry); memorySizes.push(sz); memoryBytes += sz;
+      while (memory.length > 50000 || (memoryBytes > 16 * 1024 * 1024 && memory.length > 1)) { memory.shift(); memoryBytes -= memorySizes.shift(); }
+    },
     flush: async () => {}, statoSalute: () => ({ ok: true, pending: 0 }),
     readRecent: ({ limit }) => ({ entries: memory.slice(-limit).reverse(), total: memory.length }),
   } : makeAuditor(env.CODEDB_MCP_AUDIT_FILE || path.join(__dirname, '..', 'mcp-audit.log')));
@@ -343,7 +340,8 @@ function attachMcp(app, deps) {
     return { principal, credentialFingerprint: credentialFingerprint(rawKey) };
   }
 
-  const parseMcpJson = express.json({ limit: '50mb' });
+  const mcpBodyLimit = String(env.CODEDB_MCP_MAX_BODY || '50mb').trim() || '50mb';
+  const parseMcpJson = express.json({ limit: mcpBodyLimit });
 
   // Controllo stato, Host e autenticazione PRIMA di leggere o parsare il body JSON
   // (limite 50 MB): evita che client non autenticati impegnino RAM/CPU prima del 401/403.
@@ -395,6 +393,7 @@ function attachMcp(app, deps) {
         await serveSession(existing, req, res);
         return;
       }
+      const { isInitializeRequest, StreamableHTTPServerTransport } = caricaRuntimeMcp();
       if (sid || !isInitializeRequest(req.body)) {
         res.status(400).json(rpcError(-32000, 'Sessione MCP assente o scaduta: reinizializza la connessione.'));
         return;
@@ -483,17 +482,7 @@ function attachMcp(app, deps) {
 }
 
 module.exports = {
-  attachMcp,
-  assertReadOnlySql,
-  assertWriteSql,
-  assertDdlSql,
-  assertReadOnlyPipeline,
-  refreshSessionPrincipal,
-  refreshWritesAllowed,
-  credentialFingerprint,
-  sameMcpIdentity,
-  backupVerificationPayload,
-  resolveBackupSelection,
-  hasTopLevelSqlKeyword,
-  MCP_PATH,
+  attachMcp, assertReadOnlySql, assertWriteSql, assertDdlSql, assertReadOnlyPipeline,
+  refreshSessionPrincipal, refreshWritesAllowed, credentialFingerprint, sameMcpIdentity,
+  backupVerificationPayload, resolveBackupSelection, hasTopLevelSqlKeyword, MCP_PATH,
 };

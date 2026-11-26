@@ -618,21 +618,44 @@ class MySqlStrategy extends DbStrategy {
     // Se la richiesta ha un opHandle (griglia con runId), la eseguiamo su una
     // connessione dedicata di cui catturiamo il CONNECTION_ID, così è
     // annullabile via `KILL QUERY` (cancelQuery) — nessuna modifica ai dati.
+    // Connessione dedicata: consente KILL QUERY via opHandle, avvolge eventuali
+    // clausole SQL libere in START TRANSACTION READ ONLY e, su timeout lato
+    // client (PROTOCOL_SEQUENCE_TIMEOUT), uccide la query sul server e distrugge
+    // la connessione invece di rimetterla avvelenata nel pool.
     let rows, fields;
     const opHandle = payload && payload.opHandle;
-    if (opHandle) {
-      const conn = await pool.getConnection();
-      try {
-        try {
-          const [[row]] = await conn.query('SELECT CONNECTION_ID() AS cid');
-          if (row && row.cid) opHandle.connectionId = row.cid;
-        } catch (_) {}
-        [rows, fields] = await conn.query(q, params);
-      } finally {
-        conn.release();
+    const clausolaLibera = !!(
+      (payload && typeof payload.filter === 'string' && payload.filter.trim())
+      || (payload && typeof payload.sort === 'string' && payload.sort.trim() && !payload.sort.trim().startsWith('{'))
+    );
+    const conn = await pool.getConnection();
+    let inTx = false;
+    let avvelenata = false;
+    try {
+      if (opHandle) {
+        if (conn.threadId) opHandle.connectionId = conn.threadId;
+        else {
+          try {
+            const [[row]] = await conn.query('SELECT CONNECTION_ID() AS cid');
+            if (row && row.cid) opHandle.connectionId = row.cid;
+          } catch (_) {}
+        }
       }
-    } else {
-      [rows, fields] = await pool.query(q, params);
+      if (clausolaLibera) {
+        await conn.query('START TRANSACTION READ ONLY');
+        inTx = true;
+      }
+      [rows, fields] = await conn.query(q, params);
+    } catch (err) {
+      if (MySqlStrategy.isDriverTimeout(err)) {
+        avvelenata = true;
+        await this.uccidiSulServer(conn.threadId);
+      }
+      throw err;
+    } finally {
+      if (inTx && !avvelenata) await conn.query('ROLLBACK').catch(() => {});
+      if (avvelenata) conn.destroy?.();
+      else conn.release();
     }
     // Keyset "indietro": la query gira in ordine pk DESC, qui si riordina ASC.
     if (ks && ks.reverse) rows = rows.slice().reverse();
@@ -681,14 +704,27 @@ class MySqlStrategy extends DbStrategy {
     const ms = DbStrategy.countTimeoutMs(this.env);
     const q = { sql: `SELECT COUNT(*) AS total FROM ${table}${whereSql}` };
     if (ms > 0) q.timeout = ms;
+    const conn = await pool.getConnection();
+    let inTx = false;
+    let avvelenata = false;
     try {
-      const [[{ total }]] = await pool.query(q, whereParams);
+      if (whereSql) {
+        await conn.query('START TRANSACTION READ ONLY');
+        inTx = true;
+      }
+      const [[{ total }]] = await conn.query(q, whereParams);
       return { total: Number(total), timedOut: false };
     } catch (err) {
-      if (err && (err.code === 'PROTOCOL_SEQUENCE_TIMEOUT' || /timeout/i.test(err.message || ''))) {
+      if (MySqlStrategy.isDriverTimeout(err)) {
+        avvelenata = true;
+        await this.uccidiSulServer(conn.threadId);
         return { total: null, timedOut: true };
       }
       throw err;
+    } finally {
+      if (inTx && !avvelenata) await conn.query('ROLLBACK').catch(() => {});
+      if (avvelenata) conn.destroy?.();
+      else conn.release();
     }
   }
 
@@ -912,6 +948,10 @@ class MySqlStrategy extends DbStrategy {
       if (splitStatements(sql, { dbms: 'mysql', backslashEscape: true }).length !== 1) {
         throw new Error('Il piano di esecuzione accetta una sola istruzione SQL.');
       }
+      const normExplain = require('./sqlText').stripSqlNoise(sql, { dbms: 'mysql', backslashEscape: true }).trim();
+      if (/^(?:ANALYZE|EXPLAIN)\b/i.test(normExplain)) {
+        throw new Error('EXPLAIN ANALYZE esegue la query: usa l’esecuzione normale anziché il piano di esecuzione.');
+      }
     } else {
       // Le stesse colonne che vede `collectionFind`: un piano calcolato su un
       // ORDER BY diverso da quello della query vera spiegherebbe un'altra
@@ -927,22 +967,43 @@ class MySqlStrategy extends DbStrategy {
       parametriPiano = whereParams;
     }
 
+    const ms = DbStrategy.queryTimeoutMs(this.env);
+    const conTimeout = (testo) => (ms > 0 ? { sql: testo, timeout: ms } : testo);
     const conn = await pool.getConnection();
+    let inTx = false;
+    let avvelenata = false;
     try {
       await this.usaDatabase(conn, db);
+      await conn.query('START TRANSACTION READ ONLY');
+      inTx = true;
       try {
-        const [rows] = await conn.query(`EXPLAIN FORMAT=JSON ${sql}`, parametriPiano);
+        const [rows] = await conn.query(conTimeout(`EXPLAIN FORMAT=JSON ${sql}`), parametriPiano);
         const raw = rows && rows[0] && (rows[0].EXPLAIN || rows[0][Object.keys(rows[0])[0]]);
         return { format: 'json', plan: JSON.parse(String(raw)), query: sql };
       } catch (err) {
+        if (MySqlStrategy.isDriverTimeout(err)) {
+          avvelenata = true;
+          await this.uccidiSulServer(conn.threadId);
+          throw err;
+        }
         // Ripiego: EXPLAIN classico in forma tabellare.
-        const [rows, fields] = await conn.query(`EXPLAIN ${sql}`, parametriPiano);
-        if (!Array.isArray(rows)) throw err;
-        const columns = (fields || []).map((f) => f.name);
-        return { format: 'table', rows: rows.map((r) => serializeRow(r, fields || [])), columns, query: sql };
+        try {
+          const [rows, fields] = await conn.query(conTimeout(`EXPLAIN ${sql}`), parametriPiano);
+          if (!Array.isArray(rows)) throw err;
+          const columns = (fields || []).map((f) => f.name);
+          return { format: 'table', rows: rows.map((r) => serializeRow(r, fields || [])), columns, query: sql };
+        } catch (fallbackErr) {
+          if (MySqlStrategy.isDriverTimeout(fallbackErr)) {
+            avvelenata = true;
+            await this.uccidiSulServer(conn.threadId);
+          }
+          throw fallbackErr;
+        }
       }
     } finally {
-      conn.release();
+      if (inTx && !avvelenata) await conn.query('ROLLBACK').catch(() => {});
+      if (avvelenata) conn.destroy?.();
+      else conn.release();
     }
   }
 

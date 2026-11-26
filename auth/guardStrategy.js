@@ -86,6 +86,14 @@ function resolveAuthorization(spec, strategy, args) {
     }
     return { capabilities: ['read'], mongoPipeline: { write: false, readTargets, targets: [] } };
   }
+  if (spec.kind === 'explain') {
+    const isSql = strategy.type && strategy.type !== 'mongodb';
+    if (isSql && payload.mode === 'aggregate') {
+      const sql = analyzeSql(payload.pipeline);
+      return { capabilities: sql.capabilities, sql, explainSql: true };
+    }
+    return { capabilities: ['read'] };
+  }
   // Scritture della shell da uno script: findOneAndUpdate/Delete restituiscono
   // anche il documento e richiedono read oltre alla capability mutativa.
   if (spec.kind === 'shellWrite') {
@@ -302,7 +310,8 @@ function guardStrategy(strategy, ctx) {
         let authorization;
         try {
           authorization = resolveAuthorization(spec, target, args);
-          if (authorization.sql && authorization.sql.executableComment && !(target.type === 'mysql' && canWholeConnection(principal, connName, 'manage'))) {
+          if (authorization.sql && authorization.sql.executableComment
+              && (authorization.explainSql || !(target.type === 'mysql' && canWholeConnection(principal, connName, 'manage')))) {
             throw new Error('I commenti SQL eseguibili /*! … */ e /*M! … */ non sono consentiti in SQL Raw.');
           }
           if (authorization.sql && authorization.sql.multipleStatements) {
@@ -485,7 +494,7 @@ function guardStrategy(strategy, ctx) {
                 'chiedi un grant senza limiti di ambito.'
               );
             }
-            assertScopedClauses(args[2]);
+            assertScopedClauses(args[2], { dbms: target.type });
             // SQL Raw: lo scope era confrontato con un bersaglio DEDOTTO (una
             // regex sul primo FROM, o il `coll` scelto dal client quando il FROM
             // non c'era), mentre la stringa veniva eseguita verbatim — le

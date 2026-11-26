@@ -98,12 +98,20 @@ function createModule({ vault, identita, config }) {
         throw new Error('La nuova passphrase non può essere vuota.');
       }
 
+      // Stesso freno di vault:unlock contro brute-force della passphrase corrente.
+      const ipClient = socketContext.ip || 'unknown';
+      if (identita.loginBlocked(ipClient)) {
+        throw new Error('Troppi tentativi falliti: riprova tra un minuto.');
+      }
+
       // Verifica della passphrase attuale, senza toccare lo stato del vault.
       const attuale = String(current == null ? '' : current);
       const valida = vault.verificaPassphrase(attuale);
       if (!valida) {
+        identita.noteLoginFailure(ipClient);
         throw new Error('La passphrase attuale non è corretta.');
       }
+      identita.loginAttempts.delete(ipClient);
 
       const res = vault.changeVaultPassphrase(next);
       if (!res.ok) throw new Error(res.error);

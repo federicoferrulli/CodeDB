@@ -44,6 +44,8 @@ export function showVaultModal() {
 export function hideVaultModal() {
   const overlay = $('#vault-overlay');
   if (overlay) overlay.classList.add('hidden');
+  const input = $('#vault-passphrase');
+  if (input) input.value = '';
   mostraReset(false);
 }
 
@@ -148,6 +150,7 @@ export function initVault() {
       e.preventDefault();
       const passphraseInput = $('#vault-passphrase');
       const passphrase = passphraseInput ? passphraseInput.value : '';
+      if (passphraseInput) passphraseInput.value = '';
       if (errorEl) errorEl.classList.add('hidden');
 
       // Lo sblocco deriva la chiave con scrypt: è lento di proposito, e senza

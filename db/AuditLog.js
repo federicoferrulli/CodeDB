@@ -157,20 +157,23 @@ function makeAuditor(filePath, maxBytes = DEFAULT_MAX_BYTES, options = {}) {
       }
       cache = null;
     }
-    if (cache === null) loadCache();
     const line = JSON.stringify(fullEntry) + '\n';
+    const lineBytes = Buffer.byteLength(line);
     let size = 0;
     try { size = (await fs.promises.stat(filePath)).size; } catch (err) {
       if (err.code !== 'ENOENT') throw err;
     }
-    if (size > 0 && size + Buffer.byteLength(line) > maxBytes) await ruota();
+    if (size > 0 && size + lineBytes > maxBytes) await ruota();
     const cachePrima = cache;
     await fs.promises.appendFile(filePath, line, { encoding: 'utf8', flush: true });
-    if (cache === null || cache !== cachePrima) loadCache();
-    else {
+    // La cache si popola pigramente alla prima `readRecent()`: chi non apre mai
+    // lo Storico Azioni non tiene in RAM fino a 32 MB di log solo per scrivere.
+    if (cache !== null && cache === cachePrima) {
       cache.push(fullEntry);
-      cacheSizes.push(Buffer.byteLength(line)); cacheBytes += cacheSizes.at(-1);
+      cacheSizes.push(lineBytes); cacheBytes += lineBytes;
       trimCache();
+    } else if (cache !== null) {
+      cache = null;
     }
   }
 

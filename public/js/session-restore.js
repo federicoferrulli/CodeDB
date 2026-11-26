@@ -256,15 +256,27 @@ async function doRestoreSession() {
   }
 }
 
+let persistenzaDisabilitata = false;
+
+/** Chiamato al logout: evita che `beforeunload`/`pagehide` riscrivano la sessione appena pulita. */
+export function disabilitaPersistenzaSessione() {
+  persistenzaDisabilitata = true;
+}
+
 // Registra il salvataggio del layout alla chiusura/ricarica della pagina.
 export function initSessionPersistence() {
   // beforeunload copre F5 e la chiusura; pagehide è più affidabile su mobile.
-  window.addEventListener('beforeunload', persistSession);
+  window.addEventListener('beforeunload', () => {
+    if (!persistenzaDisabilitata) persistSession();
+  });
   window.addEventListener('beforeunload', event => {
+    if (persistenzaDisabilitata) return;
     if (modifichePendentiNeiPannelli() || tabs.list.some(t => t.state.writesInFlight || t.state.editDrafts?.size || t.state.collTabs.some(c => c.snapQuery?.dirty))
         || document.querySelector('.overlay:not(.hidden)[data-unsaved]')) {
       event.preventDefault(); event.returnValue = '';
     }
   });
-  window.addEventListener('pagehide', persistSession);
+  window.addEventListener('pagehide', () => {
+    if (!persistenzaDisabilitata) persistSession();
+  });
 }

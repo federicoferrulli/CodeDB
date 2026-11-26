@@ -6,6 +6,8 @@ const proxyAddr = require('proxy-addr');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const fs = require('fs');
+const zlib = require('zlib');
 const { bindEsposto, fuoriDalLoopback, hostConsentito } = require('./esposizione');
 const { provaClient, provaServer, stessaProva } = require('../electron-server-auth');
 
@@ -18,12 +20,26 @@ function createModule({ config }) {
 
   const app = express();
   app.disable('x-powered-by');
-  // Intestazioni HTTP di difesa in profondità (clickjacking esterno, MIME sniffing, referrer).
+  // Intestazioni HTTP di difesa in profondità (XSS, clickjacking esterno, MIME sniffing, referrer).
   // SAMEORIGIN / 'self' conserva gli iframe same-origin dei riquadri Split-View (`pane-runtime.js`).
+  const CSP_POLICY = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com",
+    "connect-src 'self' ws: wss:",
+    "worker-src 'self' blob:",
+    "frame-src 'self'",
+    "frame-ancestors 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join('; ');
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+    res.setHeader('Content-Security-Policy', CSP_POLICY);
     res.setHeader('Referrer-Policy', 'no-referrer');
     next();
   });
@@ -155,7 +171,48 @@ function createModule({ config }) {
     },
   });
 
-  app.use(express.static(path.join(config.rootDir, 'public')));
+  const publicDir = path.join(config.rootDir, 'public');
+  const MIME_COMPRIMIBILI = {
+    '.js': 'application/javascript; charset=utf-8',
+    '.mjs': 'application/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.html': 'text/html; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.json': 'application/json; charset=utf-8',
+  };
+  // Compressione gzip trasparente per asset statici testuali > 1 KB senza
+  // dipendenze esterne: riduce del 70-80% il trasferimento di ECharts/Three/UI,
+  // preservando ETag/304, esclusione dotfiles, Range e rilascio fd su disconnessione.
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.headers.range || !/\bgzip\b/i.test(String(req.headers['accept-encoding'] || ''))) return next();
+    const rawPath = (req.path === '/' ? '/index.html' : req.path);
+    const ext = path.extname(rawPath).toLowerCase();
+    const mime = MIME_COMPRIMIBILI[ext];
+    if (!mime) return next();
+    let decoded;
+    try { decoded = decodeURIComponent(rawPath); } catch { return next(); }
+    if (decoded.split('/').some((seg) => seg.startsWith('.'))) return next();
+    const full = path.resolve(publicDir, '.' + decoded);
+    if (!full.startsWith(publicDir + path.sep) && full !== publicDir) return next();
+    fs.stat(full, (err, stat) => {
+      if (err || !stat.isFile() || stat.size < 1024) return next();
+      const etag = `W/"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}-gz"`;
+      res.setHeader('ETag', etag);
+      res.setHeader('Last-Modified', stat.mtime.toUTCString());
+      res.setHeader('Vary', 'Accept-Encoding');
+      if (req.headers['if-none-match'] === etag) return res.status(304).end();
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Content-Encoding', 'gzip');
+      const stream = fs.createReadStream(full);
+      const gz = zlib.createGzip({ level: 4 });
+      const cleanup = () => { stream.destroy(); gz.destroy(); };
+      res.once('close', cleanup);
+      stream.on('error', () => { cleanup(); if (!res.headersSent) next(); else res.end(); });
+      gz.on('error', () => { cleanup(); if (!res.headersSent) next(); else res.end(); });
+      stream.pipe(gz).pipe(res);
+    });
+  });
+  app.use(express.static(publicDir));
 
   /* ---------------------------------------------------------------------------
    * Diagnosi dell'handshake rifiutato

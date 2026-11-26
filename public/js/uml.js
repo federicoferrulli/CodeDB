@@ -3,7 +3,7 @@
 
 import { state } from './state.js';
 import { configuraColonne } from './table-resize.js';
-import { activeTab } from './tabs.js';
+import { activeTab, allaChiusura } from './tabs.js';
 import {
   $, emit, esc, showToast, showContextMenu, refreshLucideIcons, displayValueBreve,
   initToolbarDropdown, buildJsonNode, scaricaFile, notifica } from './utils.js';
@@ -66,6 +66,18 @@ const V = {
   generazione: 0,
   caricamento: null,
 };
+
+allaChiusura((tabId) => {
+  if (V.contesto && V.contesto.tabId === tabId) {
+    try { V.tavola?.distruggi(); } catch { /* già smontata */ }
+    V.tavola = null;
+    V.contesto = null;
+    V.schema = null;
+    V.selezione = [];
+    V.dettagli.clear();
+    V.dati = null;
+  }
+});
 
 /* ============================ Identità e contesto ========================= */
 

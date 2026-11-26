@@ -147,14 +147,61 @@ function createFileSink(filePath, { compress = true, level = 1 } = {}) {
 }
 
 // Itera le righe non vuote di un file NDJSON, decomprimendo se .gz.
-async function* readLines(filePath) {
-  const source = fs.createReadStream(filePath);
-  let input = source;
-  if (filePath.endsWith('.gz')) {
-    const gunzip = zlib.createGunzip();
-    source.pipe(gunzip);
-    input = gunzip;
+// Applica tetti difensivi contro gzip-bomb e singole righe anomale prima che
+// `readline` accumuli buffer illimitati in RAM.
+async function* readLines(filePath, options = {}) {
+  const { Transform } = require('stream');
+  const maxLineBytes = Math.max(
+    Number(options.maxLineBytes) || Number(process.env.CODEDB_MAX_BACKUP_LINE_BYTES) || 64 * 1024 * 1024,
+    1024
+  );
+  const isGz = filePath.endsWith('.gz');
+  let maxDecompressedBytes = Number(options.maxDecompressedBytes) || Number(process.env.CODEDB_MAX_DECOMPRESSED_BYTES) || 0;
+  if (!maxDecompressedBytes && isGz) {
+    try {
+      const compSize = fs.statSync(filePath).size;
+      // Rapporto 100x con pavimento 64 MiB: generoso per NDJSON ripetitivi, blocca le gzip-bomb.
+      maxDecompressedBytes = Math.max(64 * 1024 * 1024, compSize * 100);
+    } catch {
+      maxDecompressedBytes = 0; // ENOENT emergerà dallo stream sorgente
+    }
   }
+
+  const source = fs.createReadStream(filePath);
+  let totalBytes = 0;
+  let currentLineBytes = 0;
+  const guard = new Transform({
+    transform(chunk, _enc, cb) {
+      totalBytes += chunk.length;
+      if (maxDecompressedBytes > 0 && totalBytes > maxDecompressedBytes) {
+        return cb(new Error(`Flusso di backup oltre il limite decompresso consentito (${maxDecompressedBytes} byte): possibile file corrotto o gzip-bomb.`));
+      }
+      let start = 0;
+      for (let i = 0; i < chunk.length; i++) {
+        if (chunk[i] === 10) { // '\n'
+          if (currentLineBytes + (i - start) > maxLineBytes) {
+            return cb(new Error(`Riga NDJSON oltre il limite consentito (${maxLineBytes} byte).`));
+          }
+          currentLineBytes = 0;
+          start = i + 1;
+        }
+      }
+      currentLineBytes += chunk.length - start;
+      if (currentLineBytes > maxLineBytes) {
+        return cb(new Error(`Riga NDJSON oltre il limite consentito (${maxLineBytes} byte).`));
+      }
+      cb(null, chunk);
+    },
+  });
+
+  let gunzip = null;
+  if (isGz) {
+    gunzip = zlib.createGunzip();
+    source.pipe(gunzip).pipe(guard);
+  } else {
+    source.pipe(guard);
+  }
+  const input = guard;
   const rl = readline.createInterface({ input, crlfDelay: Infinity });
 
   // Una Promise.race per riga contro la stessa Promise d'errore accumula una
@@ -166,10 +213,12 @@ async function* readLines(filePath) {
     if (!streamFailure) streamFailure = err;
     rl.close();
     if (!source.destroyed) source.destroy();
-    if (input !== source && !input.destroyed) input.destroy();
+    if (gunzip && !gunzip.destroyed) gunzip.destroy();
+    if (!guard.destroyed) guard.destroy();
   };
   source.on('error', onError);
-  if (input !== source) input.on('error', onError);
+  if (gunzip) gunzip.on('error', onError);
+  guard.on('error', onError);
 
   try {
     for await (const line of rl) {
@@ -178,10 +227,12 @@ async function* readLines(filePath) {
     if (streamFailure) throw streamFailure;
   } finally {
     source.removeListener('error', onError);
-    if (input !== source) input.removeListener('error', onError);
+    if (gunzip) gunzip.removeListener('error', onError);
+    guard.removeListener('error', onError);
     rl.close();
     if (!source.destroyed) source.destroy();
-    if (input !== source && !input.destroyed) input.destroy();
+    if (gunzip && !gunzip.destroyed) gunzip.destroy();
+    if (!guard.destroyed) guard.destroy();
   }
 }
 

@@ -1,7 +1,8 @@
 import { state } from './state.js';
 import { $, emit, esc, toast, positionFixedDropdown, isForActiveTab, lucideIconHtml as ICO, refreshLucideIcons, scaricaFile, notifica } from './utils.js';
 import { openCollTab } from './colltabs.js';
-import { activeTab } from './tabs.js';
+import { activeTab, allaChiusura } from './tabs.js';
+import { getCurrentUser } from './auth.js';
 // Le euristiche di analisi dello schema stanno in un modulo condiviso col
 // gateway MCP: erano due copie scritte a mano, e l'euristica PII era gia'
 // divergente fra le due (vedi la nota in testa a schema-analisi.js).
@@ -32,6 +33,46 @@ let graphInstance = null;
 let graphResizeObserver = null;
 let movimentoCamera = null;
 let cameraManovrata = false;
+let caricamentoLibrerie3d = null;
+
+function caricaScriptSequenziale(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.addEventListener('load', () => resolve());
+    s.addEventListener('error', () => reject(new Error(`Impossibile caricare ${src}`)));
+    document.head.appendChild(s);
+  });
+}
+
+// Carica Three.js e 3D Force Graph solo alla prima apertura della vista Grafo 3D,
+// evitando ~2,5 MB di JS parsato all'avvio e in ogni riquadro Split-View.
+function caricaLibrerie3d() {
+  if (typeof ForceGraph3D !== 'undefined' && typeof THREE !== 'undefined') return Promise.resolve();
+  if (!caricamentoLibrerie3d) {
+    caricamentoLibrerie3d = (async () => {
+      if (typeof THREE === 'undefined') await caricaScriptSequenziale('js/lib/three.min.js');
+      if (typeof ForceGraph3D === 'undefined') await caricaScriptSequenziale('js/lib/3d-force-graph.min.js');
+    })().catch((err) => { caricamentoLibrerie3d = null; throw err; });
+  }
+  return caricamentoLibrerie3d;
+}
+
+/** Rilascia il contesto WebGL e le texture quando si lascia la vista Grafo 3D. */
+export function pausaGrafo3d() {
+  distruggiGrafo();
+}
+
+allaChiusura(() => {
+  distruggiGrafo();
+  if (graphResizeObserver) {
+    try { graphResizeObserver.disconnect(); } catch { /* già disconnesso */ }
+    graphResizeObserver = null;
+  }
+  currentSchemaData = null;
+  selectedNodeId = null;
+  activeShortestPath = null;
+});
 
 function fermaMovimentoCamera() {
   if (movimentoCamera !== null) cancelAnimationFrame(movimentoCamera);
@@ -332,7 +373,8 @@ export function loadGraph3d(force) {
   // ma è la chiave giusta per un tab su una connessione non salvata.
   const tab = activeTab();
   const chiaveConn = (tab && (tab.connName || tab.id)) || 'default';
-  const cacheKey = `gui-db:schema-cache:${chiaveConn}:${state.db}`;
+  const utente = getCurrentUser()?.id || 'locale';
+  const cacheKey = `codedb:schema-cache:${utente}:${chiaveConn}:${state.db}`;
 
   if (!force) {
     const cachedText = sessionStorage.getItem(cacheKey);
@@ -488,7 +530,16 @@ export function renderGraph3d({ preserveInstance = false } = {}) {
   const graphData = { nodes, links: edges };
 
   if (typeof ForceGraph3D === 'undefined') {
-    canvas.innerHTML = '<div class="error" style="padding:20px;">Libreria 3D Force Graph non disponibile.</div>';
+    canvas.innerHTML = '<div class="uml-msg" style="color:var(--fg-dim); padding:20px;">Caricamento motore 3D…</div>';
+    caricaLibrerie3d()
+      .then(() => {
+        if ($('#graph3d-canvas')) renderGraph3d({ preserveInstance });
+      })
+      .catch((err) => {
+        if ($('#graph3d-canvas')) {
+          $('#graph3d-canvas').innerHTML = `<div class="error" style="padding:20px;">Libreria 3D Force Graph non disponibile: ${esc(err.message)}</div>`;
+        }
+      });
     return;
   }
 

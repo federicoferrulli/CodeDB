@@ -45,6 +45,7 @@ function createServer(options = {}) {
   let avvio;
   let arresto;
   let rilascio;
+  let timerPulizia;
   let stato = 'creato';
 
   function start() {
@@ -59,6 +60,11 @@ function createServer(options = {}) {
         vault.initialize();
         await identita.initialize();
         await dependencies.ScriptResults.puliziaVecchi();
+        const intervalloPulizia = Math.max(parseInt(config.env.CODEDB_CLEANUP_INTERVAL_MS, 10) || 6 * 3600 * 1000, 60000);
+        timerPulizia = setInterval(() => {
+          Promise.resolve(dependencies.ScriptResults.puliziaVecchi()).catch(() => {});
+        }, intervalloPulizia);
+        timerPulizia.unref?.();
         await new Promise((resolve, reject) => {
           const errore = err => { server.removeListener('listening', pronto); reject(err); };
           const pronto = () => { server.removeListener('error', errore); resolve(); };
@@ -80,6 +86,8 @@ function createServer(options = {}) {
 
   function liberaRisorse() {
     return rilascio ||= (async () => {
+      clearInterval(timerPulizia);
+      timerPulizia = null;
       const errors = [];
       const release = async fn => { try { await fn(); } catch (err) { errors.push(err); } };
       socket.beginShutdown();

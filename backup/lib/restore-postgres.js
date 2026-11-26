@@ -155,6 +155,9 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     for (const f of dataFiles) {
       const shape = await require('../../db/pg-references').columnReferences((s, p) => strategy.pool.query(s, p), targetDb, f.collection);
       referenceShapes.set(f.collection, shape);
+      // Senza colonne OID/Large Object la tabella non può riferire alcun LO:
+      // evitare di scansionare il file e di accumulare una Map di Set vuoti in RAM.
+      if (!shape.length) continue;
       if (f.mode === 'full' || !opts.largeObjectReferences.has(f.collection)) opts.largeObjectReferences.set(f.collection, new Map());
       const state = opts.largeObjectReferences.get(f.collection);
       const tombstone = layer.manifest.files.find(file => file.kind === 'tombstones' && file.collection === f.collection);
@@ -165,7 +168,9 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
       for await (const line of readLines(fileDelBackup(layer.dir, f.path, 'riferimenti Large Objects'))) {
         const row = parseClientValue(line), ids = new Set();
         require('../../db/pg-references').rowReferences(row, shape, id => { ids.add(id); return id; });
-        state.set(f.identity ? require('./content-state').chiaveRiga(row, f) : ordinal++, ids);
+        const key = f.identity ? require('./content-state').chiaveRiga(row, f) : ordinal++;
+        if (ids.size) state.set(key, ids);
+        else state.delete(key);
       }
     }
     for (const state of opts.largeObjectReferences.values()) for (const ids of state.values()) for (const id of ids) wantedLargeObjects.add(id);

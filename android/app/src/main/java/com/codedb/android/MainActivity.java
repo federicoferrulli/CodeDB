@@ -179,6 +179,17 @@ public class MainActivity extends Activity {
         web.getSettings().setDisplayZoomControls(false);
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
         web.setWebViewClient(new WebViewClient() {
+            @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                Uri uri = request.getUrl();
+                if (uri != null) {
+                    String host = uri.getHost();
+                    boolean loopback = "127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host) || "::1".equals(host) || "[::1]".equals(host);
+                    if (loopback && !local(uri)) {
+                        return new WebResourceResponse("text/plain", "utf-8", 403, "Forbidden", null, new ByteArrayInputStream(new byte[0]));
+                    }
+                }
+                return super.shouldInterceptRequest(view, request);
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 if (local(request.getUrl())) return false;
                 if (request.isForMainFrame()) external(request.getUrl());
@@ -252,9 +263,18 @@ public class MainActivity extends Activity {
             @Override public boolean onCreateWindow(WebView view, boolean dialog, boolean gesture, android.os.Message result) {
                 if (!gesture) return false;
                 WebView popup = new WebView(MainActivity.this);
+                final Runnable distruggiPopup = () -> { try { popup.destroy(); } catch (Exception ignored) {} };
+                handler.postDelayed(distruggiPopup, 10000);
+                popup.setWebChromeClient(new WebChromeClient() {
+                    @Override public void onCloseWindow(WebView window) {
+                        handler.removeCallbacks(distruggiPopup);
+                        distruggiPopup.run();
+                    }
+                });
                 popup.setWebViewClient(new WebViewClient() {
                     @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest request) {
-                        external(request.getUrl()); popup.destroy(); return true;
+                        handler.removeCallbacks(distruggiPopup);
+                        external(request.getUrl()); distruggiPopup.run(); return true;
                     }
                 });
                 ((WebView.WebViewTransport) result.obj).setWebView(popup);

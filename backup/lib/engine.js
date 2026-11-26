@@ -254,7 +254,8 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, p
     }
 
     const descriptor = { collection: coll, identity: { kind: 'mongodb-id', columns: ['_id'] }, encoding: require('../../db/mongoBson').ENCODING };
-    const delta = require('./content-state').creaDelta(previousStates.get(coll), descriptor, { incremental: mode !== 'full', explicit: !!sinceColumn });
+    const statoBase = typeof previousStates.carica === 'function' ? await previousStates.carica(coll) : previousStates.get(coll);
+    const delta = require('./content-state').creaDelta(statoBase, descriptor, { incremental: mode !== 'full', explicit: !!sinceColumn });
     let selected = null;
     if (sinceColumn) {
       selected = new Set();
@@ -693,7 +694,8 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, previou
       if (since && identity && !sinceField) mode = 'incremental';
       if (!identity) { mode = 'full'; sinceColumn = null; where = ''; params.length = 0; }
       const descriptor = { collection: table, columns: meta.nomi, columnSchema: meta.columnSchema, identity };
-      const delta = require('./content-state').creaDelta(previousStates.get(table), descriptor, { incremental: mode !== 'full', explicit: !!sinceColumn });
+      const statoBase = typeof previousStates.carica === 'function' ? await previousStates.carica(table) : previousStates.get(table);
+      const delta = require('./content-state').creaDelta(statoBase, descriptor, { incremental: mode !== 'full', explicit: !!sinceColumn });
       let selectedAlias = '__codedb_delta_selected';
       while (meta.nomi.includes(selectedAlias)) selectedAlias += '_';
       const selection = where ? `, (${where.replace(/^ WHERE /, '')}) AS ${myQid(selectedAlias)}` : '';
@@ -1021,7 +1023,8 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, pr
     if (since && identity && !sinceField) mode = 'incremental';
     if (!identity) { mode = 'full'; sinceColumn = null; boundary = null; }
     const descriptor = { collection: table, columns: savedColumns, columnSchema, identity };
-    const delta = require('./content-state').creaDelta(previousStates.get(table), descriptor, { incremental: mode !== 'full', explicit: !!sinceColumn });
+    const statoBase = typeof previousStates.carica === 'function' ? await previousStates.carica(table) : previousStates.get(table);
+    const delta = require('./content-state').creaDelta(statoBase, descriptor, { incremental: mode !== 'full', explicit: !!sinceColumn });
     let selectedAlias = '__codedb_delta_selected';
     while (savedColumns.includes(selectedAlias)) selectedAlias += '_';
     const rel = `data/${safeName(table)}.ndjson${compress ? '.gz' : ''}`;
@@ -1180,7 +1183,7 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
   const collections = onlyCollections
     ? all.filter((c) => onlyCollections.includes(c))
     : all;
-  const previousStates = base ? await require('./content-state').caricaStatoCatena(path.join(groupDir, base.id), controllo) : new Map();
+  const previousStates = base ? await require('./content-state').preparaCatena(path.join(groupDir, base.id), controllo) : new Map();
   let selezione = onlyCollections;
   if (selezione && base && ['postgres', 'postgresql'].includes(dbType)) {
     const catena = require('./restore').resolveChain(path.join(groupDir, base.id));

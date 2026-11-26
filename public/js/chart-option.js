@@ -935,6 +935,15 @@ function scarto(testo, numeroDisegnato) {
   return testo !== null && testo !== undefined && String(testo) !== String(numeroDisegnato);
 }
 
+function escHtmlTooltip(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formattatoreTooltip(fmt, esatti) {
   const riga = (p) => {
     const grezzo = Array.isArray(p.value) ? p.value[p.value.length - 1] : p.value;
@@ -943,13 +952,15 @@ function formattatoreTooltip(fmt, esatti) {
     // Il confronto è col numero GREZZO, non col testo formattato: quello porta
     // già separatori e arrotondamenti di presentazione, quindi differirebbe
     // sempre e il "(esatto: …)" comparirebbe anche dove non c'è nulla da dire.
-    return `${p.marker || ''}${p.seriesName || ''} ${fmt(grezzo)}`
-      + (scarto(testo, grezzo) ? ` (esatto: ${testo})` : '');
+    // Tutti i testi provenienti dal DB (nome serie, valore, etichetta) vanno
+    // escapati perché ECharts renderizza il formatter in HTML (`renderMode: 'html'`).
+    return `${p.marker || ''}${escHtmlTooltip(p.seriesName || '')} ${escHtmlTooltip(fmt(grezzo))}`
+      + (scarto(testo, grezzo) ? ` (esatto: ${escHtmlTooltip(testo)})` : '');
   };
   return (params) => {
     const lista = Array.isArray(params) ? params : [params];
     const capo = lista[0] && lista[0].axisValueLabel;
-    return (capo ? `${capo}<br/>` : '') + lista.map(riga).join('<br/>');
+    return (capo ? `${escHtmlTooltip(capo)}<br/>` : '') + lista.map(riga).join('<br/>');
   };
 }
 

@@ -51,6 +51,37 @@ function probeServer({ host = '127.0.0.1', port, secret, timeout = 500, httpModu
   });
 }
 
+/**
+ * Protegge il server HTTP/WebSocket incorporato in Electron contro altri
+ * processi locali su 127.0.0.1: richiede il cookie HttpOnly `codedb_desktop`.
+ * Lascia passare `/handshake-check` (già autenticato via HMAC) e `/mcp`
+ * (protetto da impostazioni MCP, flag readOnly e confirm_token per i client AI).
+ */
+function proteggiDesktop(server, secret) {
+  const expected = Buffer.from(String(secret || ''));
+  if (!expected.length) throw new Error('Segreto desktop mancante.');
+  for (const event of ['request', 'upgrade']) {
+    const handlers = server.listeners(event);
+    server.removeAllListeners(event);
+    server.on(event, (req, response, ...rest) => {
+      const pathname = String(req.url || '/').split('?')[0];
+      if (event === 'request' && (pathname === '/handshake-check' || pathname === '/mcp')) {
+        for (const handler of handlers) handler.call(server, req, response, ...rest);
+        return;
+      }
+      const cookie = String(req.headers.cookie || '').split(';').map(s => s.trim())
+        .find(s => s.startsWith('codedb_desktop='));
+      const actual = Buffer.from(cookie ? cookie.slice('codedb_desktop='.length) : '');
+      if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) {
+        if (event === 'upgrade') response.destroy();
+        else { response.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }); response.end('Accesso riservato alla finestra desktop CodeDB.'); }
+        return;
+      }
+      for (const handler of handlers) handler.call(server, req, response, ...rest);
+    });
+  }
+}
+
 module.exports = {
-  nuovoSegretoIstanza, nuovaSfida, provaIstanza, provaClient, provaServer, stessaProva, probeServer,
+  nuovoSegretoIstanza, nuovaSfida, provaIstanza, provaClient, provaServer, stessaProva, probeServer, proteggiDesktop,
 };

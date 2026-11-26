@@ -29,29 +29,7 @@
        un'interfaccia scomposta.
        Le due chiavi sono le stesse di `theme.js` (`chiaveStorage`): se
        divergono, il tema salvato non viene più ritrovato. -->
-  <script>
-    (function () {
-      try {
-        var scelto = localStorage.getItem('codedb:tema') || 'auto';
-        var base;
-        if (scelto === 'light' || scelto === 'dark') {
-          base = scelto;
-        } else if (scelto === 'auto') {
-          base = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
-            ? 'light' : 'dark';
-        } else {
-          // Tema personalizzato: la sua base sta nell'elenco dei temi salvati.
-          var temi = JSON.parse(localStorage.getItem('codedb:temi') || '{}');
-          base = temi[scelto] && temi[scelto].base === 'light' ? 'light' : 'dark';
-        }
-        document.documentElement.setAttribute('data-theme', base);
-      } catch (e) {
-        // Storage non disponibile o illeggibile: resta il tema scuro storico,
-        // che è anche il default del CSS. Mai lasciare la pagina senza tema.
-        document.documentElement.setAttribute('data-theme', 'dark');
-      }
-    })();
-  </script>
+  <script src="js/theme-init.js"></script>
 </head>
 
 <body>

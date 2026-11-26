@@ -86,7 +86,8 @@ function isFileIoSql(code) {
   return statements.some((statement) =>
     SQL_FILE_IO.test(statement)
     || POSTGRES_FILE_FUNCTIONS.test(statement)
-    || /^\s*COPY\b/i.test(statement));
+    || /^\s*COPY\b/i.test(statement)
+    || /(?:^|\b(?:BEGIN|THEN|ELSE|LOOP)\b)\s*COPY\s+(?!FROM\b|TO\b)/i.test(statement));
 }
 
 function analyzeSql(code) {
@@ -469,7 +470,7 @@ const METHOD_CAPABILITY = {
   columnRelations:     { cap: 'read', db: 0, coll: 1, filter: 'relations' },
   collectionFind:      { cap: 'read', db: 0, coll: 1 },
   collectionCount:     { cap: 'read', db: 0, coll: 1 },
-  collectionExplain:   { cap: 'read', db: 0, coll: 1 },
+  collectionExplain:   { cap: 'dynamic', kind: 'explain', db: 0, coll: 1 },
   collectionExport:    { cap: 'read', db: 0, coll: 1 },
   collectionAggregate: { cap: 'dynamic', db: 0, coll: 1 },
   executeWriteBatch:   { cap: 'dynamic', kind: 'sqlWriteBatch', db: 0 },

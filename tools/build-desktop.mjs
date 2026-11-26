@@ -46,6 +46,7 @@ async function main() {
     appCopyright: 'Copyright (c) 2026 CodeDB',
     executableName: 'CodeDB',
     overwrite: true,
+    asar: true,
     prune: true,
     ignore: IGNORE,
     win32metadata: platform === 'win32' ? {

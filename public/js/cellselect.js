@@ -4,7 +4,7 @@ import { feedbackAptico, annunciaFeedback } from './feedback.js';
 
 import { state } from './state.js';
 import { campoScrivibile } from './righe.js';
-import { $, emit, displayValue, toast, showContextMenu, showError, idOf, parseEdited, valueType, isPlainObject, isSqlType, captureContext, eseguiAOndate, marcaDatiSporchi, refreshLucideIcons, scaricaFile, notifica } from './utils.js';
+import { $, emit, esc, displayValue, toast, showContextMenu, showError, idOf, parseEdited, valueType, isPlainObject, isSqlType, captureContext, eseguiAOndate, marcaDatiSporchi, refreshLucideIcons, scaricaFile, notifica } from './utils.js';
 import { mountArcControls, createArcCheckbox, controlElement } from '../arc/ui.js';
 import { runQuery, ensureRowRendered, deleteDoc, deleteDocs } from './grid.js';
 import { openEditDoc } from './inlineEdit.js';
@@ -371,7 +371,6 @@ async function showCellStats(A) {
     });
   }
 
-  const esc = (s) => String(s).replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
   const corpo = document.getElementById('cellstats-body');
   let html = '';
   if (!st.numerici) {

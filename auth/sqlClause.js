@@ -36,6 +36,7 @@ const FORBIDDEN_WORDS = new Set([
   'into', 'from', 'join', 'where', 'having', 'values', 'set', 'declare',
   'information_schema', 'pg_catalog', 'mysql', 'performance_schema', 'sys',
   'sleep', 'benchmark', 'pg_sleep', 'waitfor', 'lock', 'copy', 'returning',
+  'table',
 ]);
 
 // Parole ammesse in una condizione o in un ordinamento.
@@ -54,8 +55,11 @@ const IDENT_CHAR = /[A-Za-z0-9_$.-￿]/;
  * non al contenuto dei valori.
  * @returns {{ words: string[], hasCall: boolean, bad: string|null }}
  */
-function scanClause(text) {
+function scanClause(text, opzioni = {}) {
   const s = String(text);
+  const dbms = String((opzioni && opzioni.dbms) || '').trim().toLowerCase();
+  const isPg = dbms === 'postgresql' || dbms === 'postgres';
+  const isMysql = dbms === 'mysql';
   const words = [];
   let hasCall = false;
   let bad = null;
@@ -69,23 +73,61 @@ function scanClause(text) {
     if (c === '-' && s[i + 1] === '-') { bad = 'commenti SQL (--)'; break; }
     if (c === '#') { bad = 'commenti SQL (#)'; break; }
     if (c === '/' && s[i + 1] === '*') { bad = 'commenti SQL (/* */)'; break; }
+    // Dollar-quoting PostgreSQL ($$ ... $$ o $tag$ ... $tag$): vietato nelle clausole con scope.
+    if (c === '$' && /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/.test(s.slice(i))) {
+      bad = 'stringhe dollar-quoted ($$)';
+      break;
+    }
 
     // Stringhe: il contenuto è un valore, non codice.
+    // Su PostgreSQL (standard_conforming_strings=on) `\` è un carattere
+    // ordinario tranne in `E'...'`; su MySQL `\` è escape; senza dialetto
+    // esplicito, `\'` o `\\` vengono rifiutati in modo fail-closed.
     if (c === "'") {
+      const prev = s[i - 1];
+      const prima = s[i - 2];
+      const pgEscapeLiteral = isPg && (prev === 'E' || prev === 'e')
+        && (prima === undefined || !/[A-Za-z0-9_$]/.test(prima));
+      const usaBackslash = isMysql || pgEscapeLiteral;
+      let chiusa = false;
       i++;
       while (i < s.length) {
-        if (s[i] === '\\') { i += 2; continue; }
-        if (s[i] === "'") { if (s[i + 1] === "'") { i += 2; continue; } i++; break; }
+        if (s[i] === '\\') {
+          if (usaBackslash) { i += 2; continue; }
+          if (!isPg && (s[i + 1] === "'" || s[i + 1] === '\\')) {
+            bad = 'sequenze di escape con barra rovesciata nelle stringhe';
+            break;
+          }
+          i++;
+          continue;
+        }
+        if (s[i] === "'") {
+          if (s[i + 1] === "'") { i += 2; continue; }
+          i++;
+          chiusa = true;
+          break;
+        }
         i++;
       }
+      if (bad) break;
+      if (!chiusa) { bad = 'stringa letterale non chiusa'; break; }
       continue;
     }
-    // Identificatori quotati: il contenuto è un nome di colonna.
+    // Identificatori quotati: gestisce il raddoppio del delimitatore e pretende chiusura.
     if (c === '"' || c === '`') {
       const q = c;
+      let chiuso = false;
       i++;
-      while (i < s.length && s[i] !== q) i++;
-      i++;
+      while (i < s.length) {
+        if (s[i] === q) {
+          if (s[i + 1] === q) { i += 2; continue; }
+          i++;
+          chiuso = true;
+          break;
+        }
+        i++;
+      }
+      if (!chiuso) { bad = 'identificatore quotato non chiuso'; break; }
       continue;
     }
 
@@ -115,14 +157,15 @@ function scanClause(text) {
 /**
  * @param {string} text clausola scritta dall'utente
  * @param {'filtro'|'ordinamento'} what per il messaggio d'errore
+ * @param {{ dbms?: string }} [opzioni]
  * @throws se la clausola non è nella forma consentita ai principal con scope
  */
-function assertSimpleClause(text, what) {
+function assertSimpleClause(text, what, opzioni) {
   const raw = String(text || '').trim();
   if (!raw) return;
 
   const normalized = what === 'filtro' ? raw.replace(/^WHERE(?=\s+\S)\s+/i, '') : raw;
-  const { words, hasCall, bad } = scanClause(normalized);
+  const { words, hasCall, bad } = scanClause(normalized, opzioni);
   const refuse = (motivo) => {
     throw new Error(
       `${what === 'ordinamento' ? 'Ordinamento' : 'Filtro'} non consentito: ${motivo}. ` +
@@ -145,8 +188,9 @@ function assertSimpleClause(text, what) {
  * Applica le regole al payload di una lettura/cancellazione sulla griglia SQL,
  * ma solo per i principal con uno scope attivo sulla connessione.
  * @param {object} payload payload della strategia (filter/sort liberi)
+ * @param {{ dbms?: string }} [opzioni]
  */
-function assertScopedClauses(payload) {
+function assertScopedClauses(payload, opzioni) {
   if (!payload || typeof payload !== 'object') return;
 
   // Il filtro STRUTTURATO si verifica leggendone i CAMPI, non rianalizzandone
@@ -161,11 +205,11 @@ function assertScopedClauses(payload) {
   // la difesa non è un elenco di parole vietate, è la forma del dato.
   if (payload.filtro != null) normalizzaFiltro(payload.filtro);
 
-  if (payload.filter != null) assertSimpleClause(payload.filter, 'filtro');
+  if (payload.filter != null) assertSimpleClause(payload.filter, 'filtro', opzioni);
   // `sort` può essere anche un JSON {"col":1}: in quel caso non c'è SQL libero.
   if (payload.sort != null) {
     const t = String(payload.sort).trim();
-    if (t && !t.startsWith('{')) assertSimpleClause(t, 'ordinamento');
+    if (t && !t.startsWith('{')) assertSimpleClause(t, 'ordinamento', opzioni);
   }
 }
 

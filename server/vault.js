@@ -2,6 +2,7 @@
 
 // CodeDB — vault. Stato e dipendenze appartengono alla singola istanza.
 const path = require('path');
+const crypto = require('crypto');
 const Vault = require('../db/vault');
 const fs = require('fs');
 const { sshAuthMode, portaLocaleSsh } = require('../db/SshTunnel');
@@ -180,14 +181,19 @@ function createModule({ config, errori, dependencies }) {
       return { ok: true };
     }
 
-    // Formato v1.
+    // Formato v1: verifica TUTTI i file del vault (condiviso e per-tenant),
+    // altrimenti uno sblocco riuscito sul file vuoto ignorerebbe i segreti in conns/*.ini.
     const oldKey = encryptionKey;
     const oldFailures = decryptFailures;
 
     encryptionKey = Vault.legacyKey(passphrase);
     decryptFailures = 0;
 
-    loadConnections();
+    const files = vaultFiles();
+    if (files.length === 0) loadConnections();
+    else {
+      for (const { ownerId } of files) loadConnections(ownerId);
+    }
     if (decryptFailures > 0) {
       encryptionKey = oldKey;
       decryptFailures = oldFailures;
@@ -746,8 +752,9 @@ function createModule({ config, errori, dependencies }) {
 
   function verificaPassphrase(passphrase) {
     if (encryptionKey === null) return false;
-    return vaultMeta ? !!Vault.unwrapDataKey(vaultMeta, passphrase)
-      : Vault.legacyKey(passphrase).equals(encryptionKey);
+    if (vaultMeta) return !!Vault.unwrapDataKey(vaultMeta, passphrase);
+    const derived = Vault.legacyKey(passphrase);
+    return derived.length === encryptionKey.length && crypto.timingSafeEqual(derived, encryptionKey);
   }
 
   return {

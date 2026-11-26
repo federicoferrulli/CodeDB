@@ -1435,7 +1435,7 @@ function createPaneElement(paneId) {
       { icona: 'boxes', label: 'Grafo 3D', action: () => setPaneView(paneId, 'graph3d') },
     ]);
   });
-  paneEl.querySelector('.pane-close-btn').addEventListener('click', () => closePane(paneId), () => aggiornaContestoPane(paneId));
+  paneEl.querySelector('.pane-close-btn').addEventListener('click', () => closePane(paneId));
   // Massimizza: doppio clic sulla testata invece di un quarto pulsante. È il
   // gesto delle finestre di ogni sistema operativo, non toglie spazio ai nomi
   // di database e tabella (che su un pannello stretto sono la prima cosa a

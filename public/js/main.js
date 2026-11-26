@@ -7,7 +7,7 @@ import { state } from './state.js';
 import { onTabChange } from './tabs.js';
 import { $, migraChiave, initToolbarDropdown } from './utils.js';
 import { initUml, loadUml } from './uml.js';
-import { initGraph3d, loadGraph3d } from './graph3d.js';
+import { initGraph3d, loadGraph3d, pausaGrafo3d } from './graph3d.js';
 import { initConnection } from './connection.js';
 import { initConnManager } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
@@ -110,6 +110,7 @@ export function setView(view) {
   $('#view-uml').classList.toggle('hidden', view !== 'uml');
   $('#view-graph3d').classList.toggle('hidden', view !== 'graph3d');
   $('#view-query').classList.toggle('hidden', view !== 'query');
+  if (view !== 'graph3d') pausaGrafo3d();
   if (view === 'details') loadDetails();
   if (view === 'uml') loadUml(false);
   if (view === 'graph3d') loadGraph3d(false);
@@ -230,7 +231,7 @@ if (!contestoIncorporato) initOnboarding();
 // A interfaccia montata e a macchina ferma: la libreria dei grafici pesa 1,1 MB
 // e compilarla costa ~250 ms, che senza questo si pagano fra il clic su 📈 e la
 // comparsa della finestra (286 ms contro 34 a libreria già calda).
-scaldaEcharts();
+if (!contestoIncorporato) scaldaEcharts();
 
 // Stato iniziale: nessun tab aperto, schermata di benvenuto.
 renderTabBar();

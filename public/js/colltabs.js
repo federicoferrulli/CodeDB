@@ -116,12 +116,39 @@ export function applicaSnapshotQuery(ct) {
   if (q?.scriptRunId) focusScriptRun(q.scriptRunId);
 }
 
+const MAX_SNAP_COMPLETI = 5;
+const MAX_RIGHE_SNAP_TOTALI = 15000;
+let seqAccessoSnap = 0;
+
+// Riduce l'impronta RAM dei tab in background mantenendo i dati completi solo
+// sugli ultimi coll-tab visitati entro un tetto complessivo di righe. Alla
+// riattivazione di un tab alleggerito `docsParziali` riesegue la query.
+function alleggerisciSnapshotInBackground(ctAttivo) {
+  const t = activeTab();
+  if (!t || !Array.isArray(t.state?.collTabs)) return;
+  const candidati = t.state.collTabs
+    .filter((c) => c !== ctAttivo && !c.isSplitTab && !c.isDbTab && c.snap && !c.snap.docsParziali && Array.isArray(c.snap.docs) && c.snap.docs.length > 0)
+    .sort((a, b) => (b._snapSeq || 0) - (a._snapSeq || 0));
+  let righeTotali = 0;
+  for (let i = 0; i < candidati.length; i++) {
+    const c = candidati[i];
+    const len = c.snap.docs.length;
+    if (i >= MAX_SNAP_COMPLETI || righeTotali + len > MAX_RIGHE_SNAP_TOTALI) {
+      c.snap.docs = [];
+      c.snap.docsParziali = true;
+    } else {
+      righeTotali += len;
+    }
+  }
+}
+
 function saveActiveSnapshot() {
   const ct = currentCollTab();
   salvaSnapshotQuery(ct);
   if (!ct || ct.isSplitTab || ct.isDbTab) return;
   const docs = Array.isArray(state.docs) ? state.docs : [];
   const filtro = leggiStatoFiltro();
+  ct._snapSeq = ++seqAccessoSnap;
   ct.snap = {
     filter: $('#filter-input')?.value || '',
     filterMode: filtro.modo,
@@ -147,6 +174,7 @@ function saveActiveSnapshot() {
     columnMeta: state.columnMeta,
     view: state.view,
   };
+  alleggerisciSnapshotInBackground(ct);
 }
 
 // Evidenzia nel tree la collection attiva (la selezione segue il coll-tab).

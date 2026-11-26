@@ -189,7 +189,7 @@ function createModule({ config, trasporto, audit, errori, dependencies, chiudiSe
    */
   function assertConnAllowed(principal, cfg, connName) {
     if (principal.root) return;
-    if (String((cfg && cfg.saveAs) || '').trim()) {
+    if (String((cfg && cfg.saveAs) || '').trim() || String((cfg && cfg.keepPasswordFrom) || '').trim()) {
       assertManage(principal);
       return;
     }

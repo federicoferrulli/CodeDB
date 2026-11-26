@@ -202,6 +202,9 @@ function creaLettoreCodedbJson({ onCollection = () => {}, onDocumento, onFineCol
       pila.push({ tipo: c, chiave: null, sottoChiave, attesaChiave: c === '{' });
       aggiungi(c);
       if (apre) {
+        if (collectionCorrente == null || collectionCorrente === '') {
+          throw new Error('Formato .codedb.json non valido per la lettura streaming: la chiave "name" deve precedere "docs" in ogni elemento di "collections".');
+        }
         dentroDocs = true;
         profondita = 0;
         documento = '';

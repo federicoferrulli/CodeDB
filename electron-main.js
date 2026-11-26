@@ -4,7 +4,7 @@ const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
 const path = require('path');
 const net = require('net');
 const { creaGestoreAggiornamenti } = require('./electron-aggiornamenti');
-const { nuovoSegretoIstanza, probeServer } = require('./electron-server-auth');
+const { nuovoSegretoIstanza, probeServer, proteggiDesktop } = require('./electron-server-auth');
 const { proteggiChiusura } = require('./electron-chiusura');
 
 const APP_NAME = 'CodeDB';
@@ -240,6 +240,7 @@ async function main() {
         throw new Error('server.js non espone startServer(): versione incompatibile.');
       }
       await srv.startServer();
+      if (srv.server) proteggiDesktop(srv.server, INSTANCE_SECRET);
     } catch (err) {
       dialog.showErrorBox(APP_NAME, `Impossibile avviare il server CodeDB: ${err.message}`);
       app.quit();
@@ -308,7 +309,19 @@ function createWindow() {
     contents.zoomLevel += direzione === 'in' ? 0.5 : -0.5;
   });
 
-  mainWindow.loadURL(`http://${HOST}:${PORT}`);
+  const urlServer = `http://${HOST}:${PORT}`;
+  const setCookie = contents.session && contents.session.cookies
+    ? contents.session.cookies.set({
+      url: urlServer,
+      name: 'codedb_desktop',
+      value: INSTANCE_SECRET,
+      httpOnly: true,
+      sameSite: 'strict',
+    }).catch((err) => { console.warn('[Electron] Impossibile impostare il cookie locale:', err.message); })
+    : Promise.resolve();
+  setCookie.finally(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(urlServer);
+  });
 
   // Evita il lampo bianco mostrando la finestra solo a caricamento avvenuto.
   mainWindow.once('ready-to-show', () => mainWindow.show());
@@ -351,6 +364,16 @@ function createWindow() {
         console.warn('[Electron] Impossibile aprire il link esterno: ' + err.message);
       });
     }
+  });
+
+  // Anche i subframe (iframe Split-View) possono navigare solo verso l'origine
+  // locale di CodeDB: mai verso siti esterni o schemi arbitrari.
+  mainWindow.webContents.on('will-frame-navigate', (event) => {
+    const nostra = `http://${HOST}:${PORT}`;
+    let destinazione = null;
+    try { destinazione = new URL(event.url); } catch { /* URL non valida */ }
+    if (destinazione && destinazione.origin === new URL(nostra).origin) return;
+    event.preventDefault();
   });
 
   mainWindow.on('closed', () => {

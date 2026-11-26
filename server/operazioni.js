@@ -15,9 +15,7 @@ const { resolveBackupPath: confineBackupPath, backupRootFor } = require('../back
 const { pianoRinomina, improntaDatabase, confrontaStatoCorrente } = require('../db/rinominaSicura');
 const fs = require('fs');
 const os = require('os');
-const { createLogger } = require('../backup/lib/logger');
-const { runBackup } = require('../backup/lib/engine');
-const { runRestore } = require('../backup/lib/restore');
+const MAX_LOG_TRASFERIMENTI_BYTES = 5 * 1024 * 1024;
 
 function createModule({ config, identita }) {
   const BACKUP_ROOT = config.env.CODEDB_BACKUPS_DIR || path.join(config.rootDir, 'backups');
@@ -72,7 +70,14 @@ function createModule({ config, identita }) {
       try {
         const dir = path.join(backupRootOf({ ownerId: evento.ownerId }), 'artefatti');
         fs.mkdirSync(dir, { recursive: true });
-        fs.appendFileSync(path.join(dir, 'trasferimenti.log'), `${JSON.stringify(evento)}\n`, 'utf8');
+        const logFile = path.join(dir, 'trasferimenti.log');
+        try {
+          if (fs.statSync(logFile).size >= MAX_LOG_TRASFERIMENTI_BYTES) {
+            try { fs.unlinkSync(`${logFile}.1`); } catch { /* assente */ }
+            fs.renameSync(logFile, `${logFile}.1`);
+          }
+        } catch { /* file nuovo */ }
+        fs.appendFileSync(logFile, `${JSON.stringify(evento)}\n`, 'utf8');
       } catch (_) { /* l'audit non ferma il trasferimento */ }
     },
   });
@@ -121,6 +126,9 @@ function createModule({ config, identita }) {
     // I file della rinomina non sono un backup dell'utente: vivono in una
     // cartella temporanea e spariscono comunque vada. Metterli fra i backup del
     // tenant sporcherebbe il catalogo con voci che nessuno ha chiesto.
+    const { createLogger } = require('../backup/lib/logger');
+    const { runBackup } = require('../backup/lib/engine');
+    const { runRestore } = require('../backup/lib/restore');
     const destRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-rinomina-'));
     const log = createLogger(path.join(destRoot, 'rinomina.log'), { quiet: true });
     const connName = sess.connName || 'ui-session';

@@ -1285,10 +1285,20 @@ function fetchMore() {
       chiudiCaricamento(st, richiesta.runId);
       return;
     }
-    // Unione colonne (blocchi successivi possono avere campi nuovi) e append.
+    // Unione colonne (blocchi successivi possono avere campi nuovi) e append in-place
+    // (evita la copia O(N) dell'intero array a ogni blocco di scroll infinito).
     for (const c of res.columns) if (!st.columns.includes(c)) st.columns.push(c);
-    st.docs = st.docs.concat(res.docs);
+    st.docs.push(...res.docs);
     if (res.total != null) st.total = res.total; // non sovrascrivere un totale noto con null
+    // Tetto difensivo di memoria sullo scroll infinito: oltre 25.000 righe in un
+    // solo tab si ferma il caricamento progressivo e si consiglia un filtro o la paginazione.
+    const MAX_INFINITE_DOCS = 25000;
+    if (st.docs.length >= MAX_INFINITE_DOCS) {
+      st.exhausted = true;
+      if (isForActiveTab(res)) {
+        toast(`Raggiunto il limite di ${MAX_INFINITE_DOCS.toLocaleString('it-IT')} righe in scroll infinito: usa un filtro o la paginazione per esplorare oltre.`);
+      }
+    }
     // Fine dati: blocco non pieno, oppure raggiunto un totale ESATTO (una stima
     // dai metadati non è affidabile per fermarsi: potrebbe essere < reale).
     if (!res.docs.length || res.docs.length < (res.limit || st.limit)

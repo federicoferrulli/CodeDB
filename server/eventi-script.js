@@ -70,13 +70,22 @@ function createModule({ lock, query, audit, dependencies, errori }) {
         // Anche una scrittura conclusa senza ack deve restare riconoscibile.
         // A quota piena rifiutiamo il nuovo avvio prima di toccare il database.
         if (esiti.size >= 8) throw new Error('Ci sono già otto risultati di query in attesa di consegna su questo tab.');
+        const maxEsitiBytes = Math.max(parseInt(process.env.CODEDB_QUERY_RESULTS_MAX_BYTES, 10) || 32 * 1024 * 1024, 1024 * 1024);
+        let bytesAttuali = 0;
+        for (const v of esiti.values()) bytesAttuali += v.bytes || 0;
+        if (bytesAttuali >= maxEsitiBytes) {
+          throw new Error('La coda dei risultati in attesa di consegna ha raggiunto il tetto di memoria su questo tab.');
+        }
       }
       // L'upload si consuma una sola volta e solo quando è completo.
       const richiesta = { ...payload, code: leggiCodice(session, payload) };
       if (!esiti) return cb(await eseguiQuery(session, richiesta));
-      const voce = { conclusa: false };
+      const voce = { conclusa: false, bytes: 0 };
       esiti.set(runId, voce);
-      voce.esito = eseguiQuery(session, richiesta).catch(err => ({
+      voce.esito = eseguiQuery(session, richiesta).then(res => {
+        try { voce.bytes = Buffer.byteLength(JSON.stringify(res.docs || [])); } catch { voce.bytes = 0; }
+        return res;
+      }).catch(err => ({
         ok: false, error: errori.errMsg(err), ...(err.queryError ? { queryError: err.queryError } : {}),
       })).finally(() => { voce.conclusa = true; });
       cb(await voce.esito);

@@ -1633,6 +1633,11 @@ console.log('--- Test Unitari CodeDB ---');
   // fixture, richiede un flag esplicito e viene eliminato solo dal suo registro.
   await require('./unit-e2e-targets');
 
+  // Test 29-bis: regressioni sicurezza P0 dall'audit (PG READ ONLY/extended,
+  // sqlClause PG backslash, collectionExplain, apikeys tenantAdmin, sqlTables, keepPasswordFrom).
+  await require('./unit-audit-p0');
+  await require('./unit-audit-p1-p2');
+
   // Test 29: Barriere all'avvio quando l'istanza esce dal loopback — proxy
   // HTTPS e autenticazione sono due dichiarazioni distinte (CDB-A06).
   // Avvia processi veri: la decisione sta nel percorso di avvio, non in una

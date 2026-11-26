@@ -846,8 +846,10 @@ function assertRegexSicura(pattern, line) {
 function assertTestoRegex(target, nome, args) {
   let soggetto = null;
   if (target instanceof RegExp) {
-    if (nome === 'test' || nome === 'exec') soggetto = args[0];
-  } else if (typeof target === 'string' && args.some((a) => a instanceof RegExp)) {
+    if (nome === 'test' || nome === 'exec') {
+      soggetto = typeof args[0] === 'string' ? args[0] : testo(args[0]);
+    }
+  } else if (typeof target === 'string' && (nome === 'match' || args.some((a) => a instanceof RegExp))) {
     soggetto = target;
   }
   if (typeof soggetto === 'string' && soggetto.length > MAX_TESTO_REGEX) {
@@ -931,6 +933,25 @@ function getMember(obj, name, ctx) {
  * interne di V8) e per difetto sugli array (il solo puntatore): serve a fermare
  * la crescita esplosiva, non a misurare la memoria reale.
  */
+function contaNodiFlat(arr, depth, limite) {
+  let nodi = 0;
+  const visita = (item, d) => {
+    nodi++;
+    if (nodi > limite) return;
+    if (d > 0 && Array.isArray(item)) {
+      for (let i = 0; i < item.length; i++) {
+        visita(item[i], d - 1);
+        if (nodi > limite) return;
+      }
+    }
+  };
+  for (let i = 0; i < arr.length; i++) {
+    visita(arr[i], depth);
+    if (nodi > limite) return nodi;
+  }
+  return nodi;
+}
+
 function byteStimati(target, nome, args) {
   const n = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
   if (typeof target === 'string') {
@@ -940,6 +961,14 @@ function byteStimati(target, nome, args) {
       case 'padStart': return Math.max(n(args[0]), target.length) * 2;
       case 'concat': return (target.length + args.reduce((s, a) => s + String(a == null ? '' : a).length, 0)) * 2;
       case 'split': return target.length * 2 + (target.length + 1) * 8;
+      case 'replace':
+      case 'replaceAll': {
+        const rep = args[1] == null ? '' : String(args[1]);
+        if (nome === 'replace') return (target.length + rep.length) * 2;
+        const cerca = args[0] == null ? '' : String(args[0]);
+        const occorrenze = cerca.length > 0 ? Math.ceil(target.length / cerca.length) : target.length + 1;
+        return Math.min(Number.MAX_SAFE_INTEGER, (target.length + occorrenze * rep.length) * 2);
+      }
       default: return null;
     }
   }
@@ -947,8 +976,26 @@ function byteStimati(target, nome, args) {
     switch (nome) {
       case 'concat': return (target.length + args.reduce((s, a) => s + (Array.isArray(a) ? a.length : 1), 0)) * 8;
       case 'fill': return target.length * 8;
-      case 'flat': return target.length * 8 * Math.max(n(args[0], 1), 1);
-      case 'join': return target.length * 16;
+      case 'flat': {
+        const rawDepth = args[0] === undefined ? 1 : Number(args[0]);
+        const depth = rawDepth === Infinity ? 64 : Math.max(Number.isFinite(rawDepth) ? Math.floor(rawDepth) : 1, 0);
+        const limite = 250000;
+        const nodi = contaNodiFlat(target, depth, limite);
+        if (nodi > limite) {
+          throw errore('Operazione flat() annullata: la struttura supera il limite di elementi consentito negli script.');
+        }
+        return nodi * 8;
+      }
+      case 'join': {
+        const sepLen = args[0] === undefined ? 1 : String(args[0]).length;
+        let chars = Math.max(0, target.length - 1) * sepLen;
+        for (let i = 0; i < target.length; i++) {
+          const el = target[i];
+          chars += typeof el === 'string' ? el.length : 16;
+          if (chars > 1e8) break;
+        }
+        return chars * 2;
+      }
       default: return null;
     }
   }
@@ -982,9 +1029,23 @@ function legaNativo(target, nome, ctx) {
       // Una regex è una chiamata nativa non interrompibile: nessun budget del
       // runner può fermarla una volta partita (vedi la nota su MAX_TESTO_REGEX).
       assertTestoRegex(target, nome, args);
+      if (typeof target === 'string' && nome === 'match') {
+        let re = args[0];
+        if (!(re instanceof RegExp)) {
+          const pattern = re === undefined ? '' : String(re);
+          assertRegexSicura(pattern);
+          re = new RegExp(pattern);
+        }
+        return eseguiRegexIsolata(target, 'match', [re], ctx && ctx.limitiRegex);
+      }
       const usaRegex = (target instanceof RegExp && (nome === 'test' || nome === 'exec'))
         || (typeof target === 'string' && args.some((arg) => arg instanceof RegExp));
-      if (usaRegex) return eseguiRegexIsolata(target, nome, args, ctx && ctx.limitiRegex);
+      if (usaRegex) {
+        const safeArgs = target instanceof RegExp && args.length > 0 && typeof args[0] !== 'string'
+          ? [testo(args[0]), ...args.slice(1)]
+          : args;
+        return eseguiRegexIsolata(target, nome, safeArgs, ctx && ctx.limitiRegex);
+      }
       return target[nome](...args);
     },
   };
@@ -1106,16 +1167,28 @@ function costruisciGlobali(ctx) {
     Date: oggetto('Date', { now: fn('now', () => Date.now()) }),
 
     JSON: oggetto('JSON', {
-      stringify: fn('stringify', (v, _r, spazi) => JSON.stringify(semplifica(v), null, spazi || 0)),
+      stringify: fn('stringify', (v, _r, spazi) => {
+        const out = JSON.stringify(semplifica(v), null, spazi || 0);
+        if (ctx && typeof ctx.contaMemoria === 'function' && typeof out === 'string') {
+          ctx.contaMemoria(out.length * 2, 'il risultato di JSON.stringify()');
+        }
+        return out;
+      }),
       parse: fn('parse', (v) => JSON.parse(String(v))),
     }),
 
     EJSON: oggetto('EJSON', {
       parse: fn('parse', (v, opts) => EJSON.parse(String(v), opts && typeof opts === 'object' ? { relaxed: opts.relaxed !== false } : { relaxed: true })),
-      stringify: fn('stringify', (v, opts) => EJSON.stringify(
-        EJSON.deserialize(aEjson(v), { relaxed: false }),
-        opts && typeof opts === 'object' ? { relaxed: opts.relaxed !== false } : { relaxed: true }
-      )),
+      stringify: fn('stringify', (v, opts) => {
+        const out = EJSON.stringify(
+          EJSON.deserialize(aEjson(v), { relaxed: false }),
+          opts && typeof opts === 'object' ? { relaxed: opts.relaxed !== false } : { relaxed: true }
+        );
+        if (ctx && typeof ctx.contaMemoria === 'function' && typeof out === 'string') {
+          ctx.contaMemoria(out.length * 2, 'il risultato di EJSON.stringify()');
+        }
+        return out;
+      }),
     }),
 
     Math: oggetto('Math', {
@@ -1161,11 +1234,21 @@ function bson(tipo, valore) {
  * dalle strategie. È il confine fra il mondo dell'interprete e quello del
  * driver: da qui in poi valgono le regole EJSON documentate in CLAUDE.md.
  */
-function aEjson(v) {
+const MAX_NODI_SERIALIZZAZIONE = 100000;
+
+function aEjson(v, stato = { nodi: 0, attivi: new Set() }) {
+  if (++stato.nodi > MAX_NODI_SERIALIZZAZIONE) {
+    throw errore('Valore troppo grande o altamente ramificato per la serializzazione EJSON.');
+  }
   if (v == null) return v;
   if (v instanceof Date) return { $date: v.toISOString() };
   if (v instanceof RegExp) return { $regularExpression: { pattern: v.source, options: v.flags } };
-  if (Array.isArray(v)) return v.map(aEjson);
+  if (Array.isArray(v)) {
+    if (stato.attivi.has(v)) throw errore('Riferimento circolare non consentito nella serializzazione EJSON.');
+    stato.attivi.add(v);
+    try { return v.map((el) => aEjson(el, stato)); }
+    finally { stato.attivi.delete(v); }
+  }
   if (typeof v === 'object') {
     if (v._bsontype) return EJSON.serialize(v, { relaxed: false });
     if (v[VALORE_BSON]) {
@@ -1181,7 +1264,10 @@ function aEjson(v) {
     if (v[OGGETTO_HOST] || v[FUNZIONE_SCRIPT] || v[FUNZIONE_NATIVA]) {
       throw errore('Un oggetto del database o una funzione non può essere usato come valore in una query');
     }
-    return Object.fromEntries(Object.keys(v).map(k => [k, aEjson(v[k])]));
+    if (stato.attivi.has(v)) throw errore('Riferimento circolare non consentito nella serializzazione EJSON.');
+    stato.attivi.add(v);
+    try { return Object.fromEntries(Object.keys(v).map(k => [k, aEjson(v[k], stato)])); }
+    finally { stato.attivi.delete(v); }
   }
   return v;
 }
@@ -1192,16 +1278,27 @@ function aEjsonStr(v) {
 }
 
 /** Rende un valore stampabile/serializzabile in JSON semplice. */
-function semplifica(v) {
+function semplifica(v, stato = { nodi: 0, attivi: new Set() }) {
+  if (++stato.nodi > MAX_NODI_SERIALIZZAZIONE) {
+    throw errore('Valore troppo grande o altamente ramificato per la serializzazione JSON.');
+  }
   if (v == null) return v;
   if (v instanceof Date) return v.toISOString();
-  if (Array.isArray(v)) return v.map(semplifica);
+  if (Array.isArray(v)) {
+    if (stato.attivi.has(v)) throw errore('Riferimento circolare non consentito nella serializzazione JSON.');
+    stato.attivi.add(v);
+    try { return v.map((el) => semplifica(el, stato)); }
+    finally { stato.attivi.delete(v); }
+  }
   if (typeof v === 'object') {
     if (v._bsontype) return EJSON.serialize(v, { relaxed: true });
     if (v[VALORE_BSON]) return String(v.valore);
     if (v[OGGETTO_HOST]) return `[${v.__nome}]`;
     if (v[FUNZIONE_SCRIPT] || v[FUNZIONE_NATIVA]) return '[Function]';
-    return Object.fromEntries(Object.keys(v).map(k => [k, semplifica(v[k])]));
+    if (stato.attivi.has(v)) throw errore('Riferimento circolare non consentito nella serializzazione JSON.');
+    stato.attivi.add(v);
+    try { return Object.fromEntries(Object.keys(v).map(k => [k, semplifica(v[k], stato)])); }
+    finally { stato.attivi.delete(v); }
   }
   return v;
 }

@@ -54,12 +54,27 @@ export { SOGLIA_CELLE, conviene };
 
 let worker = null;
 let workerRotto = false;   // creato ma inutilizzabile: non si riprova
+let timerInattivita = null;
+const WORKER_IDLE_MS = 60 * 1000;
 let prossimoId = 1;
 const inAttesa = new Map(); // id → { risolvi, rifiuta }
 
 // Diagnostica: quanti compiti sono finiti di là e quanti sono rimasti qui.
 // Serve al collaudo (e a chi si chiede se il Worker sta davvero lavorando).
 export const contatori = { locali: 0, delegati: 0, ricaduti: 0, riusati: 0 };
+
+function programmaSpegnimentoWorker() {
+  clearTimeout(timerInattivita);
+  timerInattivita = null;
+  if (!worker || inAttesa.size > 0) return;
+  timerInattivita = setTimeout(() => {
+    timerInattivita = null;
+    if (worker && inAttesa.size === 0) {
+      try { worker.terminate(); } catch { /* già terminato */ }
+      worker = null;
+    }
+  }, WORKER_IDLE_MS);
+}
 
 function creaWorker() {
   if (worker || workerRotto) return worker;
@@ -71,6 +86,7 @@ function creaWorker() {
       const attesa = inAttesa.get(id);
       if (!attesa) return;
       inAttesa.delete(id);
+      programmaSpegnimentoWorker();
       if (ok) { attesa.risolvi(risultato); return; }
       // Errore DEL CALCOLO, non del Worker: rifarlo qui fallirebbe allo stesso
       // modo, e nel frattempo bloccherebbe la finestra per il tempo di un
@@ -80,11 +96,15 @@ function creaWorker() {
       attesa.rifiuta(err);
     };
     worker.onerror = (e) => {
-      // Il Worker è morto (o non è mai partito): chi aspetta viene servito
-      // sul posto, e da qui in avanti si calcola tutto qui.
+      // Il Worker è morto (o non è mai partito): termina l'istanza per evitare
+      // di trattenere il thread/isolate in RAM, e da qui in avanti si calcola qui.
       if (e && typeof e.preventDefault === 'function') e.preventDefault();
+      clearTimeout(timerInattivita);
+      timerInattivita = null;
+      const morto = worker;
       workerRotto = true;
       worker = null;
+      try { morto?.terminate(); } catch { /* già terminato */ }
       const pendenti = [...inAttesa.values()];
       inAttesa.clear();
       for (const p of pendenti) p.rifiuta(new Error('worker non disponibile'));

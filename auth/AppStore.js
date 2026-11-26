@@ -406,9 +406,12 @@ class AppStore {
       .toArray();
   }
 
-  async createApiKey({ ownerId, subjectId, label, connScope }) {
+  async createApiKey({ ownerId, subjectId, label, connScope, onlySubUser = false }) {
     const subject = await this.col('users').findOne({ _id: String(subjectId), ownerId: String(ownerId) });
     if (!subject) throw new Error('Utente non trovato in questo account.');
+    if (onlySubUser && subject.type !== 'subuser') {
+      throw new Error('Permesso negato: solo l’owner può creare API key per l’account owner.');
+    }
     const { raw, prefix } = newApiKey();
     const doc = {
       _id: crypto.randomUUID(),
@@ -429,11 +432,18 @@ class AppStore {
     return { ...safe, key: raw };
   }
 
-  async revokeApiKey(ownerId, keyId) {
-    const res = await this.col('api_keys').updateOne(
+  async revokeApiKey(ownerId, keyId, { onlySubUser = false } = {}) {
+    const existing = await this.col('api_keys').findOne({ _id: String(keyId), ownerId: String(ownerId) });
+    if (!existing) throw new Error('API key non trovata.');
+    if (onlySubUser) {
+      const subject = await this.findUserById(existing.subjectId);
+      if (!subject || subject.type !== 'subuser') {
+        throw new Error('Permesso negato: solo l’owner può revocare le proprie API key.');
+      }
+    }
+    await this.col('api_keys').updateOne(
       { _id: String(keyId), ownerId: String(ownerId) }, { $set: { revokedAt: new Date() } },
     );
-    if (!res.matchedCount) throw new Error('API key non trovata.');
     return { revoked: 1 };
   }
 

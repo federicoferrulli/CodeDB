@@ -13,11 +13,17 @@ module.exports = (async () => {
       pgType: { kind: 'array', delimiter: ',', element: { kind: 'scalar', name: 'numeric', oid: 1700 } } },
     { name: 'importo', type: 'numeric', declaredType: 'numeric(30,6)', pgType: { kind: 'scalar', name: 'numeric' } },
   ], geo: new Map(), geoNativo: new Map() });
-  strategy.pool = { query: async sql => {
+  const mockQuery = async q => {
+    const sql = typeof q === 'string' ? q : q.text;
+    if (/^(?:BEGIN|ROLLBACK|COMMIT|SET LOCAL)\b/i.test(sql)) return { rows: [], fields: [] };
     assert.match(sql, /"valore"::text AS "valore"/, 'Il dominio array viene letto senza arrotondamenti');
     return { rows: [{ id: 1, valore: '{9007199254740993.123456}', importo: '123456789012345678.123456' }],
       fields: [{ name: 'id' }, { name: 'valore' }, { name: 'importo' }] };
-  } };
+  };
+  strategy.pool = {
+    query: mockQuery,
+    connect: async () => ({ query: mockQuery, release() {} }),
+  };
   const result = await strategy.collectionFind('app', 'righe', { deferCount: true });
   // La mutazione rimuove solo la classificazione nel payload: il catalogo e
   // il binder restano corretti, per provare proprio il confine server/editor.

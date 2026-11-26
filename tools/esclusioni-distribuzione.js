@@ -45,8 +45,28 @@ const ESCLUSIONI = [
   '!.git*',
   '!Dockerfile',
   '!docker-compose.yml',
+  '!public/logo.png',
   '!node_modules/cpu-features/**',
   '!node_modules/nan/**',
+
+  // File di sviluppo non-runtime dentro node_modules (source map, definizioni
+  // TypeScript, test, esempi e documentazione). Le licenze restano incluse.
+  '!node_modules/**/*.map',
+  '!node_modules/**/*.d.ts',
+  '!node_modules/**/*.d.mts',
+  '!node_modules/**/*.d.cts',
+  '!node_modules/**/@types/**',
+  '!node_modules/**/test/**',
+  '!node_modules/**/tests/**',
+  '!node_modules/**/__tests__/**',
+  '!node_modules/**/docs/**',
+  '!node_modules/**/example/**',
+  '!node_modules/**/examples/**',
+  '!node_modules/**/README*.md',
+  '!node_modules/**/readme*.md',
+  '!node_modules/**/CHANGELOG*.md',
+  '!node_modules/**/changelog*.md',
+  '!node_modules/**/HISTORY*.md',
 
   // SEGRETI. Ognuna di queste voci, se manca, pubblica qualcosa che non deve
   // uscire dalla macchina di chi costruisce il pacchetto.
@@ -78,7 +98,7 @@ const ESCLUSIONI = [
 
 // Le nuove cartelle e gli export locali non diventano automaticamente parte della release.
 const CARTELLE_RUNTIME = ['auth', 'backup', 'db', 'mcp', 'server', 'public', 'bin'];
-const FILE_RUNTIME = ['package.json', 'package-lock.json', 'server.js', 'electron-main.js', 'electron-aggiornamenti.js', 'electron-server-auth.js', 'electron-chiusura.js', 'LICENSE.md', 'EULA.md', 'MANLEVA.md'];
+const FILE_RUNTIME = ['package.json', 'server.js', 'electron-main.js', 'electron-aggiornamenti.js', 'electron-server-auth.js', 'electron-chiusura.js', 'LICENSE.md', 'EULA.md', 'MANLEVA.md'];
 const INCLUSIONI = [...FILE_RUNTIME, ...CARTELLE_RUNTIME.map(dir => `${dir}/**`)];
 
 /**
@@ -98,15 +118,15 @@ const SOLO_PACKAGER = [
 /** Da `!cartella/**` o `!file.ext` al regex equivalente sul percorso packager. */
 function aRegex(voce) {
   const glob = voce.replace(/^!/, '');
+  const converti = (s) => s
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*\/|\*\*|\*/g, (m) => (m === '**/' ? '(?:.*/)?' : m === '**' ? '.*' : '[^/]*'));
   if (glob.endsWith('/**')) {
-    const dir = glob.slice(0, -3).replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    const dir = converti(glob.slice(0, -3));
     return new RegExp(`^/${dir}($|/)`);
   }
-  const ricorsivo = glob.startsWith('**/');
-  const corpo = (ricorsivo ? glob.slice(3) : glob)
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*');
-  return new RegExp(`^/${ricorsivo ? '(?:.*/)?' : ''}${corpo}$`);
+  const corpo = converti(glob);
+  return new RegExp(`^/${corpo}$`);
 }
 
 function regexPackager() {

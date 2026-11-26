@@ -850,8 +850,10 @@ class Interprete {
       case 'Tpl': {
         let out = nodo.parti[0] || '';
         for (let i = 0; i < nodo.exprs.length; i++) {
-          out += testo(await this.valuta(nodo.exprs[i], scope));
-          out += nodo.parti[i + 1] || '';
+          const pezzo = testo(await this.valuta(nodo.exprs[i], scope));
+          const coda = nodo.parti[i + 1] || '';
+          this.contaMemoria((out.length + pezzo.length + coda.length) * 2, 'il template literal');
+          out += pezzo + coda;
         }
         return out;
       }
@@ -1025,7 +1027,14 @@ class Interprete {
       if (NOMI_VIETATI.has(chiave)) {
         throw errore(`Assegnamento a "${chiave}" non consentito`);
       }
-      if (Array.isArray(obj) && /^\d+$/.test(chiave)) obj[Number(chiave)] = valore;
+      if (Array.isArray(obj) && /^\d+$/.test(chiave)) {
+        const idx = Number(chiave);
+        if (idx > obj.length) {
+          if (idx > 1000000) throw errore('Indice array troppo grande: gli array sparsi non sono consentiti negli script.');
+          this.contaMemoria((idx - obj.length + 1) * 8, 'l’estensione dell’array');
+        }
+        obj[idx] = valore;
+      }
       else if (typeof obj === 'object') obj[chiave] = valore;
       else throw errore('Assegnamento non consentito su questo valore');
       return;

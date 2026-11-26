@@ -70,6 +70,10 @@ function apriModale() {
 function chiudiModale() {
   const overlay = $('#passphrase-overlay');
   if (overlay) overlay.classList.add('hidden');
+  for (const sel of ['#passphrase-current', '#passphrase-next', '#passphrase-confirm']) {
+    const el = $(sel);
+    if (el) el.value = '';
+  }
 }
 
 function invia(e) {

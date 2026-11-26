@@ -21,7 +21,7 @@
  */
 
 import { state } from './state.js';
-import { activeTab } from './tabs.js';
+import { activeTab, allaChiusura } from './tabs.js';
 import { $, emit, isSqlType, refreshLucideIcons } from './utils.js';
 import {
   suggerisci, applicaSuggerimento, contestoQuery, PAROLE_SQL_WHERE,
@@ -46,6 +46,7 @@ function linguaCorrente(campo, ctx) {
  * Cache dello schema
  * ========================================================================== */
 
+const MAX_CACHE_SCHEMI = 20;
 const cacheSchema = new Map();   // "tabId::db" → { tabelle: [...] }
 const inCorso = new Map();       // richieste già partite, per non duplicarle
 const inAscolto = new Set();     // callback da richiamare quando lo schema arriva
@@ -55,6 +56,22 @@ function chiaveSchema(tabId, db) {
 }
 
 const generazioniSchema = new Map();
+
+function salvaCacheSchema(chiave, valore) {
+  if (cacheSchema.has(chiave)) cacheSchema.delete(chiave);
+  cacheSchema.set(chiave, valore);
+  while (cacheSchema.size > MAX_CACHE_SCHEMI) {
+    const piuVecchia = cacheSchema.keys().next().value;
+    cacheSchema.delete(piuVecchia);
+  }
+}
+
+allaChiusura((tabId) => {
+  const prefisso = `${tabId || ''}::`;
+  for (const k of [...cacheSchema.keys()]) if (k.startsWith(prefisso)) cacheSchema.delete(k);
+  for (const k of [...inCorso.keys()]) if (k.startsWith(prefisso)) inCorso.delete(k);
+  for (const k of [...generazioniSchema.keys()]) if (k.startsWith(prefisso)) generazioniSchema.delete(k);
+});
 
 function generazioneSchema(chiave) {
   return generazioniSchema.get(chiave) || 0;
@@ -101,7 +118,7 @@ export function schemaCorrente() {
   emit('db:schema', { tabId, db })
     .then((res) => {
       if (generazione !== generazioneSchema(chiave)) return;
-      cacheSchema.set(chiave, schemaDaCollections(res && res.collections));
+      salvaCacheSchema(chiave, schemaDaCollections(res && res.collections));
       inAscolto.forEach((fn) => { try { fn(); } catch { /* un ascoltatore rotto non ferma gli altri */ } });
     })
     .catch(() => {

@@ -156,6 +156,11 @@
       "buildResources": "build"
     },
     "npmRebuild": false,
+    "compression": "maximum",
+    "electronLanguages": [
+      "it",
+      "en-US"
+    ],
     "beforePack": "./tools/verifica-mongosh-nativi.cjs",
     "publish": [
       {
@@ -167,7 +172,6 @@
     ],
     "files": [
       "package.json",
-      "package-lock.json",
       "server.js",
       "electron-main.js",
       "electron-aggiornamenti.js",
@@ -200,8 +204,25 @@
       "!.git*",
       "!Dockerfile",
       "!docker-compose.yml",
+      "!public/logo.png",
       "!node_modules/cpu-features/**",
       "!node_modules/nan/**",
+      "!node_modules/**/*.map",
+      "!node_modules/**/*.d.ts",
+      "!node_modules/**/*.d.mts",
+      "!node_modules/**/*.d.cts",
+      "!node_modules/**/@types/**",
+      "!node_modules/**/test/**",
+      "!node_modules/**/tests/**",
+      "!node_modules/**/__tests__/**",
+      "!node_modules/**/docs/**",
+      "!node_modules/**/example/**",
+      "!node_modules/**/examples/**",
+      "!node_modules/**/README*.md",
+      "!node_modules/**/readme*.md",
+      "!node_modules/**/CHANGELOG*.md",
+      "!node_modules/**/changelog*.md",
+      "!node_modules/**/HISTORY*.md",
       "!.env",
       "!.env.*",
       "!.env.example",

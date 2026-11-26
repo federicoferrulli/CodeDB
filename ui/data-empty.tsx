@@ -2,6 +2,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { useId } from 'react';
 import { ArrowRight, Search, Terminal, Table2, CircleAlert, Database } from 'lucide-react';
+// Incorporata come data URL nel bundle: viene mostrata esattamente quando il
+// server CodeDB non risponde e non può quindi servire asset statici via HTTP.
 import connectionLostArt from '../public/images/collegamento-interrotto.webp';
 import { EmptyState } from './components/arc/empty-state/empty-state';
 import { Button } from './components/arc/button/button';

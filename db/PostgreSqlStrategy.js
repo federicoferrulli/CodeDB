@@ -536,23 +536,22 @@ class PostgreSqlStrategy extends DbStrategy {
     // via pg_cancel_backend, sola lettura) e impostiamo statement_timeout con
     // SET LOCAL in transazione, così una find lenta degrada con errore invece di
     // occupare la connessione all'infinito.
+    // Eseguiamo sempre su una connessione dedicata in transazione READ ONLY con
+    // protocollo esteso (singolo statement garantito lato wire protocol): evita
+    // multi-statement su filtri grezzi e rispetta timeout/cancellazione anche
+    // quando CODEDB_QUERY_TIMEOUT_MS=0 e non c'è opHandle.
     let res;
-    if (opHandle || ms > 0) {
-      const client = await pool.connect();
-      try {
-        if (opHandle && client.processID) opHandle.processID = client.processID;
-        await client.query('BEGIN READ ONLY');
-        if (ms > 0) await client.query(`SET LOCAL statement_timeout = ${ms}`);
-        res = await client.query(sql, params);
-        await client.query('COMMIT');
-      } catch (err) {
-        try { await client.query('ROLLBACK'); } catch (_) {}
-        throw err;
-      } finally {
-        client.release();
-      }
-    } else {
-      res = await pool.query(sql, params);
+    const client = await pool.connect();
+    let transactionOpen = false;
+    try {
+      if (opHandle && client.processID) opHandle.processID = client.processID;
+      await client.query('BEGIN READ ONLY');
+      transactionOpen = true;
+      if (ms > 0) await client.query(`SET LOCAL statement_timeout = ${ms}`);
+      res = await client.query({ text: sql, values: params, queryMode: 'extended' });
+    } finally {
+      if (transactionOpen) await client.query('ROLLBACK').catch(() => {});
+      client.release();
     }
     // Keyset "indietro": la query gira in ordine pk DESC, qui si riordina ASC.
     let rows = res.rows;
@@ -607,17 +606,22 @@ class PostgreSqlStrategy extends DbStrategy {
     const pool = this.requirePool();
     const ms = DbStrategy.countTimeoutMs(this.env);
     const client = await pool.connect();
+    let transactionOpen = false;
     try {
-      await client.query('BEGIN');
+      await client.query('BEGIN READ ONLY');
+      transactionOpen = true;
       if (ms > 0) await client.query(`SET LOCAL statement_timeout = ${ms}`);
-      const r = await client.query(`SELECT COUNT(*) AS total FROM ${table}${whereSql}`, whereParams);
-      await client.query('COMMIT');
+      const r = await client.query({
+        text: `SELECT COUNT(*) AS total FROM ${table}${whereSql}`,
+        values: whereParams,
+        queryMode: 'extended',
+      });
       return { total: Number(r.rows[0]?.total) || 0, timedOut: false };
     } catch (err) {
-      await client.query('ROLLBACK').catch(() => {});
       if (err && err.code === '57014') return { total: null, timedOut: true };
       throw err;
     } finally {
+      if (transactionOpen) await client.query('ROLLBACK').catch(() => {});
       client.release();
     }
   }
@@ -817,6 +821,10 @@ class PostgreSqlStrategy extends DbStrategy {
       if (splitStatements(sql, { dbms: 'postgresql' }).length !== 1) {
         throw new Error('Il piano di esecuzione accetta una sola istruzione SQL.');
       }
+      const normExplain = require('./sqlText').stripSqlNoise(sql, { dbms: 'postgresql' }).trim();
+      if (/^(?:EXPLAIN|ANALYZE)\b/i.test(normExplain)) {
+        throw new Error('Inserisci la query da analizzare senza prefisso EXPLAIN o ANALYZE.');
+      }
     } else {
       // Le stesse colonne che vede `collectionFind`: un piano calcolato su un
       // ORDER BY diverso da quello della query vera spiegherebbe un'altra
@@ -838,7 +846,11 @@ class PostgreSqlStrategy extends DbStrategy {
       transactionOpen = true;
       await client.query('SET LOCAL statement_timeout = 30000');
       await client.query(`SET LOCAL search_path TO ${qid(schemaOf(db))}`);
-      const res = await client.query(`EXPLAIN (FORMAT JSON) ${sql}`, parametriPiano);
+      const res = await client.query({
+        text: `EXPLAIN (FORMAT JSON) ${sql}`,
+        values: parametriPiano,
+        queryMode: 'extended',
+      });
       const plan = res.rows[0]['QUERY PLAN'] || res.rows[0][Object.keys(res.rows[0])[0]];
       return { format: 'json', plan: Array.isArray(plan) ? plan[0] : plan, query: sql };
     } finally {
@@ -958,7 +970,11 @@ class PostgreSqlStrategy extends DbStrategy {
     const { columns: colonne } = await this.tableColumnsInfo(db, coll);
     const ricercaGlobale = await this._preparaRicercaGlobale(db, coll, payload, colonne);
     const { table, whereSql, whereParams } = this.buildSelect(db, coll, payload, { colonne, ricercaGlobale });
-    const res = await pool.query(`DELETE FROM ${table}${whereSql}`, whereParams);
+    const res = await pool.query({
+      text: `DELETE FROM ${table}${whereSql}`,
+      values: whereParams,
+      queryMode: 'extended',
+    });
     return { deleted: res.rowCount };
   }
 

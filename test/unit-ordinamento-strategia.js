@@ -54,15 +54,24 @@ async function prova(nome, fn) {
 function pooleFinto(strategia, risposta) {
   const viste = [];
   const esegui = async (sql, params) => {
-    const testo = typeof sql === 'string' ? sql : sql.sql;
-    viste.push({ sql: testo, params });
+    const testo = typeof sql === 'string' ? sql : (sql.sql || sql.text || '');
+    viste.push({ sql: testo, params: params || (sql && sql.values) });
     // Il conteggio destruttura `[[{ total }]]`: senza una riga il find morirebbe
     // su un errore che non c'entra con cio' che si sta provando.
     if (/COUNT\(\*\)/i.test(testo)) return [{ total: 0 }];
     return risposta(testo, params) || [];
   };
   if (strategia.type === 'mysql') {
-    strategia.pool = { query: async (sql, params) => [await esegui(sql, params), []] };
+    const conn = {
+      query: async (sql, params) => [await esegui(sql, params), []],
+      release: () => {},
+      destroy: () => {},
+      threadId: 1,
+    };
+    strategia.pool = {
+      query: async (sql, params) => [await esegui(sql, params), []],
+      getConnection: async () => conn,
+    };
   } else {
     const client = {
       query: async (sql, params) => ({ rows: await esegui(sql, params), fields: [] }),

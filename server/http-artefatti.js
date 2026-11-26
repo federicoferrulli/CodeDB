@@ -73,7 +73,10 @@ function creaModuloArtefatti({
   function ticketDa(req) {
     const header = String(req.get('authorization') || '');
     const m = /^Bearer (.+)$/.exec(header.trim());
-    const ticket = m ? m[1].trim() : String((req.query && req.query.ticket) || '').trim();
+    // La query string è ammessa solo per GET/HEAD (download browser tramite link);
+    // sulle POST di caricamento e finalizzazione il ticket deve viaggiare nell'header Authorization.
+    const ammetteQuery = req.method === 'GET' || req.method === 'HEAD';
+    const ticket = m ? m[1].trim() : (ammetteQuery ? String((req.query && req.query.ticket) || '').trim() : '');
     if (!ticket) return { ok: false, motivo: 'Ticket mancante.' };
     return verificaTicket({ segreto, ticket, adesso: now() });
   }

@@ -24,10 +24,18 @@
 const DbStrategy = require('./DbStrategy');
 // Il filtro come DATO, accanto a quello testuale: vedi db/filtro.js.
 const { normalizzaFiltro, rendiSql } = require('./filtro');
+const { splitStatements } = require('./sqlText');
 // I valori del filtro arrivano in EJSON come tutto il resto del protocollo: qui
 // tornano tipi nativi, altrimenti una data verrebbe confrontata come l'oggetto
 // `{ $date: … }` e non troverebbe mai nulla (vedi db/sqlValori.js).
 const { parseClientValue, deserializeClientObject, toSqlValue } = require('./sqlValori');
+
+function assertClausolaSingola(frammento, prefisso, etichetta) {
+  if (!frammento) return;
+  if (splitStatements(`${prefisso}${frammento}`).length !== 1) {
+    throw new Error(`${etichetta} SQL non valido: non sono consentite più istruzioni separate da ";".`);
+  }
+}
 
 // _id virtuale per il client: la chiave primaria come oggetto
 // { colonna: valore }. Senza chiave primaria si usa l'intera riga come
@@ -119,7 +127,8 @@ function componiOrdinamento(text, qid, opzioni = {}) {
     });
     return parts.length ? ` ORDER BY ${parts.join(', ')}` : '';
   }
-  // SQL libero: passa invariato, suffisso compreso.
+  // SQL libero: passa invariato, suffisso compreso, ma mai multi-statement.
+  assertClausolaSingola(t, 'SELECT 1 ORDER BY ', 'Ordinamento');
   return ` ORDER BY ${t}`;
 }
 
@@ -163,7 +172,10 @@ function componiSelezione(db, coll, payload, {
   // nella paginazione a chiave). Si toglie solo se seguito da una condizione vera,
   // così un `WHERE` isolato resta comunque un errore SQL.
   const where = String(payload.filter || '').trim().replace(/^WHERE(?=\s+\S)\s+/i, '');
-  if (where) pezziWhere.push(where);
+  if (where) {
+    assertClausolaSingola(where, 'SELECT 1 WHERE ', 'Filtro');
+    pezziWhere.push(where);
+  }
 
   const strutturato = normalizzaFiltro(payload.filtro);
   if (strutturato) {

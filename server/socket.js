@@ -488,8 +488,12 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
     for (const registra of registratori) registra(ctx, lifecycle);
     socket.on('disconnect', motivo => {
       if (!inChiusura && !revocata && ctx.chiave && sessions.size && (ctx.sostituito || CADUTA_TRASPORTO.has(motivo))) {
-        ctx.scadenza = now() + ATTESA_RIPRESA_MS;
-        ctx.timerRipresa = setTimeout(() => terminaContesto(ctx), ATTESA_RIPRESA_MS);
+        const attesaMs = Math.max(parseInt(config.env.CODEDB_RECOVERY_WAIT_MS, 10) || ATTESA_RIPRESA_MS, 1000);
+        // Libera gli snapshot dello schema durante la sospensione: verranno
+        // rigenerati su richiesta se il client si riconnette.
+        for (const sess of sessions.values()) invalidaSnapshot(sess);
+        ctx.scadenza = now() + attesaMs;
+        ctx.timerRipresa = setTimeout(() => terminaContesto(ctx), attesaMs);
         ctx.timerRipresa.unref();
       } else {
         terminaContesto(ctx);

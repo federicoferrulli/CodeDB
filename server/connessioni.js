@@ -15,6 +15,11 @@ function createModule({ vault, dependencies, errori, config }) {
   // (non vengono mai rimandati al browser, quindi il client non può reinviarli).
   function resolveEffectiveCfg(cfg, ownerId) {
     let effective = cfg;
+    const savedName = String((cfg && cfg.saved) || '').trim();
+    const keepFrom = String((cfg && cfg.keepPasswordFrom) || '').trim();
+    if (savedName && keepFrom && savedName !== keepFrom) {
+      throw new Error('Non è consentito combinare "saved" e "keepPasswordFrom" di connessioni diverse.');
+    }
     // Un solo caricamento del file: sia "saved" che "keepPasswordFrom" leggono
     // dalla stessa mappa in memoria, evitando due letture/decifrature ridondanti.
     const needsLookup = cfg.saved || cfg.keepPasswordFrom;

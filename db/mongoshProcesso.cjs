@@ -12,7 +12,7 @@ const { Writable } = require('node:stream');
 const { NodeDriverServiceProvider } = require('@mongosh/service-provider-node-driver');
 const { ShellInstanceState, getShellApiType, toShellResult } = require('@mongosh/shell-api');
 const { ShellEvaluator } = require('@mongosh/shell-evaluator');
-let state, evaluator, context, bson, limiteBytes, stampe = [], dbRichiesto, occupato = false, outputSuperato = false;
+let state, evaluator, context, bson, limiteBytes, stampe = [], stampeBytes = 0, dbRichiesto, occupato = false, outputSuperato = false;
 const flussi = new Map(), domande = new Map();
 const invia = data => new Promise(resolve => {
   if (!process.connected) return resolve();
@@ -57,8 +57,9 @@ async function avvia(options) {
   state.isInteractive = true;
   const output = new Writable({write(chunk, encoding, done) {
     const text = chunk.toString().replace(/\n$/, '');
-    if (stampe.length >= 1000 || Buffer.byteLength(stampe.join('\n')) + chunk.length > limiteBytes) outputSuperato = true;
-    else { stampe.push(text); void invia({event:'output',lines:[text]}); }
+    const bytes = Buffer.byteLength(text) + (stampe.length ? 1 : 0);
+    if (stampe.length >= 1000 || stampeBytes + bytes > limiteBytes) outputSuperato = true;
+    else { stampe.push(text); stampeBytes += bytes; void invia({event:'output',lines:[text]}); }
     done();
   }});
   context = vm.createContext({ process, Buffer, URL, URLSearchParams, TextEncoder, TextDecoder,
@@ -83,11 +84,13 @@ async function avvia(options) {
     resetConfig: key => { config.delete(key); return 'success'; },
     onPrint: values => {
       const line = values.map(v => typeof v.printable === 'string' ? v.printable : inspect(v.printable, { depth: 6, colors: false })).join(' ');
-      if (stampe.length >= 1000 || Buffer.byteLength(stampe.join('\n') + line) > limiteBytes) throw new Error('Output mongosh oltre il limite.');
+      const bytes = Buffer.byteLength(line) + (stampe.length ? 1 : 0);
+      if (stampe.length >= 1000 || stampeBytes + bytes > limiteBytes) throw new Error('Output mongosh oltre il limite.');
       stampe.push(line);
+      stampeBytes += bytes;
       void invia({event:'output',lines:[line]});
     },
-    onClearCommand: () => { stampe = []; },
+    onClearCommand: () => { stampe = []; stampeBytes = 0; },
     onExit: code => { throw Object.assign(new Error('Chiusura mongosh richiesta.'), {mongoshExitCode: Number(code) || 0}); },
     onPrompt: (question, type) => new Promise(resolve => {
       const id = randomUUID(); domande.set(id, resolve); void invia({ event: 'prompt', id, question, type });
@@ -127,6 +130,7 @@ async function osserva(cursor) {
 }
 async function esegui({ code, db }) {
   stampe = [];
+  stampeBytes = 0;
   outputSuperato = false;
   await invia({event:'evaluation',status:'running'});
   if (db && db !== dbRichiesto) { state.setDbFunc(state.currentDb.getSiblingDB(db)); dbRichiesto = db; }

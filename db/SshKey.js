@@ -23,9 +23,12 @@ function decodificaChiave(value) {
   return data;
 }
 
-async function leggiChiave(cfg) {
+async function leggiChiave(cfg, options = {}) {
   const mode = cfg.sshAuth || (cfg.sshPrivateKey ? 'upload' : 'path');
   if (mode !== 'path') return decodificaChiave(cfg.sshPrivateKey);
+  if (options.allowHostAgent === false) {
+    throw errore('Le chiavi SSH tramite percorso sul server CodeDB sono riservate all’amministratore dell’installazione. Carica una chiave privata dal tuo dispositivo.', 'SSH_KEY_PATH_FORBIDDEN');
+  }
   let filename = String(cfg.sshKeyFile || '').trim().replace(/^(["'])(.*)\1$/, '$2');
   if (/^~(?:[/\\]|$)/.test(filename)) filename = path.join(os.homedir(), filename.slice(2));
   let handle;
@@ -73,7 +76,7 @@ async function preparaChiaveSsh(cfg, options = {}) {
   for (const field of ['sshPassphrase', 'sshSecurityKeyPin']) {
     if (cfg[field] != null && (typeof cfg[field] !== 'string' || Buffer.byteLength(cfg[field]) > 4096)) throw errore('La passphrase o il PIN SSH non sono validi o superano 4096 byte.');
   }
-  const data = await leggiChiave(cfg);
+  const data = await leggiChiave(cfg, options);
   const { identificaChiaveAgente, preparaAgente } = require('./SshAgent');
   const identity = identificaChiaveAgente(data);
   const requireAgentAccess = () => {

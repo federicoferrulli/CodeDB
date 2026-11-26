@@ -9,6 +9,7 @@ const DEST = path.join(__dirname, 'build/node-project');
 const NODE_SHA = 'bd7321eaa1a7602fbe0bb87302df2d79d87835cf4363fbdd17c350dbb485c2af';
 
 function fileApplicazione(name) {
+  if (name === 'public/logo.png') return false;
   return /^(auth|backup|db|mcp|public|server)\//.test(name)
     || /^(package(-lock)?\.json|electron-server-auth\.js|LICENSE(\.md)?|MANLEVA\.md|EULA\.md)$/.test(name);
 }
@@ -54,6 +55,34 @@ function estraiZip(archive, directory) {
   execFileSync(jar, ['xf', path.resolve(archive)], { cwd: directory, stdio: 'inherit' });
 }
 
+function potaNodeModules(dir) {
+  const cartelleSuperflue = new Set(['@types', 'test', 'tests', '__tests__', 'docs', 'example', 'examples']);
+  const fileSuperfluo = /(?:\.map|\.d\.[cm]?ts|(?:^|[\\/])(?:readme|changelog|history)[^\\/]*\.md)$/i;
+  let rimossi = 0;
+  // electron-updater serve solo al desktop Electron, mai al runtime Android.
+  fs.rmSync(path.join(dir, 'electron-updater'), { recursive: true, force: true });
+  const visita = (corrente) => {
+    let voci;
+    try { voci = fs.readdirSync(corrente, { withFileTypes: true }); } catch { return; }
+    for (const voce of voci) {
+      const full = path.join(corrente, voce.name);
+      if (voce.isDirectory()) {
+        if (cartelleSuperflue.has(voce.name.toLowerCase())) {
+          fs.rmSync(full, { recursive: true, force: true });
+          rimossi++;
+        } else {
+          visita(full);
+        }
+      } else if (voce.isFile() && fileSuperfluo.test(full)) {
+        fs.rmSync(full, { force: true });
+        rimossi++;
+      }
+    }
+  };
+  visita(dir);
+  return rimossi;
+}
+
 async function prepara() {
   fs.mkdirSync(path.join(__dirname, '.cache'), { recursive: true });
   const archive = path.join(__dirname, '.cache/node.zip');
@@ -88,6 +117,9 @@ async function prepara() {
   } else {
     execFileSync('npm', ['ci', '--omit=dev', '--omit=optional', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: DEST, stdio: 'inherit' });
   }
+  fs.rmSync(path.join(DEST, 'package-lock.json'), { force: true });
+  const potati = potaNodeModules(path.join(DEST, 'node_modules'));
+  console.log(`Pulizia dipendenze Android: ${potati} voci non-runtime rimosse.`);
   const unicode = require('./unicode.cjs').preparaUnicode(DEST);
   console.log(`Compatibilità Unicode Android: ${unicode} file trasformati senza dipendenza da ICU.`);
   console.log('Runtime Android preparato in ' + DEST);

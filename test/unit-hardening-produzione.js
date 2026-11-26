@@ -153,7 +153,10 @@ module.exports = (async () => {
       assert.equal(probe.headers['x-powered-by'], undefined, 'X-Powered-By deve essere disabilitato');
       assert.equal(probe.headers['x-content-type-options'], 'nosniff');
       assert.equal(probe.headers['x-frame-options'], 'SAMEORIGIN');
-      assert.equal(probe.headers['content-security-policy'], "frame-ancestors 'self'");
+      const csp = String(probe.headers['content-security-policy'] || '');
+      assert.ok(csp.includes("frame-ancestors 'self'"), 'CSP deve vincolare frame-ancestors a self');
+      assert.ok(csp.includes("script-src 'self'"), 'CSP deve vincolare script-src a self');
+      assert.ok(csp.includes("object-src 'none'"), 'CSP deve bloccare object-src');
       assert.equal(probe.headers['referrer-policy'], 'no-referrer');
 
       const loginCross = await httpRequest({

@@ -182,11 +182,13 @@ function createModule({ config, identita, vault }) {
     lifecycle.amministrativo('apikeys:create', async ({ subjectId, label, connScope }, cb) => {
       const store = requireRbac();
       identita.assertTenantAdmin(socketContext.principal);
+      const onlySubUser = !socketContext.principal.root && !socketContext.principal.owner;
       const created = await store.createApiKey({
         ownerId: socketContext.principal.ownerId,
         subjectId: subjectId || socketContext.principal.id,
         label,
         connScope,
+        onlySubUser,
       });
       cb({ ok: true, key: created.key, apiKey: { id: created._id, subjectId: created.subjectId, label: created.label, prefix: created.prefix, connScope: created.connScope } });
     });
@@ -194,7 +196,8 @@ function createModule({ config, identita, vault }) {
     lifecycle.amministrativo('apikeys:revoke', async ({ id }, cb) => {
       const store = requireRbac();
       identita.assertTenantAdmin(socketContext.principal);
-      await store.revokeApiKey(socketContext.principal.ownerId, id);
+      const onlySubUser = !socketContext.principal.root && !socketContext.principal.owner;
+      await store.revokeApiKey(socketContext.principal.ownerId, id, { onlySubUser });
       cb({ ok: true });
     });
   }

@@ -12,6 +12,7 @@
  * ------------------------------------------------------------------------- */
 
 const { splitStatementsDetailed } = require('./sqlText');
+const { isFileIoSql } = require('../auth/capabilities');
 const { validaIdentity, chiaveIdentita } = require('../backup/lib/identity');
 
 const FORMATO_EXPORT = 'codedb-database';
@@ -37,7 +38,7 @@ function copiaJson(value, cosa) {
 }
 
 /** Token minimi necessari a leggere la testa di una DDL senza usare regex. */
-function tokenizza(sql) {
+function tokenizza(sql, { dbms = '' } = {}) {
   const testo = String(sql == null ? '' : sql);
   const tokens = [];
   let i = 0;
@@ -52,14 +53,21 @@ function tokenizza(sql) {
       while (i < testo.length && testo[i] !== '\n') i++;
       continue;
     }
-    if (c === '#') {
+    if (c === '#' && dbms !== 'postgresql' && next !== '>' && next !== '-') {
       while (i < testo.length && testo[i] !== '\n') i++;
       continue;
     }
     if (c === '/' && next === '*') {
+      if (testo[i + 2] === '!' || /^M!/i.test(testo.slice(i + 2, i + 4))) {
+        errore('I commenti SQL eseguibili /*! … */ e /*M! … */ non sono consentiti negli artefatti', sql);
+      }
       i += 2;
-      while (i < testo.length && !(testo[i] === '*' && testo[i + 1] === '/')) i++;
-      i = Math.min(testo.length, i + 2);
+      let depth = 1;
+      while (i < testo.length && depth > 0) {
+        if (dbms === 'postgresql' && testo[i] === '/' && testo[i + 1] === '*') { depth++; i += 2; }
+        else if (testo[i] === '*' && testo[i + 1] === '/') { depth--; i += 2; }
+        else i++;
+      }
       continue;
     }
     if (c === '$') {
@@ -67,7 +75,8 @@ function tokenizza(sql) {
       if (match) {
         const tag = match[0];
         const fine = testo.indexOf(tag, i + tag.length);
-        tokens.push({ type: 'string', value: '' });
+        const body = fine < 0 ? testo.slice(i + tag.length) : testo.slice(i + tag.length, fine);
+        tokens.push({ type: 'string', value: body, dollarQuoted: true });
         i = fine < 0 ? testo.length : fine + tag.length;
         continue;
       }
@@ -76,6 +85,11 @@ function tokenizza(sql) {
       let value = '';
       i++;
       while (i < testo.length) {
+        if (dbms === 'mysql' && testo[i] === '\\' && i + 1 < testo.length) {
+          value += testo[i + 1];
+          i += 2;
+          continue;
+        }
         if (testo[i] === "'") {
           if (testo[i + 1] === "'") { value += "'"; i += 2; continue; }
           i++;
@@ -160,8 +174,8 @@ function indiceKeyword(tokens, value, from = 0) {
 }
 
 /** Estrae tipo, oggetto creato e tabella realmente modificata dalla DDL. */
-function estraiBersaglio(sql) {
-  const tokens = tokenizza(sql);
+function estraiBersaglio(sql, dbms = '') {
+  const tokens = tokenizza(sql, { dbms });
   if (!tokens.length) errore('Istruzione DDL vuota', sql);
   let i = 0;
   const first = tokens[i] && tokens[i].value.toUpperCase();
@@ -204,15 +218,22 @@ function estraiBersaglio(sql) {
 }
 
 function validaRiferimentiCrossDatabase(target, database, dbType, sql) {
-  const keywords = new Set(['FROM', 'JOIN', 'REFERENCES', 'UPDATE', 'INTO', 'LIKE']);
+  const { isFileIoSql } = require('../auth/capabilities');
+  if (isFileIoSql(sql)) {
+    errore('La DDL contiene operazioni di I/O sul filesystem del server, non ammesse negli artefatti', sql);
+  }
+  const keywords = new Set(['FROM', 'JOIN', 'REFERENCES', 'UPDATE', 'INTO', 'LIKE', 'TO', 'TABLE']);
   for (let i = 0; i < target.tokens.length; i++) {
+    if (target.tokens[i].dollarQuoted && isFileIoSql(target.tokens[i].value)) {
+      errore('Il corpo della routine contiene operazioni di I/O sul filesystem del server, non ammesse negli artefatti', sql);
+    }
     if (keyword(target.tokens[i], 'PARTITION') && keyword(target.tokens[i + 1], 'OF')) {
       validaQualificatore(leggiNome(target.tokens, i + 2), database, dbType, sql);
     }
     if (keyword(target.tokens[i], 'SEQUENCE') && keyword(target.tokens[i + 1], 'NAME')) {
       validaQualificatore(leggiNome(target.tokens, i + 2), database, dbType, sql);
     }
-    if (!target.tokens[i] || !keywords.has(target.tokens[i].value.toUpperCase())) continue;
+    if (!target.tokens[i] || target.tokens[i].quoted || !keywords.has(target.tokens[i].value.toUpperCase())) continue;
     const nome = leggiNome(target.tokens, salta(target.tokens, i + 1, new Set(['ONLY'])));
     if (nome) validaQualificatore(nome, database, dbType, sql);
   }
@@ -234,13 +255,13 @@ function riferimentiChiaveEsterna(sql) {
 
 function validaDdlCollezione(sql, { dbType, database, collection, forme = null, allowUnsafeSchema = false } = {}) {
   const testo = String(sql == null ? '' : sql);
-  const statements = splitStatementsDetailed(testo, { backslashEscape: tipoDb(dbType) === 'mysql' });
+  const motore = tipoDb(dbType);
+  const statements = splitStatementsDetailed(testo, { backslashEscape: motore === 'mysql', dbms: motore });
   if (!statements.length) throw new Error(`Il file di schema di "${collection}" e' vuoto.`);
   if (allowUnsafeSchema) return testo;
-  const motore = tipoDb(dbType);
   const allowed = forme || new Set(['create-table', 'create-index', 'alter-table']);
   for (const statement of statements) {
-    const target = estraiBersaglio(statement.sql);
+    const target = estraiBersaglio(statement.sql, motore);
     if (!allowed.has(target.kind)) errore(`Forma ${target.kind} non ammessa per la tabella "${collection}"`, statement.sql);
     validaQualificatore(target.object, database, motore, statement.sql);
     validaQualificatore(target.table, database, motore, statement.sql);
@@ -248,10 +269,23 @@ function validaDdlCollezione(sql, { dbType, database, collection, forme = null, 
       errore(`La DDL riguarda un'altra tabella, "${target.table.name}", non "${collection}"`, statement.sql);
     }
     if (target.kind === 'alter-table') {
-      const action = target.tokens[target.table.next];
-      if (!keyword(action, 'ADD')) {
-        errore('Sono ammesse soltanto ALTER TABLE additive (ADD)', statement.sql);
+      // Verifica OGNI clausola separata da virgola a livello top-level: tutte devono essere ADD.
+      let depth = 0;
+      let attesaAzione = true;
+      for (let k = target.table.next; k < target.tokens.length; k++) {
+        const tk = target.tokens[k];
+        if (attesaAzione) {
+          if (!keyword(tk, 'ADD')) {
+            errore('Sono ammesse soltanto ALTER TABLE additive (ADD)', statement.sql);
+          }
+          attesaAzione = false;
+          continue;
+        }
+        if (tk.type === 'symbol' && tk.value === '(') depth++;
+        else if (tk.type === 'symbol' && tk.value === ')') depth = Math.max(0, depth - 1);
+        else if (depth === 0 && tk.type === 'symbol' && tk.value === ',') attesaAzione = true;
       }
+      if (attesaAzione) errore('Sono ammesse soltanto ALTER TABLE additive (ADD)', statement.sql);
     }
     validaRiferimentiCrossDatabase(target, database, motore, statement.sql);
   }
@@ -267,10 +301,10 @@ function validaOggetto(sql, expected, { dbType, database, kind, table = null } =
   // senza corpi procedurali; routine/trigger/eventi sono protetti anche da
   // `multipleStatements: false` nel driver.
   if (motore === 'postgresql' || ['view', 'sequence'].includes(kind)) {
-    const statements = splitStatementsDetailed(sql, { backslashEscape: motore === 'mysql' });
+    const statements = splitStatementsDetailed(sql, { backslashEscape: motore === 'mysql', dbms: motore });
     if (statements.length !== 1) errore(`La definizione di ${kind} contiene piu' istruzioni`, sql);
   }
-  const target = estraiBersaglio(sql);
+  const target = estraiBersaglio(sql, motore);
   const kindExpected = kind === 'routine' ? new Set(['create-function', 'create-procedure']) : new Set([`create-${kind}`]);
   if (!kindExpected.has(target.kind)) errore(`Forma ${target.kind} non ammessa per ${kind} "${expected}"`, sql);
   validaQualificatore(target.object, database, motore, sql);
@@ -284,6 +318,12 @@ function validaOggetto(sql, expected, { dbType, database, kind, table = null } =
     }
   }
   validaRiferimentiCrossDatabase(target, database, motore, sql);
+  if (isFileIoSql(sql)) errore('Operazione di I/O sul filesystem non consentita nella definizione dell\'oggetto', sql);
+  for (const tk of target.tokens) {
+    if (tk.dollarQuoted && isFileIoSql(tk.value)) {
+      errore('Operazione di I/O sul filesystem non consentita nel corpo della routine/oggetto', sql);
+    }
+  }
   return String(sql).trim();
 }
 

@@ -156,6 +156,7 @@ export function initLive() {
       tab.state.schemaDirty = true;
       return;
     }
+    if (window.frameElement?.codedbPanel) return;
     clearTimeout(tab.state.schemaTimer);
     tab.state.schemaTimer = setTimeout(() => {
       tab.state.schemaTimer = null;
@@ -174,13 +175,15 @@ export function initLive() {
   });
 
   // Polling di riserva per i tab senza change stream: aggiorna la sidebar
-  // del tab attivo ogni 10 secondi.
-  setInterval(() => {
-    if (document.hidden) return;
-    const tab = tabs.list.find((t) => t.id === tabs.activeId);
-    if (!tab || !tab.state.connected || !tab.state.schemaPolling) return;
-    refreshTreeAuto();
-  }, 10000);
+  // del tab attivo ogni 10 secondi. Gli iframe Split-View non hanno sidebar.
+  if (!window.frameElement?.codedbPanel) {
+    setInterval(() => {
+      if (document.hidden) return;
+      const tab = tabs.list.find((t) => t.id === tabs.activeId);
+      if (!tab || !tab.state.connected || !tab.state.schemaPolling) return;
+      refreshTreeAuto();
+    }, 10000);
+  }
 
   socket.on('watch:unavailable', (info) => {
     if (!window.frameElement?.codedbPanel && info?.watchId && info.watchId !== 'default') return;

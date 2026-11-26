@@ -7,7 +7,11 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev \
+  && rm -rf node_modules/electron-updater node_modules/@types \
+  && find node_modules -type d \( -name '@types' -o -name 'test' -o -name 'tests' -o -name '__tests__' -o -name 'docs' -o -name 'example' -o -name 'examples' \) -prune -exec rm -rf {} + \
+  && find node_modules -type f \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.mts' -o -name '*.d.cts' -o -iname 'readme*.md' -o -iname 'changelog*.md' -o -iname 'history*.md' \) -delete \
+  && rm -f package-lock.json
 
 COPY server.js electron-server-auth.js LICENSE.md EULA.md MANLEVA.md ./
 COPY auth ./auth

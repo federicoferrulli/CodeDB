@@ -320,9 +320,19 @@ function createArchivioUpload({
         });
         stato.scritti = decisione.scritti;
         // Il produttore locale scrive in sequenza: basta l'ultimo blocco per
-        // ritentare una scrittura, senza accumulare un indice grande quanto l'export.
+        // ritentare una scrittura. Anche per upload da client si limita la finestra
+        // delle impronte conservate in stato.json per impedire la crescita illimitata
+        // del file di stato con migliaia di blocchi piccoli.
         if (stato.esportazione) stato.impronte = {};
         stato.impronte[String(offset)] = { impronta: decisione.impronta, lunghezza: contenuto.length };
+        const MAX_IMPRONTE = 64;
+        const chiaviImpronte = Object.keys(stato.impronte);
+        if (chiaviImpronte.length > MAX_IMPRONTE) {
+          chiaviImpronte.sort((a, b) => Number(a) - Number(b));
+          for (let i = 0; i < chiaviImpronte.length - MAX_IMPRONTE; i++) {
+            delete stato.impronte[chiaviImpronte[i]];
+          }
+        }
         await persiste(ownerId, stato);
         return { uploadId: stato.uploadId, scritti: stato.scritti, impronta: decisione.impronta, ripetuto: false };
       });

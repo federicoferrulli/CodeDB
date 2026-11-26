@@ -194,7 +194,8 @@ function creaDiario({ radicePer, now = () => new Date().toISOString() } = {}) {
     riconcilia(ownerId, { grazia = GRAZIA_MS, adesso = Date.now() } = {}) {
       const riconciliate = [];
       for (const voce of this.elenca(ownerId)) {
-        if (voce.cleanupAt && Date.parse(voce.cleanupAt) + 24 * 3600000 < adesso) {
+        const riferimentoPulizia = voce.cleanupAt || (voce.status !== 'in_corso' ? (voce.terminatoAl || voce.iniziatoAl) : null);
+        if (riferimentoPulizia && Date.parse(riferimentoPulizia) + 24 * 3600000 < adesso) {
           this.rimuovi({ ownerId, operationId: voce.operationId });
           continue;
         }

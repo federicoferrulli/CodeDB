@@ -139,7 +139,8 @@ module.exports = (async () => {
   const piano = new MySqlStrategy();
   const connPiano = {
     query: async (sql) => {
-      if (/FORMAT=JSON/.test(sql)) throw new Error('non supportato');
+      const testo = typeof sql === 'string' ? sql : (sql && sql.sql) || '';
+      if (/FORMAT=JSON/.test(testo)) throw new Error('non supportato');
       return [[{ rows_examined: '9007199254740993' }], [{ name: 'rows_examined', type: 'bigint' }]];
     },
     release() {},

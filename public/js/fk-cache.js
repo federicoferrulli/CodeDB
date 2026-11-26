@@ -10,11 +10,28 @@
  * ------------------------------------------------------------------------- */
 
 import { emit } from './utils.js';
+import { allaChiusura } from './tabs.js';
 import { indicizzaRelazioni } from './fk-relazioni.js';
 
+const MAX_CACHE_FK = 200;
 const cache = new Map();
 const inCorso = new Map();
 let generazione = 0;
+
+function salvaInCache(k, valore) {
+  if (cache.has(k)) cache.delete(k);
+  cache.set(k, valore);
+  while (cache.size > MAX_CACHE_FK) {
+    const piuVecchia = cache.keys().next().value;
+    cache.delete(piuVecchia);
+  }
+}
+
+allaChiusura((tabId) => {
+  const prefisso = `${tabId || ''}\0`;
+  for (const k of [...cache.keys()]) if (k.startsWith(prefisso)) cache.delete(k);
+  for (const k of [...inCorso.keys()]) if (k.startsWith(prefisso)) inCorso.delete(k);
+});
 
 function chiave({ tabId, dbType, db, coll } = {}) {
   if (!db || !coll) return null;
@@ -57,7 +74,7 @@ export function caricaRelazioni(contesto, { lancia = false } = {}) {
     // (null), così un nuovo tentativo rilegge davvero invece di riusare una Map
     // vuota che sembrava «nessuna relazione». Il costo è una sola rilettura di
     // metadati alla prossima query, non un ciclo.
-    if (versione === generazione) cache.set(k, indice);
+    if (versione === generazione) salvaInCache(k, indice);
     return indice;
   })
     // Il metadato è accessorio: se fallisce la griglia continua senza badge,
