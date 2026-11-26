@@ -158,7 +158,11 @@ function componiSelezione(db, coll, payload, {
   const pezziWhere = [];
   const whereParams = [];
 
-  const where = String(payload.filter || '').trim();
+  // Un prefisso "WHERE " iniziale scritto dall'utente nella casella Condizione
+  // verrebbe altrimenti raddoppiato in `WHERE WHERE ...` (o `WHERE (WHERE ...)`
+  // nella paginazione a chiave). Si toglie solo se seguito da una condizione vera,
+  // così un `WHERE` isolato resta comunque un errore SQL.
+  const where = String(payload.filter || '').trim().replace(/^WHERE(?=\s+\S)\s+/i, '');
   if (where) pezziWhere.push(where);
 
   const strutturato = normalizzaFiltro(payload.filtro);

@@ -28,7 +28,7 @@ function prova(nome, fn) {
 }
 
 module.exports = (async () => {
-  const { filtroRapido, payloadFiltro, modoSuccessivo, MODI } = await import(
+  const { filtroRapido, payloadFiltro, modoSuccessivo, MODI, validaCondizione } = await import(
     pathToFileURL(path.join(__dirname, '..', 'public', 'js', 'filtro-rapido.js')).href
   );
 
@@ -104,6 +104,69 @@ module.exports = (async () => {
       }
     }
     assert.strictEqual(MODI.rapido.icona, 'search', 'la ricerca usa la lente, non l\'occhio ambiguo');
+  });
+
+  /* --- Validazione della modalità Condizione ----------------------------- */
+
+  prova('validaCondizione: testo vuoto non segnala nulla', () => {
+    assert.strictEqual(validaCondizione('', 'mongodb'), null);
+    assert.strictEqual(validaCondizione('   ', 'mysql'), null);
+    assert.strictEqual(validaCondizione(null, 'postgresql'), null);
+  });
+
+  prova('validaCondizione (MongoDB): accetta JSON stretto e sintassi MQL shell', () => {
+    for (const valido of [
+      '{ "age": { "$gt": 30 } }',
+      '{ age: { $gt: 30 } }',
+      "{ 'user': 'Mario' }",
+      '{ _id: ObjectId("507f1f77bcf86cd799439011") }',
+      '{ createdAt: ISODate("2026-01-01T00:00:00Z") }',
+      '{ user: /mario/i }',
+      '/* commento */ { attivo: true, }',
+    ]) {
+      const r = validaCondizione(valido, 'mongodb');
+      assert.strictEqual(r && r.ok, true, `deve accettare ${valido}: ${r && r.messaggio}`);
+    }
+  });
+
+  prova('validaCondizione (MongoDB): rifiuta sintassi rotta e valori non-documento', () => {
+    for (const invalido of [
+      '{ age: ',
+      '{ user: Mario }',
+      '"mario"',
+      '123',
+      'true',
+      'null',
+      '[{ "age": 30 }]',
+      'age > 30',
+    ]) {
+      const r = validaCondizione(invalido, 'mongodb');
+      assert.strictEqual(r && r.ok, false, `deve rifiutare ${invalido}`);
+      assert.ok(r.messaggio && r.colonna >= 1, `deve indicare causa e colonna per ${invalido}`);
+    }
+  });
+
+  prova('validaCondizione (SQL): accetta WHERE validi e segnala apici/parentesi non chiusi', () => {
+    for (const valido of [
+      'age > 30',
+      "WHERE stato = 'attivo' AND (totale >= 10)",
+      "nota = 'it''s ok'",
+      '"UserId" = 42',
+    ]) {
+      assert.strictEqual(validaCondizione(valido, 'postgresql').ok, true, `deve accettare ${valido}`);
+      assert.strictEqual(validaCondizione(valido, 'mysql').ok, true, `deve accettare ${valido}`);
+    }
+    for (const invalido of [
+      "stato = 'attivo",
+      '(age > 30',
+      'age > 30)',
+      '/* commento non chiuso',
+      'WHERE',
+    ]) {
+      const r = validaCondizione(invalido, 'postgresql');
+      assert.strictEqual(r && r.ok, false, `deve rifiutare ${invalido}`);
+      assert.ok(r.messaggio && r.colonna >= 1);
+    }
   });
 
   if (falliti) throw new Error(`${falliti} test del filtro rapido falliti`);

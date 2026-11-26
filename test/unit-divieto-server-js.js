@@ -112,6 +112,71 @@ module.exports = (async () => {
     assert.strictEqual(vista, '[{"$match":{"a":1}}]');
   });
 
+  await prova('sintassi MQL shell: accetta filtri validi, vieta $where non quotato e rifiuta non-oggetti', async () => {
+    const DbFactory = require('../db/DbFactory');
+    const raw = DbFactory.getStrategy('mongodb');
+    let ultimoFiltro = null;
+    raw.client = {
+      db: () => ({
+        collection: () => ({
+          dbName: 'app',
+          collectionName: 'utenti',
+          estimatedDocumentCount: async () => 1,
+          aggregate: () => ({ toArray: async () => [] }),
+          find(f) {
+            ultimoFiltro = f;
+            const c = {
+              sort: () => c, skip: () => c, limit: () => c, close: async () => {},
+              async *[Symbol.asyncIterator]() { yield { _id: '1', user: 'Mario', age: 35 }; },
+            };
+            return c;
+          },
+        }),
+      }),
+    };
+    const strategia = guardStrategy(raw, { principal: ROOT_PRINCIPAL, connName: 'prova' });
+
+    await strategia.collectionFind('app', 'utenti', { filter: '{ age: { $gt: 30 } }', deferCount: true });
+    assert.strictEqual(Number(ultimoFiltro.age.$gt), 30);
+
+    await strategia.collectionFind('app', 'utenti', { filter: '{ big: NumberLong("9007199254740993") }', deferCount: true });
+    assert.strictEqual(String(ultimoFiltro.big), '9007199254740993');
+
+    await strategia.collectionFind('app', 'utenti', { filter: "{ 'user': 'Mario' }", deferCount: true });
+    assert.deepStrictEqual(ultimoFiltro, { user: 'Mario' });
+
+    await strategia.collectionFind('app', 'utenti', { filter: '{ _id: ObjectId("507f1f77bcf86cd799439011") }', deferCount: true });
+    assert.strictEqual(ultimoFiltro._id.toHexString(), '507f1f77bcf86cd799439011');
+
+    await strategia.collectionFind('app', 'utenti', { filter: '{ createdAt: ISODate("2026-01-01T00:00:00Z") }', deferCount: true });
+    assert.ok(ultimoFiltro.createdAt instanceof Date);
+
+    await strategia.collectionFind('app', 'utenti', { filter: '{ user: /mario/i }', deferCount: true });
+    assert.strictEqual(ultimoFiltro.user.pattern, 'mario');
+    assert.strictEqual(ultimoFiltro.user.options, 'i');
+
+    // Divieto JS lato server anche con chiavi non quotate o escape in apici singoli
+    await assert.rejects(
+      () => strategia.collectionFind('app', 'utenti', { filter: '{ $where: "this.a == 1" }' }),
+      /non consentito/
+    );
+    await assert.rejects(
+      () => strategia.collectionFind('app', 'utenti', { filter: "{ '\\u0024where': 'this.a == 1' }" }),
+      /non consentito/
+    );
+
+    // Scalari e array JSON non devono essere ignorati silenziosamente come {}
+    for (const nonDocumento of ['"mario"', 'true', 'null', '123', '[{ "age": 30 }]']) {
+      ultimoFiltro = null;
+      await assert.rejects(
+        () => strategia.collectionFind('app', 'utenti', { filter: nonDocumento, deferCount: true }),
+        /Filtro MongoDB non valido/,
+        `deve rifiutare ${nonDocumento}`
+      );
+      assert.strictEqual(ultimoFiltro, null, `${nonDocumento} non deve raggiungere il driver`);
+    }
+  });
+
   /* --- Che non ricompaia una quarta versione ---------------------------- */
 
   await prova('la regola è definita in un posto solo', () => {

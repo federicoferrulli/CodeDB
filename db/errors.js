@@ -592,6 +592,20 @@ function regolaCodeDb(err) {
       rimedio: 'chiedi a chi amministra l\'installazione un permesso più ampio su questa connessione',
     };
   }
+  if (low.startsWith('filtro mongodb non valido')) {
+    return {
+      nascondiTecnico: true,
+      causa: msg.replace(/\.$/, ''),
+      rimedio: 'in modalità Condizione su MongoDB scrivi un documento MQL tra graffe, es. { age: { $gt: 30 } } oppure { "stato": "attivo" }',
+    };
+  }
+  if (low.startsWith('ordinamento mongodb non valido')) {
+    return {
+      nascondiTecnico: true,
+      causa: msg.replace(/\.$/, ''),
+      rimedio: 'nel campo ordinamento su MongoDB scrivi un documento tra graffe, es. { nome: 1 } oppure { createdAt: -1 }',
+    };
+  }
   if (low.includes('vault bloccato')) {
     return {
       nascondiTecnico: true,

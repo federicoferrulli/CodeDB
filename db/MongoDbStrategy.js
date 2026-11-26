@@ -4,6 +4,7 @@ const scritturaVincolata = require('./sqlScrittureMongo').esegui;
 const { MongoClient, ObjectId } = require('mongodb');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
+const MongoShell = require('./MongoShell');
 const { LIMITE_RIGHE, stimaConteggio, conteggioLimitato, completaConteggi } = require('./conteggiNavigatore');
 // Il filtro come DATO, accanto al documento MQL storico: vedi db/filtro.js.
 const { normalizzaFiltro, rendiMongo } = require('./filtro');
@@ -48,7 +49,7 @@ function buildUri(cfg) {
 }
 
 function filtroDiLettura(payload, fallback = {}) {
-  const documento = parseQueryObject(payload.filter, fallback, !payload.shell);
+  const documento = parseDocumentObject(payload.filter, fallback, !payload.shell, 'Filtro MongoDB');
   const strutturato = normalizzaFiltro(payload.filtro);
   if (!strutturato) return documento;
   const reso = EJSON.deserialize(rendiMongo(strutturato), { relaxed: false });
@@ -65,8 +66,27 @@ function unisciFiltri(...filtri) {
 
 function parseQueryObject(text, fallback = {}, promote = true) {
   if (text == null || String(text).trim() === '') return fallback;
-  const parsed = EJSON.parse(String(text), { relaxed: false });
+  const raw = String(text);
+  let parsed;
+  try {
+    parsed = EJSON.parse(raw, { relaxed: false });
+  } catch {
+    try {
+      parsed = EJSON.deserialize(MongoShell.parseDocument(raw), { relaxed: false });
+    } catch (shellErr) {
+      throw new Error(`Documento MongoDB non valido: ${shellErr.message}`);
+    }
+  }
   if (promote) promoteObjectIds(parsed);
+  return parsed;
+}
+
+function parseDocumentObject(text, fallback = {}, promote = true, label = 'Filtro MongoDB') {
+  if (text == null || String(text).trim() === '') return fallback;
+  const parsed = parseQueryObject(text, fallback, promote);
+  if (!isPlainFilterObject(parsed)) {
+    throw new Error(`${label} non valido: inserisci un oggetto documento tra graffe (es. { "campo": "valore" }).`);
+  }
   return parsed;
 }
 
@@ -407,8 +427,8 @@ class MongoDbStrategy extends DbStrategy {
 
   async collectionFind(db, coll, payload) {
     const client = this.requireClient();
-    const sort = parseQueryObject(payload.sort, {});
-    const projection = parseQueryObject(payload.projection, {});
+    const sort = parseDocumentObject(payload.sort, {}, true, 'Ordinamento MongoDB');
+    const projection = parseDocumentObject(payload.projection, {}, true, 'Proiezione MongoDB');
     const cap = DbStrategy.resultCap(payload);
     const limit = cap === Infinity
       ? (payload.limit == null ? Infinity : Math.abs(parseInt(payload.limit, 10) || 0))
@@ -421,7 +441,7 @@ class MongoDbStrategy extends DbStrategy {
       await filtroRicercaGlobale(this, collection, db, coll, payload.cercaOvunque)
     );
     if (!payload.shell) await this.promoteFilterObjectIds(collection, filter);
-    const findOpts = { ...opzioniLettura(parseQueryObject(payload.options, {})), projection };
+    const findOpts = { ...opzioniLettura(parseDocumentObject(payload.options, {}, true, 'Opzioni MongoDB')), projection };
     // Timeout lato server sulla find: una scansione lenta (es. skip profondo)
     // viene interrotta (MaxTimeMSExpired) invece di tenere la connessione
     // occupata all'infinito. Annullabile anche via killOp sul `comment` (runId).
@@ -542,7 +562,7 @@ class MongoDbStrategy extends DbStrategy {
   }
 
   async mongoCollectionInfos(db, payload = {}) {
-    const filter = parseQueryObject(payload.filter, {}, false);
+    const filter = parseDocumentObject(payload.filter, {}, false, 'Filtro delle collezioni');
     require('../auth/capabilities').assertNoMongoServerJs(filter, 'Filtro delle collezioni');
     const options = opzioniDriver({ nameOnly: !!payload.nameOnly, authorizedCollections: !!payload.authorizedCollections }, payload, DbStrategy.queryTimeoutMs(this.env));
     const result = await DbStrategy.collectCapped(this.requireClient().db(db).listCollections(filter, options), Infinity, DbStrategy.maxResultBytes(this.env));
@@ -564,7 +584,7 @@ class MongoDbStrategy extends DbStrategy {
 
   async mongoDistinct(db, coll, payload) {
     const result = await this.requireClient().db(db).collection(coll).distinct(String(payload.field),
-      parseQueryObject(payload.filter, {}, false), opzioniDriver(parseQueryObject(payload.options, {}, false), payload, DbStrategy.queryTimeoutMs(this.env)));
+      parseDocumentObject(payload.filter, {}, false, 'Filtro MongoDB'), opzioniDriver(parseDocumentObject(payload.options, {}, false, 'Opzioni MongoDB'), payload, DbStrategy.queryTimeoutMs(this.env)));
     if (Buffer.byteLength(EJSON.stringify(result)) > DbStrategy.maxResultBytes(this.env)) throw new Error('Risultato distinct oltre il limite di byte.');
     return serialize(result);
   }
@@ -660,8 +680,8 @@ class MongoDbStrategy extends DbStrategy {
         filtroDiLettura(payload, {}),
         await filtroRicercaGlobale(this, collection, db, coll, payload.cercaOvunque)
       );
-      const sort = parseQueryObject(payload.sort, {});
-      const projection = parseQueryObject(payload.projection, {});
+      const sort = parseDocumentObject(payload.sort, {}, true, 'Ordinamento MongoDB');
+      const projection = parseDocumentObject(payload.projection, {}, true, 'Proiezione MongoDB');
       const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
       const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
       if (!payload.shell) await this.promoteFilterObjectIds(collection, filter);

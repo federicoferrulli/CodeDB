@@ -339,6 +339,7 @@ function agganciaMotore(campo, opts) {
 
   function apri(forzato) {
     if (document.activeElement !== campo) { chiudi(); return; }
+    if (typeof opts.attivo === 'function' && !opts.attivo()) { chiudi(); return; }
     const cursore = campo.selectionStart ?? 0;
     const prefisso = /[\w$.]$/.test(campo.value.slice(0, cursore));
     // Senza niente di scritto il dropdown si apre SOLO su richiesta esplicita:
@@ -408,6 +409,8 @@ function agganciaMotore(campo, opts) {
         e.preventDefault();
         e.stopImmediatePropagation();
         applica(0);
+      } else if (e.key === 'Enter') {
+        chiudi();
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -448,6 +451,7 @@ export function attachAutocomplete(input, opts = {}) {
   return agganciaMotore(input, {
     contenitore: wrap,
     flottante: false,
+    attivo: opts.attivo,
     contesto: () => {
       const isSql = isSqlType(state.dbType);
       const aggregate = $('#query-mode') ? $('#query-mode').value === 'aggregate' : false;

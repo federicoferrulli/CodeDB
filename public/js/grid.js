@@ -15,7 +15,7 @@ import { rendiCellaGeometrica, aperturaCella } from './cella-geometria.js';
 import { activeTab } from './tabs.js';
 // Le due modalità della casella del filtro: rapida (cerca in tutte le
 // colonne) e condizione (WHERE/MQL scritti a mano). Vedi filtro-rapido.js.
-import { MODI, payloadFiltro } from './filtro-rapido.js';
+import { MODI, payloadFiltro, validaCondizione } from './filtro-rapido.js';
 // Il modulo unico della griglia: quali righe stanno nella finestra visibile,
 // come si scrive il corpo della tabella, e che cosa questa griglia sa fare.
 // Il disegno della singola riga resta qui, perche' e' cio' che cambia fra le
@@ -37,6 +37,7 @@ export function applyDbTypeToWorkspace() {
   // valida per tutte — ed era l'unica cosa che questa funzione scriveva nella
   // vista UML.
   applyQueryPlaceholders();
+  aggiornaLintFiltro();
 }
 
 export function applyQueryPlaceholders() {
@@ -135,6 +136,8 @@ function caricaRelazioni(st, originColl, originTabId) {
 export function runQuery(opts = {}) {
   if (!state.db || !state.coll) return;
   showQueryError(null);
+  clearTimeout(lintFiltroTimer);
+  aggiornaLintFiltro();
   const mode = modoEffettivo();
 
   // Single-flight: annulla la find/aggregate precedente ancora in volo per
@@ -566,6 +569,73 @@ function filtroCorrente() {
   return payloadFiltro(modoFiltro(), $('#filter-input').value);
 }
 
+let lintFiltroTimer = 0;
+
+function aggiornaPuliziaInput(input) {
+  if (!input) return;
+  const button = document.querySelector(`[data-clear-input="${input.id}"]`);
+  button?.classList.toggle('hidden', !input.value);
+}
+
+/**
+ * Controllo sintattico in linea della casella filtro in modalità Condizione.
+ * In modalità rapida (`Cerca`) qualunque testo libero è ammesso, quindi la
+ * barra tace; in `Condizione` segnala errori di sintassi MQL/SQL (e su MongoDB
+ * i valori non-oggetto che non sono documenti filtro) con salto cliccabile.
+ */
+function aggiornaLintFiltro() {
+  const input = $('#filter-input');
+  const barra = $('#filter-lint');
+  if (!input) return null;
+  if (modoFiltro() !== 'condizione') {
+    input.removeAttribute('aria-invalid');
+    if (barra) {
+      barra.classList.add('hidden');
+      barra.classList.remove('lint-ko', 'lint-ok');
+      barra.textContent = '';
+      barra.onclick = null;
+    }
+    return null;
+  }
+  const esito = validaCondizione(input.value, state.dbType);
+  if (!esito || esito.ok) {
+    input.removeAttribute('aria-invalid');
+    if (barra) {
+      barra.classList.add('hidden');
+      barra.classList.remove('lint-ko', 'lint-ok');
+      barra.textContent = '';
+      barra.removeAttribute('title');
+      barra.removeAttribute('role');
+      barra.onclick = null;
+    }
+    return esito;
+  }
+  input.setAttribute('aria-invalid', 'true');
+  if (barra) {
+    barra.classList.remove('hidden', 'lint-ok');
+    barra.classList.add('lint-ko');
+    barra.textContent = `✕ Colonna ${esito.colonna}: ${esito.messaggio}`;
+    barra.title = 'Clicca per andare al punto';
+    barra.setAttribute('role', 'button');
+    barra.onclick = () => {
+      input.focus();
+      input.setSelectionRange(esito.indice, esito.indice);
+    };
+  }
+  return esito;
+}
+
+function pianificaLintFiltro() {
+  clearTimeout(lintFiltroTimer);
+  const barra = $('#filter-lint');
+  // Se l'errore era già visibile e l'utente l'ha appena corretto, toglilo subito.
+  if (barra && !barra.classList.contains('hidden')) {
+    const esito = validaCondizione($('#filter-input')?.value, state.dbType);
+    if (!esito || esito.ok) { aggiornaLintFiltro(); return; }
+  }
+  lintFiltroTimer = setTimeout(aggiornaLintFiltro, 250);
+}
+
 /** Applica al DOM la modalità scelta: icona, segnaposto, testo d'aiuto. */
 function applicaModoFiltro(modo) {
   const gruppo = $('#filter-mode-switch');
@@ -581,6 +651,8 @@ function applicaModoFiltro(modo) {
   });
   input.placeholder = spec.segnaposto;
   applyQueryPlaceholders();
+  clearTimeout(lintFiltroTimer);
+  aggiornaLintFiltro();
 }
 
 export function leggiStatoFiltro() {
@@ -598,10 +670,11 @@ export function applicaStatoFiltro(stato = {}) {
   const modo = stato.modo === 'condizione' ? 'condizione' : 'rapido';
   gruppo.dataset.testoRapido = stato.rapido || '';
   gruppo.dataset.testoCondizione = stato.condizione || '';
-  applicaModoFiltro(modo);
   $('#filter-input').value = modo === 'rapido'
     ? gruppo.dataset.testoRapido
     : gruppo.dataset.testoCondizione;
+  aggiornaPuliziaInput($('#filter-input'));
+  applicaModoFiltro(modo);
 }
 
 const CAPACITA_DATI = capacita({
@@ -1478,7 +1551,12 @@ export function initGrid() {
       gruppo.dataset[chiave] = $('#filter-input').value;
     }
     aggiornaPuliziaInput($('#filter-input'));
+    pianificaLintFiltro();
     updateBulkDeleteUI();
+  });
+  $('#filter-input')?.addEventListener('blur', () => {
+    clearTimeout(lintFiltroTimer);
+    aggiornaLintFiltro();
   });
   aggiornaPuliziaInput($('#filter-input'));
   $('#sort-input')?.addEventListener('input', (e) => aggiornaPuliziaInput(e.currentTarget));
@@ -1494,10 +1572,6 @@ export function initGrid() {
       runQuery();
     });
   });
-  function aggiornaPuliziaInput(input) {
-    const button = document.querySelector(`[data-clear-input="${input.id}"]`);
-    button?.classList.toggle('hidden', !input.value);
-  }
   applicaModoFiltro(modoFiltro());
 
   $('#run-btn').addEventListener('click', () => { state.skip = 0; clearCellSelection(); runQuery(); });
@@ -1539,7 +1613,7 @@ export function initGrid() {
     runQuery();
   });
 
-  attachAutocomplete($('#filter-input'));
+  attachAutocomplete($('#filter-input'), { attivo: () => modoFiltro() === 'condizione' });
   attachAutocomplete($('#sort-input'), { keywords: false });
 
   for (const sel of ['#filter-input', '#sort-input']) {

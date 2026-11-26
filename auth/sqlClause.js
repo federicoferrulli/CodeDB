@@ -121,7 +121,8 @@ function assertSimpleClause(text, what) {
   const raw = String(text || '').trim();
   if (!raw) return;
 
-  const { words, hasCall, bad } = scanClause(raw);
+  const normalized = what === 'filtro' ? raw.replace(/^WHERE(?=\s+\S)\s+/i, '') : raw;
+  const { words, hasCall, bad } = scanClause(normalized);
   const refuse = (motivo) => {
     throw new Error(
       `${what === 'ordinamento' ? 'Ordinamento' : 'Filtro'} non consentito: ${motivo}. ` +

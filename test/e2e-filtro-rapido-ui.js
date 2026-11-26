@@ -187,6 +187,44 @@ const ok = (cond, etichetta, dettaglio = '') => {
     ok(inviati.condizione && inviati.condizione.cercaOvunque === undefined,
       'modalità condizione: la ricerca globale NON parte');
 
+    /* --- Controllo sintattico in linea della modalità Condizione ------- */
+
+    const lintStato = await page.evaluate(() => {
+      const input = document.querySelector('#filter-input');
+      const barra = document.querySelector('#filter-lint');
+      document.querySelector('[data-filter-mode="condizione"]').click();
+      input.value = '"mario"';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('blur'));
+      const erroreScalare = {
+        invalid: input.getAttribute('aria-invalid'),
+        visibile: !barra.classList.contains('hidden'),
+        ko: barra.classList.contains('lint-ko'),
+        testo: barra.textContent,
+      };
+      input.value = '{ nome: "Anna" }';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      const dopoCorrezione = {
+        invalid: input.getAttribute('aria-invalid'),
+        visibile: !barra.classList.contains('hidden'),
+      };
+      input.value = '{ nome: ';
+      input.dispatchEvent(new Event('blur'));
+      const rotto = !barra.classList.contains('hidden');
+      document.querySelector('[data-filter-mode="rapido"]').click();
+      const inRapido = {
+        invalid: input.getAttribute('aria-invalid'),
+        visibile: !barra.classList.contains('hidden'),
+      };
+      return { erroreScalare, dopoCorrezione, rotto, inRapido };
+    });
+    ok(lintStato.erroreScalare.invalid === 'true' && lintStato.erroreScalare.visibile && lintStato.erroreScalare.ko,
+      'Condizione MongoDB non-documento segnalata dal lint in linea', JSON.stringify(lintStato.erroreScalare));
+    ok(lintStato.dopoCorrezione.invalid === null && !lintStato.dopoCorrezione.visibile,
+      'Condizione MQL valida (anche con chiavi non quotate) ripulisce subito il lint', JSON.stringify(lintStato.dopoCorrezione));
+    ok(lintStato.rotto && lintStato.inRapido.invalid === null && !lintStato.inRapido.visibile,
+      'Il passaggio a Cerca nasconde il lint sintattico', JSON.stringify(lintStato.inRapido));
+
     const cancellazioni = await page.evaluate(async () => {
       const { activeTab } = await import('/js/tabs.js');
       const { impostaSocket } = await import('/js/socket.js');

@@ -160,6 +160,9 @@ assert.strictEqual(
 );
 assert.strictEqual(my.buildSelect('d', 't', { skip: -3 }).skip, 0, 'Salto negativo → 0, mai un OFFSET invalido');
 assert.strictEqual(my.buildSelect('d', 't', { filter: '   ' }).whereSql, '', 'Filtro di soli spazi: nessun WHERE');
+assert.strictEqual(my.buildSelect('d', 't', { filter: 'WHERE q > 1' }).whereSql, ' WHERE q > 1', 'Prefisso WHERE iniziale non viene raddoppiato');
+assert.strictEqual(pg.buildSelect('public', 't', { filter: '  where\n  stato = \'ok\'' }).whereSql, " WHERE stato = 'ok'", 'Prefisso where minuscolo normalizzato');
+assert.strictEqual(my.buildSelect('d', 't', { filter: 'WHERE' }).whereSql, ' WHERE WHERE', 'Un WHERE isolato senza condizione non viene azzerato silenziosamente');
 console.log('  OK   buildSelect: qualificazione, filtro, tetti su limite e salto');
 
 // La ricerca globale entra dalla porta della strategia e parte dopo gli

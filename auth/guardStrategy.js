@@ -22,7 +22,7 @@
 const {
   METHOD_CAPABILITY, CAPABILITY_LABEL, DDL_AUTH_CAPABILITIES, SQL_DDL_AUTHORIZED,
   analyzeSql, isFileIoSql,
-  analyzeMongoPipeline, assertNoMongoServerJs, matchesAny, shellWriteCapabilities,
+  analyzeMongoPipeline, assertNoMongoServerJs, isPlainMongoDocument, matchesAny, shellWriteCapabilities,
 } = require('./capabilities');
 const { can, scopeFor, canWholeConnection } = require('./permissions');
 const { stripSqlNoise } = require('../db/sqlText');
@@ -167,8 +167,12 @@ function assertSafeMongoFieldPath(value, label = 'Campo MongoDB') {
 function validateMongoOperation(method, payload, authorization) {
   const fields = MONGO_SERVER_JS_FIELDS[method] || [];
   for (const field of fields) {
-    if (payload[field] != null && payload[field] !== '') {
-      assertNoMongoServerJs(payload[field], field === 'pipeline' ? 'Pipeline MongoDB' : 'Filtro MongoDB');
+    const raw = payload[field];
+    if (raw != null && (typeof raw !== 'string' || raw.trim() !== '')) {
+      const parsed = assertNoMongoServerJs(raw, field === 'pipeline' ? 'Pipeline MongoDB' : 'Filtro MongoDB');
+      if (field === 'filter' && parsed !== null && !isPlainMongoDocument(parsed)) {
+        throw new Error('Filtro MongoDB non valido: inserisci un oggetto documento tra graffe (es. { "campo": "valore" }).');
+      }
     }
   }
   if (method === 'collectionExplain' && payload.mode === 'aggregate') {

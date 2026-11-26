@@ -168,6 +168,11 @@ function errore(message, extra = {}) {
   const negato = spiegaErrore(new Error('Permesso negato: non hai i privilegi per l\'operazione "doc:insert".'));
   assert.ok(negato.startsWith('Permesso negato'), 'il permesso negato resta riconoscibile in testa');
   assert.ok(!negato.includes('dettaglio tecnico'), 'e non si ripete in coda');
+
+  const filtroMongo = spiegaErrore(new Error('Filtro MongoDB non valido: inserisci un oggetto documento tra graffe.'));
+  assert.ok(filtroMongo.startsWith('Filtro MongoDB non valido'), 'la causa del filtro MongoDB resta chiara');
+  assert.ok(filtroMongo.includes(MARCATORE) && /MQL/.test(filtroMongo), 'aggiunge il rimedio con esempio MQL');
+  assert.ok(!filtroMongo.includes('dettaglio tecnico'), 'nessuna ripetizione in coda');
   console.log('  OK   Messaggi CodeDB arricchiti col rimedio');
 }
 

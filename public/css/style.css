@@ -2472,6 +2472,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   cursor: pointer;
 }
 .lint-bar.lint-ko:hover { text-decoration: underline; }
+#filter-lint { border-top: 0; border-bottom: 1px solid var(--border); }
 
 /* Barretta Formatta/Minifica sopra le aree di testo con un documento */
 .json-tools {

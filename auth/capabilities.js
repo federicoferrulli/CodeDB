@@ -39,6 +39,7 @@
  * ------------------------------------------------------------------------- */
 const { EJSON } = require('bson');
 const { splitStatements } = require('../db/sqlText');
+const MongoShell = require('../db/MongoShell');
 
 // `\b` dopo la keyword impedisce i falsi positivi su nomi di colonna che la
 // contengono come prefisso (`updated_at`, `deleted`, `create_time`).
@@ -147,13 +148,22 @@ function isWriteSql(code) {
 
 const FORBIDDEN_MONGO_SERVER_JS = new Set(['$where', '$function', '$accumulator']);
 
+function isPlainMongoDocument(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date) && !value._bsontype;
+}
+
 function parseMongoEjson(code, label) {
-  if (code == null || code === '') return null;
+  if (code == null || (typeof code === 'string' && code.trim() === '')) return null;
   if (typeof code === 'object') return code;
+  const text = String(code);
   try {
-    return EJSON.parse(String(code), { relaxed: false });
-  } catch (err) {
-    throw new Error(`${label || 'JSON MongoDB'} non valido: ${err.message}`);
+    return EJSON.parse(text, { relaxed: false });
+  } catch {
+    try {
+      return EJSON.deserialize(MongoShell.parseDocument(text), { relaxed: false });
+    } catch (shellErr) {
+      throw new Error(`${label || 'Documento MongoDB'} non valido: ${shellErr.message}`);
+    }
   }
 }
 
@@ -625,6 +635,7 @@ module.exports = {
   isFileIoSql,
   analyzeMongoPipeline,
   assertNoMongoServerJs,
+  isPlainMongoDocument,
   FORBIDDEN_MONGO_SERVER_JS,
   isWriteMongoPipeline,
   EVENT_CAPABILITY,
